@@ -1,0 +1,12 @@
+name,amount,day,account
+Car_Insurance,281.05,1,Natwest_Current
+Car_Finance,350.76,1,Natwest_Current
+Student_Finance,20.00,1,Monzo_Current
+Life_Insurance,25.00,1,Monzo_Current
+ChatGPT,19.00,6,Natwest_Current
+Blink_Camera,2.50,6,Natwest_Current
+Spotify,13.00,8,Natwest_Current
+O2,38.00,9,Natwest_Current
+Gym,27.00,9,Natwest_Current
+YT_Premium,5.50,25,Monzo_Current
+
