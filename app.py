@@ -11,6 +11,14 @@ from Tracker import simulate_balances_until, load_future_events, load_scheduled_
 import calendar
 from datetime import timedelta
 
+from models import (
+    add_transaction,
+    update_account_balance,
+    get_active_accounts
+)
+
+from database import get_db
+
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "Data"
 
@@ -182,42 +190,40 @@ def calculate_financial_overview(accounts):
     }
 
 def calculate_monthly_spending():
+
     today = date.today()
     year = today.year
     month = today.month
 
+    db = get_db()
+
+    rows = db.execute(
+        """
+        SELECT amount
+        FROM transactions
+        WHERE strftime('%Y', date) = ?
+        AND strftime('%m', date) = ?
+        """,
+        (str(year), f"{month:02d}")
+    ).fetchall()
+
+    db.close()
+
     normal_spend = 0.0
+    income = 0.0
 
-    # ---- Normal expenses ----
-    if DAILY_EXPENSES.exists():
-        with open(DAILY_EXPENSES, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                try:
-                    d = date.fromisoformat(row["date"])
-                    if d.year == year and d.month == month:
-                        amount = float(row["amount"])
-                        if amount < 0:  # expenses stored negative
-                            normal_spend += abs(amount)
-                except:
-                    continue
+    for r in rows:
+        amount = r["amount"]
 
-    # ---- Scheduled expenses ----
-    scheduled_spend = 0.0
-    scheduled = load_scheduled_expenses_web()
-
-    for expense in scheduled:
-        if expense["day"] is None:
-            continue
-        if expense["day"] <= today.day:
-            scheduled_spend += expense["amount"]
-
-    total = normal_spend + scheduled_spend
+        if amount < 0:
+            normal_spend += abs(amount)
+        else:
+            income += amount
 
     return {
         "normal": normal_spend,
-        "scheduled": scheduled_spend,
-        "total": total
+        "scheduled": 0,
+        "total": normal_spend
     }
 
 BILLS_PAGE = """
@@ -561,7 +567,7 @@ input, select {
     </div>
 
     <div class="small text-muted mb-3">
-      Writes to: Data/Payments_Log.csv and updates Data/Accounts.json
+      Recorded in transaction ledger
     </div>
 
     <button type="submit" class="btn btn-dark w-100 py-3">Add income</button>
@@ -679,9 +685,17 @@ input, select {
 
 @app.get("/")
 def home():
-    ensure_csv_header(DAILY_EXPENSES, ["date", "description", "amount", "account"])
-    ensure_csv_header(PAYMENTS_LOG, ["date", "description", "amount", "account", "type"])
-    accounts = load_accounts()
+
+    accounts_rows = get_active_accounts()
+    accounts = {}
+
+    for r in accounts_rows:
+      accounts[r["name"]] = {
+          "balance": r["balance"],
+          "type": r["type"],
+          "active": bool(r["active"])
+      }
+
     overview = calculate_financial_overview(accounts)
     monthly = calculate_monthly_spending()
 
@@ -707,7 +721,15 @@ def home():
 
 @app.get("/bills")
 def bills():
-    accounts = load_accounts()
+    accounts_rows = get_active_accounts()
+
+    accounts = {}
+    for r in accounts_rows:
+        accounts[r["name"]] = {
+            "balance": r["balance"],
+            "type": r["type"],
+            "active": bool(r["active"])
+        }
     overview = calculate_financial_overview(accounts)
     monthly = calculate_monthly_spending()
 
@@ -728,7 +750,6 @@ def bills():
 
 @app.post("/add-expense")
 def add_expense():
-    ensure_csv_header(DAILY_EXPENSES, ["date", "description", "amount", "account"])
 
     description = (request.form.get("description") or "").strip()
     amount_raw = (request.form.get("amount") or "").strip()
@@ -742,27 +763,20 @@ def add_expense():
     except ValueError:
         return redirect(url_for("home", msg="Amount must be a number."))
 
-    # store expense negative (matches your PPFS)
     amount = -abs(amount)
 
     today_str = date.today().isoformat()
 
-    with open(DAILY_EXPENSES, "a", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow([today_str, description, amount, account])
+    add_transaction(today_str, description, amount, account)
 
-    # update Accounts.json balance exactly like your CLI does
-    accounts = load_accounts()
-    if account in accounts:
-        accounts[account]["balance"] = float(accounts[account].get("balance", 0.0)) + amount
-        save_accounts(accounts)
-        return redirect(url_for("home", msg=f"Added {description}: £{abs(amount):.2f} from {account}"))
-    else:
-        return redirect(url_for("home", msg=f"Expense saved, but account '{account}' not found in Accounts.json"))
+    update_account_balance(account, amount)
+
+    return redirect(
+        url_for("home", msg=f"Added {description}: £{abs(amount):.2f} from {account}")
+    )
 
 @app.post("/add-income")
 def add_income():
-    ensure_csv_header(PAYMENTS_LOG, ["date", "description", "amount", "account", "type"])
 
     description = (request.form.get("description") or "").strip()
     amount_raw = (request.form.get("amount") or "").strip()
@@ -776,24 +790,17 @@ def add_income():
     except ValueError:
         return redirect(url_for("home", msg="Amount must be a number."))
 
-    # income stored positive (matches your CLI)
     amount = abs(amount)
 
     today_str = date.today().isoformat()
 
-    # Append to Payments_Log.csv exactly like your CLI
-    with open(PAYMENTS_LOG, "a", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow([today_str, description, amount, account, "manual_income"])
+    add_transaction(today_str, description, amount, account)
 
-    # Update Accounts.json
-    accounts = load_accounts()
-    if account in accounts:
-        accounts[account]["balance"] = float(accounts[account].get("balance", 0.0)) + amount
-        save_accounts(accounts)
-        return redirect(url_for("home", msg=f"Added income {description}: £{amount:.2f} to {account}"))
-    else:
-        return redirect(url_for("home", msg=f"Income saved, but account '{account}' not found in Accounts.json"))
+    update_account_balance(account, amount)
+
+    return redirect(
+        url_for("home", msg=f"Added income {description}: £{amount:.2f} to {account}")
+    )
 
 @app.post("/transfer")
 def transfer():
@@ -814,25 +821,17 @@ def transfer():
     except ValueError:
         return redirect(url_for("home", msg="Enter a valid positive amount."))
 
-    accounts = load_accounts()
+    today_str = date.today().isoformat()
 
-    if from_account not in accounts or to_account not in accounts:
-        return redirect(url_for("home", msg="Account not found."))
+    add_transaction(today_str, f"Transfer to {to_account}", -amount, from_account)
+    add_transaction(today_str, f"Transfer from {from_account}", amount, to_account)
 
-    # Check balance safety
-    if accounts[from_account]["balance"] < amount:
-        return redirect(url_for("home", msg="Insufficient funds."))
+    update_account_balance(from_account, -amount)
+    update_account_balance(to_account, amount)
 
-    # Apply transfer
-    accounts[from_account]["balance"] -= amount
-    accounts[to_account]["balance"] += amount
-
-    save_accounts(accounts)
-
-    return redirect(url_for(
-        "home",
-        msg=f"Transferred £{amount:.2f} from {from_account} → {to_account}"
-    ))
+    return redirect(
+        url_for("home", msg=f"Transferred £{amount:.2f} from {from_account} → {to_account}")
+    )
 
 @app.post("/afford")
 def afford():
@@ -848,7 +847,15 @@ def afford():
     except ValueError:
         return redirect(url_for("home", msg="Invalid purchase amount."))
 
-    accounts = load_accounts()
+    accounts_rows = get_active_accounts()
+
+    accounts = {}
+    for r in accounts_rows:
+        accounts[r["name"]] = {
+            "balance": r["balance"],
+            "type": r["type"],
+            "active": bool(r["active"])
+        }
     scheduled = load_scheduled_expenses(DATA_DIR)
     future_events = load_future_events(DATA_DIR)
 

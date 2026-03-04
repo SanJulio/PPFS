@@ -27,3 +27,30 @@ def update_account_balance(name: str, delta: float):
     db.execute("UPDATE accounts SET balance = balance + ? WHERE name = ?", (delta, name))
     db.commit()
     db.close()
+
+
+def add_transaction(date: str, description: str, amount: float, account: str):
+    db = get_db()
+
+    db.execute(
+        """
+        INSERT INTO transactions (date, description, amount, account)
+        VALUES (?, ?, ?, ?)
+        """,
+        (date, description, amount, account)
+    )
+
+    db.commit()
+    db.close()
+
+
+def get_transactions():
+    db = get_db()
+
+    rows = db.execute(
+        "SELECT * FROM transactions ORDER BY date DESC"
+    ).fetchall()
+
+    db.close()
+
+    return rows
