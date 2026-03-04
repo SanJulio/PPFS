@@ -24,5 +24,26 @@ def init_db():
     )
     """)
 
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        description TEXT NOT NULL,
+        amount REAL NOT NULL,
+        account TEXT NOT NULL,
+        type TEXT NOT NULL
+    )
+    """)
+
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS scheduled_expenses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        amount REAL NOT NULL,
+        day INTEGER,
+        account TEXT NOT NULL
+    )
+    """)
+
     db.commit()
     db.close()
