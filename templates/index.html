@@ -1,0 +1,398 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#ffffff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<title>PPFS</title>
+
+<style>
+
+html, body {
+    min-height: 100vh;
+}
+html {
+    scroll-padding-bottom: 110px;
+}
+html {
+    scroll-behavior: smooth;
+}
+.navbar {
+    height: 70px;
+}
+
+.navbar small {
+    font-size: 11px;
+}
+
+.navbar a {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+}
+
+.fixed-bottom {
+    position: fixed !important;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+}
+
+body {
+    background: #f2f4f7;
+    padding-bottom: 110px;
+}
+
+.card {
+    border-radius: 18px;
+    border: none;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+}
+
+h1 {
+    font-weight: 700;
+}
+
+.btn-primary {
+    background: black;
+    border: none;
+    border-radius: 14px;
+    padding: 12px;
+    font-size: 16px;
+}
+
+input, select {
+    border-radius: 12px !important;
+    padding: 12px !important;
+    font-size: 16px !important;
+}
+
+/* ...keep your existing styles... */
+
+.section-card { padding: 16px; margin-bottom: 16px; }
+
+.form-label { font-weight: 600; }
+
+.table td, .table th { vertical-align: middle; }
+
+.table-wide {
+    min-width: 520px;
+}
+
+.ellipsis {
+  max-width: 220px;          /* adjust if you want */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.money { font-variant-numeric: tabular-nums; }
+
+.badge-soft {
+  background: rgba(0,0,0,0.06);
+  color: #111;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-weight: 600;
+  font-size: 12px;
+}
+</style>
+</head>
+<body>
+<div class="container py-4">
+<div class="mb-4" id="home">
+  <h1 class="display-6 fw-bold">PPFS</h1>
+  <div class="text-muted">Personal Finance System</div>
+</div>
+
+  {% if message %}
+    <div class="msg">{{ message }}</div>
+  {% endif %}
+
+  <div class="card p-3 mb-4">
+  <h5 class="mb-3">Financial Overview</h5>
+
+  <div class="row g-3">
+
+    <div class="col-6">
+      <div class="p-3 bg-white rounded-4 shadow-sm">
+        <div class="text-muted small">Available</div>
+        <div class="fs-4 fw-bold">£{{ "%.2f"|format(overview.spending_balance) }}</div>
+      </div>
+    </div>
+
+    <div class="col-6">
+      <div class="p-3 bg-white rounded-4 shadow-sm">
+        <div class="text-muted small">Bills left</div>
+        <div class="fs-4 fw-bold text-danger">£{{ "%.2f"|format(overview.future_bills) }}</div>
+      </div>
+    </div>
+
+    <div class="col-6">
+      <div class="p-3 bg-white rounded-4 shadow-sm">
+        <div class="text-muted small">Safe to spend</div>
+        <div class="fs-4 fw-bold text-success">£{{ "%.2f"|format(overview.safe_spending) }}</div>
+      </div>
+    </div>
+
+    <div class="col-6">
+      <div class="p-3 bg-white rounded-4 shadow-sm">
+        <div class="text-muted small">Savings</div>
+        <div class="fs-4 fw-bold">£{{ "%.2f"|format(overview.savings_balance) }}</div>
+      </div>
+    </div>
+
+    <div class="col-12">
+      <div class="p-3 bg-dark text-white rounded-4 text-center">
+        <div class="small">Net Worth</div>
+        <div class="fs-3 fw-bold">£{{ "%.2f"|format(overview.net_worth) }}</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="card p-3 mb-4">
+  <h5 class="mb-3">This Month's Spending</h5>
+
+  <div class="row g-3">
+
+    <div class="col-4">
+      <div class="p-3 bg-white rounded-4 shadow-sm text-center">
+        <div class="text-muted small">Normal spending</div>
+        <div class="fs-5 fw-bold">£{{ "%.2f"|format(monthly.normal) }}</div>
+      </div>
+    </div>
+
+    <div class="col-4">
+      <div class="p-3 bg-white rounded-4 shadow-sm text-center">
+        <div class="text-muted small">Bills paid</div>
+        <div class="fs-5 fw-bold">£{{ "%.2f"|format(monthly.scheduled) }}</div>
+      </div>
+    </div>
+
+    <div class="col-4">
+      <div class="p-3 bg-dark text-white rounded-4 text-center">
+        <div class="small">Total outflow</div>
+        <div class="fs-5 fw-bold">£{{ "%.2f"|format(monthly.total) }}</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+  <div class="card p-3 mb-4" id="afford">
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <h5 class="mb-0">Can I afford this?</h5>
+    <span class="badge-soft">Forecast to end of next month</span>
+  </div>
+
+  <form method="POST" action="{{ url_for('afford') }}">
+    <div class="mb-3">
+      <label class="form-label">Item (optional)</label>
+      <input class="form-control" name="desc" placeholder="e.g., Trainers" />
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Purchase amount (£)</label>
+      <input class="form-control" name="amount" inputmode="decimal" placeholder="e.g., 180" required />
+    </div>
+
+    <button type="submit" class="btn btn-dark w-100 py-3">Check</button>
+  </form>
+
+  {% if afford_results %}
+    <hr class="my-3">
+
+    <div class="small text-muted mb-2">Results</div>
+
+    <div class="vstack gap-2">
+      {% for r in afford_results %}
+        <div class="border rounded-4 p-3 bg-white">
+          <div class="d-flex justify-content-between align-items-center">
+            <div class="fw-semibold">{{ r.account }}</div>
+            {% if r.negative %}
+              <span class="badge text-bg-danger">Risk</span>
+            {% else %}
+              <span class="badge text-bg-success">Safe</span>
+            {% endif %}
+          </div>
+
+          <div class="small text-muted mt-2">
+            After purchase: <span class="money">£{{ "%.2f"|format(r.after) }}</span><br>
+            Lowest predicted: <span class="money">£{{ "%.2f"|format(r.lowest) }}</span>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="mt-3 small text-muted">Recommendation</div>
+    <div class="fw-bold">{{ recommendation }}</div>
+  {% endif %}
+</div>
+
+  <div class="card p-3 mb-4" id="expense">
+  <h5 class="mb-3">Add Expense</h5>
+
+  <form method="POST" action="{{ url_for('add_expense') }}">
+
+    <div class="mb-3">
+      <label class="form-label">Description</label>
+      <input class="form-control" name="description" placeholder="Tesco meal deal" required>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Amount (£)</label>
+      <input class="form-control" name="amount" inputmode="decimal" placeholder="4.50" required>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Account</label>
+      <select class="form-select" name="account" required>
+        {% for a in accounts %}
+        <option value="{{ a }}">{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button type="submit" class="btn btn-dark w-100 py-3">
+      Add Expense
+    </button>
+
+  </form>
+</div>
+
+  <div class="card p-3 mb-4" id="income">
+  <h5 class="mb-3">Add income</h5>
+
+  <form method="POST" action="{{ url_for('add_income') }}">
+    <div class="mb-3">
+      <label class="form-label">Description</label>
+      <input class="form-control" name="description" placeholder="e.g., Salary / Refund" required />
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Amount (£)</label>
+      <input class="form-control" name="amount" inputmode="decimal" placeholder="e.g., 1200" required />
+    </div>
+
+    <div class="mb-2">
+      <label class="form-label">Account</label>
+      <select class="form-select" name="account" required>
+        {% for a in accounts %}
+          <option value="{{ a }}">{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="small text-muted mb-3">
+      Recorded in transaction ledger
+    </div>
+
+    <button type="submit" class="btn btn-dark w-100 py-3">Add income</button>
+  </form>
+</div>
+
+  <div class="card p-3 mb-4" id="transfer">
+  <h5 class="mb-3">Transfer between accounts</h5>
+
+  <form method="POST" action="{{ url_for('transfer') }}">
+    <div class="mb-3">
+      <label class="form-label">From account</label>
+      <select class="form-select" name="from_account" required>
+        {% for a in accounts %}
+          <option value="{{ a }}">{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">To account</label>
+      <select class="form-select" name="to_account" required>
+        {% for a in accounts %}
+          <option value="{{ a }}">{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Amount (£)</label>
+      <input class="form-control" name="amount" inputmode="decimal" placeholder="e.g., 100" required />
+    </div>
+
+    <button type="submit" class="btn btn-dark w-100 py-3">Transfer</button>
+  </form>
+</div>
+  
+  <div class="card p-3 mb-4" id="accounts">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h5 class="mb-0">Active account balances</h5>
+    <span class="badge-soft">{{ balances|length }} accounts</span>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 table-wide">
+      <thead>
+        <tr>
+          <th>Account</th>
+          <th class="text-end">Balance</th>
+          <th class="text-end">Type</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in balances %}
+          <tr>
+            <td>
+              <span class="ellipsis d-inline-block">{{ row.name }}</span>
+            </td>
+            <td class="text-end money">£{{ "%.2f"|format(row.balance) }}</td>
+            <td class="text-end">
+              <span class="badge text-bg-light">{{ row.type }}</span>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+</div>
+<nav class="navbar fixed-bottom bg-white border-top">
+  <div class="container-fluid d-flex justify-content-around text-center">
+
+    <a href="/" class="text-decoration-none text-dark">
+      <div style="font-size:20px">🏠</div>
+      <small>Home</small>
+    </a>
+
+    <a href="#accounts" class="text-decoration-none text-dark">
+      <div style="font-size:20px">💼</div>
+      <small>Accounts</small>
+    </a>
+
+    <a href="/actions" class="text-decoration-none text-dark">
+      <div style="font-size:20px">⚡</div>
+      <small>Actions</small>
+    </a>
+
+    <a href="/bills" class="text-decoration-none text-dark">
+      <div style="font-size:20px">💳</div>
+      <small>Bills</small>
+    </a>
+
+    <a href="/transactions" class="text-decoration-none text-dark">
+      <div style="font-size:20px">📜</div>
+      <small>Transactions</small>
+    </a>
+
+  </div>
+</nav>
+</body>
+</html>

@@ -5,7 +5,7 @@ from datetime import date
 from pathlib import Path
 from typing import Dict, List
 
-from flask import Flask, request, redirect, url_for, render_template_string
+from flask import Flask, request, redirect, url_for, render_template
 
 from Tracker import simulate_balances_until, load_future_events, load_scheduled_expenses
 import calendar
@@ -14,7 +14,8 @@ from datetime import timedelta
 from models import (
     add_transaction,
     update_account_balance,
-    get_active_accounts
+    get_active_accounts,
+    get_recent_transactions
 )
 
 from database import get_db
@@ -23,8 +24,6 @@ BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "Data"
 
 DAILY_EXPENSES = DATA_DIR / "Daily_Expenses.csv"
-ACCOUNTS_JSON = DATA_DIR / "Accounts.json"
-PAYMENTS_LOG = DATA_DIR / "Payments_Log.csv"
 
 app = Flask(__name__)
 
@@ -66,26 +65,6 @@ def ensure_csv_header(file_path: Path, header: List[str]) -> None:
         with open(file_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(header)
-
-def load_accounts() -> Dict:
-    import json
-    if not ACCOUNTS_JSON.exists():
-        return {}
-    with open(ACCOUNTS_JSON, "r", encoding="utf-8") as f:
-        accounts = json.load(f)
-    # ensure active default
-    for acc in accounts:
-        if "active" not in accounts[acc]:
-            accounts[acc]["active"] = True
-    return accounts
-
-def save_accounts(accounts: Dict) -> None:
-    import json, os, tempfile
-    # atomic write
-    with tempfile.NamedTemporaryFile("w", delete=False, dir=DATA_DIR, encoding="utf-8") as tmp:
-        json.dump(accounts, tmp, indent=4)
-        temp_name = tmp.name
-    os.replace(temp_name, ACCOUNTS_JSON)
 
 import calendar
 from datetime import datetime
@@ -226,463 +205,6 @@ def calculate_monthly_spending():
         "total": normal_spend
     }
 
-BILLS_PAGE = """
-<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-<title>Scheduled Bills</title>
-
-<style>
-body { background:#f2f4f7; padding:20px; }
-.card { border-radius:18px; box-shadow:0 6px 18px rgba(0,0,0,0.08); border:none; }
-</style>
-</head>
-
-<body>
-
-<div class="container">
-<div class="card p-3">
-<h4 class="mb-3">Scheduled Expenses</h4>
-
-<div class="table-responsive">
-<table class="table table-sm align-middle mb-0">
-<thead>
-<tr>
-<th>Name</th>
-<th class="text-end">Amount</th>
-<th class="text-end">Day</th>
-<th class="text-end">Account</th>
-</tr>
-</thead>
-
-<tbody>
-{% for b in bills %}
-<tr>
-<td>{{ b.name }}</td>
-<td class="text-end">£{{ "%.2f"|format(b.amount) }}</td>
-<td class="text-end">{{ b.day }}</td>
-<td class="text-end">{{ b.account }}</td>
-</tr>
-{% endfor %}
-</tbody>
-</table>
-</div>
-
-<div class="mt-3">
-<a href="/" class="btn btn-dark w-100">← Back to Home</a>
-</div>
-
-</div>
-</div>
-
-</body>
-</html>
-"""
-
-PAGE = """
-<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#ffffff">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
-<title>PPFS</title>
-
-<style>
-
-html, body {
-    min-height: 100vh;
-}
-html {
-    scroll-padding-bottom: 110px;
-}
-html {
-    scroll-behavior: smooth;
-}
-.navbar {
-    height: 70px;
-}
-
-.fixed-bottom {
-    position: fixed !important;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 9999;
-}
-
-body {
-    background: #f2f4f7;
-    padding-bottom: 110px;
-}
-
-.card {
-    border-radius: 18px;
-    border: none;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.08);
-}
-
-h1 {
-    font-weight: 700;
-}
-
-.btn-primary {
-    background: black;
-    border: none;
-    border-radius: 14px;
-    padding: 12px;
-    font-size: 16px;
-}
-
-input, select {
-    border-radius: 12px !important;
-    padding: 12px !important;
-    font-size: 16px !important;
-}
-
-/* ...keep your existing styles... */
-
-.section-card { padding: 16px; margin-bottom: 16px; }
-
-.form-label { font-weight: 600; }
-
-.table td, .table th { vertical-align: middle; }
-
-.table-wide {
-    min-width: 520px;
-}
-
-.ellipsis {
-  max-width: 220px;          /* adjust if you want */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.money { font-variant-numeric: tabular-nums; }
-
-.badge-soft {
-  background: rgba(0,0,0,0.06);
-  color: #111;
-  border-radius: 999px;
-  padding: 6px 10px;
-  font-weight: 600;
-  font-size: 12px;
-}
-</style>
-</head>
-<body>
-<div class="container py-4">
-<div class="mb-4" id="home">
-  <h1 class="display-6 fw-bold">PPFS</h1>
-  <div class="text-muted">Personal Finance System</div>
-</div>
-
-  {% if message %}
-    <div class="msg">{{ message }}</div>
-  {% endif %}
-
-  <div class="card p-3 mb-4">
-  <h5 class="mb-3">Financial Overview</h5>
-
-  <div class="row g-3">
-
-    <div class="col-6">
-      <div class="p-3 bg-white rounded-4 shadow-sm">
-        <div class="text-muted small">Available</div>
-        <div class="fs-4 fw-bold">£{{ "%.2f"|format(overview.spending_balance) }}</div>
-      </div>
-    </div>
-
-    <div class="col-6">
-      <div class="p-3 bg-white rounded-4 shadow-sm">
-        <div class="text-muted small">Bills left</div>
-        <div class="fs-4 fw-bold text-danger">£{{ "%.2f"|format(overview.future_bills) }}</div>
-      </div>
-    </div>
-
-    <div class="col-6">
-      <div class="p-3 bg-white rounded-4 shadow-sm">
-        <div class="text-muted small">Safe to spend</div>
-        <div class="fs-4 fw-bold text-success">£{{ "%.2f"|format(overview.safe_spending) }}</div>
-      </div>
-    </div>
-
-    <div class="col-6">
-      <div class="p-3 bg-white rounded-4 shadow-sm">
-        <div class="text-muted small">Savings</div>
-        <div class="fs-4 fw-bold">£{{ "%.2f"|format(overview.savings_balance) }}</div>
-      </div>
-    </div>
-
-    <div class="col-12">
-      <div class="p-3 bg-dark text-white rounded-4 text-center">
-        <div class="small">Net Worth</div>
-        <div class="fs-3 fw-bold">£{{ "%.2f"|format(overview.net_worth) }}</div>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<div class="card p-3 mb-4">
-  <h5 class="mb-3">This Month's Spending</h5>
-
-  <div class="row g-3">
-
-    <div class="col-4">
-      <div class="p-3 bg-white rounded-4 shadow-sm text-center">
-        <div class="text-muted small">Normal spending</div>
-        <div class="fs-5 fw-bold">£{{ "%.2f"|format(monthly.normal) }}</div>
-      </div>
-    </div>
-
-    <div class="col-4">
-      <div class="p-3 bg-white rounded-4 shadow-sm text-center">
-        <div class="text-muted small">Bills paid</div>
-        <div class="fs-5 fw-bold">£{{ "%.2f"|format(monthly.scheduled) }}</div>
-      </div>
-    </div>
-
-    <div class="col-4">
-      <div class="p-3 bg-dark text-white rounded-4 text-center">
-        <div class="small">Total outflow</div>
-        <div class="fs-5 fw-bold">£{{ "%.2f"|format(monthly.total) }}</div>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-  <div class="card p-3 mb-4" id="afford">
-  <div class="d-flex align-items-center justify-content-between mb-2">
-    <h5 class="mb-0">Can I afford this?</h5>
-    <span class="badge-soft">Forecast to end of next month</span>
-  </div>
-
-  <form method="POST" action="{{ url_for('afford') }}">
-    <div class="mb-3">
-      <label class="form-label">Item (optional)</label>
-      <input class="form-control" name="desc" placeholder="e.g., Trainers" />
-    </div>
-
-    <div class="mb-3">
-      <label class="form-label">Purchase amount (£)</label>
-      <input class="form-control" name="amount" inputmode="decimal" placeholder="e.g., 180" required />
-    </div>
-
-    <button type="submit" class="btn btn-dark w-100 py-3">Check</button>
-  </form>
-
-  {% if afford_results %}
-    <hr class="my-3">
-
-    <div class="small text-muted mb-2">Results</div>
-
-    <div class="vstack gap-2">
-      {% for r in afford_results %}
-        <div class="border rounded-4 p-3 bg-white">
-          <div class="d-flex justify-content-between align-items-center">
-            <div class="fw-semibold">{{ r.account }}</div>
-            {% if r.negative %}
-              <span class="badge text-bg-danger">Risk</span>
-            {% else %}
-              <span class="badge text-bg-success">Safe</span>
-            {% endif %}
-          </div>
-
-          <div class="small text-muted mt-2">
-            After purchase: <span class="money">£{{ "%.2f"|format(r.after) }}</span><br>
-            Lowest predicted: <span class="money">£{{ "%.2f"|format(r.lowest) }}</span>
-          </div>
-        </div>
-      {% endfor %}
-    </div>
-
-    <div class="mt-3 small text-muted">Recommendation</div>
-    <div class="fw-bold">{{ recommendation }}</div>
-  {% endif %}
-</div>
-
-  <div class="card p-3 mb-4" id="expense">
-  <h5 class="mb-3">Add Expense</h5>
-
-  <form method="POST" action="{{ url_for('add_expense') }}">
-
-    <div class="mb-3">
-      <label class="form-label">Description</label>
-      <input class="form-control" name="description" placeholder="Tesco meal deal" required>
-    </div>
-
-    <div class="mb-3">
-      <label class="form-label">Amount (£)</label>
-      <input class="form-control" name="amount" inputmode="decimal" placeholder="4.50" required>
-    </div>
-
-    <div class="mb-3">
-      <label class="form-label">Account</label>
-      <select class="form-select" name="account" required>
-        {% for a in accounts %}
-        <option value="{{ a }}">{{ a }}</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <button type="submit" class="btn btn-dark w-100 py-3">
-      Add Expense
-    </button>
-
-  </form>
-</div>
-
-  <div class="card p-3 mb-4" id="income">
-  <h5 class="mb-3">Add income</h5>
-
-  <form method="POST" action="{{ url_for('add_income') }}">
-    <div class="mb-3">
-      <label class="form-label">Description</label>
-      <input class="form-control" name="description" placeholder="e.g., Salary / Refund" required />
-    </div>
-
-    <div class="mb-3">
-      <label class="form-label">Amount (£)</label>
-      <input class="form-control" name="amount" inputmode="decimal" placeholder="e.g., 1200" required />
-    </div>
-
-    <div class="mb-2">
-      <label class="form-label">Account</label>
-      <select class="form-select" name="account" required>
-        {% for a in accounts %}
-          <option value="{{ a }}">{{ a }}</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <div class="small text-muted mb-3">
-      Recorded in transaction ledger
-    </div>
-
-    <button type="submit" class="btn btn-dark w-100 py-3">Add income</button>
-  </form>
-</div>
-
-  <div class="card p-3 mb-4" id="transfer">
-  <h5 class="mb-3">Transfer between accounts</h5>
-
-  <form method="POST" action="{{ url_for('transfer') }}">
-    <div class="mb-3">
-      <label class="form-label">From account</label>
-      <select class="form-select" name="from_account" required>
-        {% for a in accounts %}
-          <option value="{{ a }}">{{ a }}</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <div class="mb-3">
-      <label class="form-label">To account</label>
-      <select class="form-select" name="to_account" required>
-        {% for a in accounts %}
-          <option value="{{ a }}">{{ a }}</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <div class="mb-3">
-      <label class="form-label">Amount (£)</label>
-      <input class="form-control" name="amount" inputmode="decimal" placeholder="e.g., 100" required />
-    </div>
-
-    <button type="submit" class="btn btn-dark w-100 py-3">Transfer</button>
-  </form>
-</div>
-  
-  <div class="card p-3 mb-4" id="accounts">
-  <div class="d-flex justify-content-between align-items-center mb-2">
-    <h5 class="mb-0">Active account balances</h5>
-    <span class="badge-soft">{{ balances|length }} accounts</span>
-  </div>
-
-  <div class="table-responsive">
-    <table class="table table-sm align-middle mb-0 table-wide">
-      <thead>
-        <tr>
-          <th>Account</th>
-          <th class="text-end">Balance</th>
-          <th class="text-end">Type</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in balances %}
-          <tr>
-            <td>
-              <span class="ellipsis d-inline-block">{{ row.name }}</span>
-            </td>
-            <td class="text-end money">£{{ "%.2f"|format(row.balance) }}</td>
-            <td class="text-end">
-              <span class="badge text-bg-light">{{ row.type }}</span>
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-</div>
-
-</div>
-<nav class="navbar fixed-bottom bg-white border-top">
-  <div class="container-fluid d-flex justify-content-around">
-
-    <a href="#home" class="text-center text-decoration-none text-dark">
-      <div style="font-size:20px">🏠</div>
-      <small>Home</small>
-    </a>
-
-    <a href="#afford" class="text-center text-decoration-none text-dark">
-      <div style="font-size:20px">🧠</div>
-      <small>Afford</small>
-    </a>
-
-    <a href="#expense" class="text-center text-decoration-none text-dark">
-      <div style="font-size:20px">➖</div>
-      <small>Expense</small>
-    </a>
-
-    <a href="#income" class="text-center text-decoration-none text-dark">
-      <div style="font-size:20px">➕</div>
-      <small>Income</small>
-    </a>
-
-    <a href="#transfer" class="text-center text-decoration-none text-dark">
-        <div style="font-size:20px">🔁</div>
-        <small>Transfer</small>
-    </a>
-
-    <a href="{{ url_for('bills') }}" class="text-center text-decoration-none text-dark">
-        <div style="font-size:20px">💳</div>
-        <small>Bills</small>
-    </a>
-
-    <a href="#accounts" class="text-center text-decoration-none text-dark">
-      <div style="font-size:20px">💼</div>
-      <small>Accounts</small>
-    </a>
-
-  </div>
-</nav>
-</body>
-</html>
-"""
-
 @app.get("/")
 def home():
 
@@ -710,8 +232,8 @@ def home():
             "type": accounts[n].get("type", "")
         })
 
-    return render_template_string(
-        PAGE,
+    return render_template(
+        "index.html",
         message=request.args.get("msg", ""),
         accounts=active_accounts,
         overview=overview,
@@ -719,32 +241,33 @@ def home():
         monthly=monthly,
     )
 
+@app.get("/transactions")
+def transactions():
+
+    tx = get_recent_transactions()
+
+    return render_template(
+        "transactions.html",
+        transactions=tx
+    )
+
+@app.get("/actions")
+def actions():
+    return """
+    <h2 style="font-family:sans-serif">Actions</h2>
+    <p>This page will contain:</p>
+    <ul>
+        <li>Add Expense</li>
+        <li>Add Income</li>
+        <li>Transfer</li>
+    </ul>
+    <a href="/">Back</a>
+    """
+
 @app.get("/bills")
 def bills():
-    accounts_rows = get_active_accounts()
-
-    accounts = {}
-    for r in accounts_rows:
-        accounts[r["name"]] = {
-            "balance": r["balance"],
-            "type": r["type"],
-            "active": bool(r["active"])
-        }
-    overview = calculate_financial_overview(accounts)
-    monthly = calculate_monthly_spending()
-
-    active_accounts = [n for n in accounts if accounts[n].get("active", True)]
-
-    balances = []
-    for n in active_accounts:
-        balances.append({
-            "name": n,
-            "balance": float(accounts[n].get("balance", 0.0)),
-            "type": accounts[n].get("type", "")
-        })
-
-    return render_template_string(
-        BILLS_PAGE,
+    return render_template(
+        "bills.html",
         bills=get_all_scheduled_expenses()
     )
 
@@ -898,13 +421,15 @@ def afford():
         worst = sorted(results, key=lambda x: x["lowest"], reverse=True)[0]
         recommendation = f"No safe account — least bad: {worst['account']}"
 
-    return render_template_string(
-        PAGE,
+    return render_template(
+        "index.html",
+        message="",
         accounts=[a for a in accounts if accounts[a]["active"]],
         balances=[{"name":a,"balance":accounts[a]["balance"],"type":accounts[a]["type"]} for a in accounts if accounts[a]["active"]],
         overview=calculate_financial_overview(accounts),
         afford_results=results,
-        recommendation=recommendation
+        recommendation=recommendation,
+        monthly=calculate_monthly_spending(),
     )
 
 if __name__ == "__main__":

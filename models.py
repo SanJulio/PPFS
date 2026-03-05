@@ -54,3 +54,23 @@ def get_transactions():
     db.close()
 
     return rows
+
+def get_recent_transactions(limit=100):
+
+    from database import get_db
+
+    db = get_db()
+
+    rows = db.execute(
+        """
+        SELECT date, description, amount, account
+        FROM transactions
+        ORDER BY date DESC
+        LIMIT ?
+        """,
+        (limit,)
+    ).fetchall()
+
+    db.close()
+
+    return rows
