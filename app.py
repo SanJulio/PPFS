@@ -70,55 +70,37 @@ import calendar
 from datetime import datetime
 
 def load_scheduled_expenses_web():
-    path = DATA_DIR / "Scheduled_Expenses.csv"
+    from database import get_db
+
+    db = get_db()
+    rows = db.execute("SELECT * FROM scheduled_expenses").fetchall()
+    db.close()
+
     expenses = []
-
-    if not path.exists():
-        return expenses
-
-    with open(path, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            try:
-                expenses.append({
-                    "name": row["name"],
-                    "amount": float(row["amount"]),
-                    "day": int(row["day"]) if row["day"] else None,
-                    "account": row["account"]
-                })
-            except:
-                continue
+    for row in rows:
+        expenses.append({
+            "name": row["name"],
+            "amount": row["amount"],
+            "day": row["day"],
+            "account": row["account"]
+        })
     return expenses
 
 def get_all_scheduled_expenses():
-    global SCHEDULED_CACHE
+    from database import get_db
 
-    if SCHEDULED_CACHE is not None:
-        return SCHEDULED_CACHE
+    db = get_db()
+    rows = db.execute("SELECT * FROM scheduled_expenses ORDER BY day").fetchall()
+    db.close()
 
-    path = DATA_DIR / "Scheduled_Expenses.csv"
     bills = []
-
-    if not path.exists():
-        SCHEDULED_CACHE = bills
-        return bills
-
-    with open(path, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            try:
-                bills.append({
-                    "name": row["name"],
-                    "amount": float(row["amount"]),
-                    "day": row["day"],
-                    "account": row["account"]
-                })
-            except:
-                continue
-
-    bills.sort(key=lambda x: int(x["day"]) if x["day"] else 99)
-
-    SCHEDULED_CACHE = bills
+    for row in rows:
+        bills.append({
+            "name": row["name"],
+            "amount": row["amount"],
+            "day": row["day"],
+            "account": row["account"]
+        })
     return bills
 
 def calculate_financial_overview(accounts):

@@ -1,7 +1,7 @@
 {
     "Natwest_Current": {
         "type": "current",
-        "balance": 280.82,
+        "balance": 416.11,
         "active": true
     },
     "Natwest_Digital_Saver": {
@@ -16,7 +16,7 @@
     },
     "Monzo_Current": {
         "type": "current",
-        "balance": 61.85000000000001,
+        "balance": 16.85000000000001,
         "active": true
     },
     "Monzo_Pot": {

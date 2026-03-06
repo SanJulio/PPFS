@@ -29,15 +29,15 @@ def update_account_balance(name: str, delta: float):
     db.close()
 
 
-def add_transaction(date: str, description: str, amount: float, account: str):
+def add_transaction(date: str, description: str, amount: float, account: str, type: str = "manual"):
     db = get_db()
 
     db.execute(
         """
-        INSERT INTO transactions (date, description, amount, account)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO transactions (date, description, amount, account, type)
+        VALUES (?, ?, ?, ?, ?)
         """,
-        (date, description, amount, account)
+        (date, description, amount, account, type)
     )
 
     db.commit()

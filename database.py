@@ -45,5 +45,36 @@ def init_db():
     )
     """)
 
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS income (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        amount REAL NOT NULL,
+        frequency TEXT NOT NULL,
+        account TEXT NOT NULL
+    )
+    """)
+
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS savings_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        amount REAL NOT NULL,
+        day INTEGER NOT NULL,
+        from_account TEXT NOT NULL,
+        to_account TEXT NOT NULL
+    )
+    """)
+
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS future_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        name TEXT NOT NULL,
+        amount REAL NOT NULL,
+        account TEXT NOT NULL
+    )
+    """)
+
     db.commit()
     db.close()

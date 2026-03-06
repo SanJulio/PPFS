@@ -35,47 +35,44 @@ def ensure_csv_header(file_path, header):
             writer.writerow(header)
 
 # --- LOAD SCHEDULED EXPENSES DATA ---
-def load_scheduled_expenses(data_dir):
+def load_scheduled_expenses(data_dir=None):
+    from database import get_db
+
+    db = get_db()
+    rows = db.execute("SELECT * FROM scheduled_expenses").fetchall()
+    db.close()
+
     scheduled_expenses = []
-
-    with open(data_dir / "Scheduled_Expenses.csv", newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            name = row["name"]
-            amount = float(row["amount"]) if row["amount"] else 0.0
-            day = int(row["day"]) if row["day"] else None
-            account = row["account"]
-
-            scheduled_expenses.append({
-                "name": name,
-                "amount": amount,
-                "day": day,
-                "account": account
-            })
+    for row in rows:
+        scheduled_expenses.append({
+            "name": row["name"],
+            "amount": row["amount"],
+            "day": row["day"],
+            "account": row["account"]
+        })
 
     return scheduled_expenses
 
 # --- LOAD FUTURE EVENTS DATA ---
-def load_future_events(data_dir):
+def load_future_events(data_dir=None):
+    from database import get_db
+    from datetime import date
+
+    db = get_db()
+    rows = db.execute("SELECT * FROM future_events").fetchall()
+    db.close()
+
     future_events = []
-
-    file_path = data_dir / "Future_Events.csv"
-    ensure_csv_header(file_path, ["date","name","amount","account"])
-
-    with open(file_path, newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            try:
-                event_date = date.fromisoformat(row["date"])
-                amount = float(row["amount"])
-                future_events.append({
-                    "date": event_date,
-                    "name": row["name"],
-                    "amount": amount,
-                    "account": row["account"]
-                })
-            except:
-                continue
+    for row in rows:
+        try:
+            future_events.append({
+                "date": date.fromisoformat(row["date"]),
+                "name": row["name"],
+                "amount": row["amount"],
+                "account": row["account"]
+            })
+        except:
+            continue
 
     return future_events
 
@@ -579,13 +576,12 @@ def show_month_projection(accounts, scheduled_expenses):
             friday_count += 1
         check_day += timedelta(days=1)
 
-    with open(DATA_DIR / "Income.csv", newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if row["frequency"].lower() == "weekly":
-                weekly_amount = float(row["amount"])
-                account = row["account"]
-                projected_accounts[account] += weekly_amount * friday_count
+    from database import get_db
+    db = get_db()
+    income_rows = db.execute("SELECT * FROM income WHERE frequency = 'weekly'").fetchall()
+    db.close()
+    for row in income_rows:
+        projected_accounts[row["account"]] += row["amount"] * friday_count
 
     for expense in scheduled_expenses:
         if expense["day"] is None:
@@ -618,19 +614,10 @@ def simulate_balances_until(target_date, accounts, scheduled_expenses, future_ev
     lowest = simulated.copy()
 
     # Load savings rules ONCE (not every day)
-    savings_rules = []
-    with open(DATA_DIR / "Savings_Rules.csv", newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            try:
-                savings_rules.append({
-                    "day": int(row["day"]),
-                    "amount": float(row["amount"]),
-                    "from": row["from_account"],
-                    "to": row["to_account"]
-                })
-            except:
-                continue
+    from database import get_db
+    db = get_db()
+    savings_rules = [dict(r) for r in db.execute("SELECT * FROM savings_rules").fetchall()]
+    db.close()
 
     sim_day = today + timedelta(days=1)
 
@@ -638,14 +625,14 @@ def simulate_balances_until(target_date, accounts, scheduled_expenses, future_ev
 
         # ---------- WEEKLY INCOME ----------
         if sim_day.weekday() == 4:  # Friday
-            with open(DATA_DIR / "Income.csv", newline="") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    if row["frequency"].lower() == "weekly":
-                        amt = float(row["amount"])
-                        acc = row["account"]
-                        if acc in simulated:
-                            simulated[acc] += amt
+            from database import get_db
+            db = get_db()
+            income_rows = db.execute("SELECT * FROM income WHERE frequency = 'weekly'").fetchall()
+            db.close()
+            for row in income_rows:
+                acc = row["account"]
+                if acc in simulated:
+                    simulated[acc] += row["amount"]
 
         # ---------- SCHEDULED EXPENSES ----------
         for expense in scheduled_expenses:
@@ -666,8 +653,8 @@ def simulate_balances_until(target_date, accounts, scheduled_expenses, future_ev
         # ---------- SAVINGS RULES ----------
         for rule in savings_rules:
             if rule["day"] == sim_day.day:
-                from_acc = rule["from"]
-                to_acc = rule["to"]
+                from_acc = rule["from_account"]
+                to_acc = rule["to_account"]
                 amt = rule["amount"]
 
                 if from_acc in simulated and to_acc in simulated:
@@ -825,21 +812,21 @@ def apply_day(sim_day, accounts, scheduled_expenses, future_events):
                 accounts[acc]["balance"] -= event["amount"]
 
     # ---------- SAVINGS RULES ----------
-    with open(DATA_DIR / "Savings_Rules.csv", newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            try:
-                if int(row["day"]) == sim_day.day:
-                    amt = float(row["amount"])
-                    from_acc = row["from_account"]
-                    to_acc = row["to_account"]
+    from database import get_db
+    db = get_db()
+    savings_rules = [dict(r) for r in db.execute("SELECT * FROM savings_rules").fetchall()]
+    db.close()
 
-                    if from_acc in accounts and to_acc in accounts:
-                        if accounts[from_acc]["balance"] >= amt:
-                            accounts[from_acc]["balance"] -= amt
-                            accounts[to_acc]["balance"] += amt
-            except:
-                continue
+    for rule in savings_rules:
+        if rule["day"] == sim_day.day:
+            amt = rule["amount"]
+            from_acc = rule["from_account"]
+            to_acc = rule["to_account"]
+
+            if from_acc in accounts and to_acc in accounts:
+                if accounts[from_acc]["balance"] >= amt:
+                    accounts[from_acc]["balance"] -= amt
+                    accounts[to_acc]["balance"] += amt
 
 # --- AUTO ADVANCE ---
 def auto_advance_to_today(data_dir, accounts, scheduled_expenses, future_events):
