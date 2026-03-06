@@ -235,16 +235,9 @@ def transactions():
 
 @app.get("/actions")
 def actions():
-    return """
-    <h2 style="font-family:sans-serif">Actions</h2>
-    <p>This page will contain:</p>
-    <ul>
-        <li>Add Expense</li>
-        <li>Add Income</li>
-        <li>Transfer</li>
-    </ul>
-    <a href="/">Back</a>
-    """
+    accounts_rows = get_active_accounts()
+    accounts = [r["name"] for r in accounts_rows]
+    return render_template("actions.html", accounts=accounts, message=request.args.get("msg", ""))
 
 @app.get("/bills")
 def bills():
@@ -277,7 +270,7 @@ def add_expense():
     update_account_balance(account, amount)
 
     return redirect(
-        url_for("home", msg=f"Added {description}: £{abs(amount):.2f} from {account}")
+        url_for("actions", msg=f"Added {description}: £{abs(amount):.2f} from {account}")
     )
 
 @app.post("/add-income")
@@ -304,7 +297,7 @@ def add_income():
     update_account_balance(account, amount)
 
     return redirect(
-        url_for("home", msg=f"Added income {description}: £{amount:.2f} to {account}")
+        url_for("actions", msg=f"Added income {description}: £{amount:.2f} to {account}")
     )
 
 @app.post("/transfer")
@@ -335,7 +328,7 @@ def transfer():
     update_account_balance(to_account, amount)
 
     return redirect(
-        url_for("home", msg=f"Transferred £{amount:.2f} from {from_account} → {to_account}")
+        url_for("actions", msg=f"Transferred £{amount:.2f} from {from_account} → {to_account}")
     )
 
 @app.post("/afford")
