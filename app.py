@@ -107,6 +107,7 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
+    print(f">>> load_user called with: {user_id}", flush=True)
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
