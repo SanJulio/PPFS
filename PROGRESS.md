@@ -1,5 +1,7 @@
 ## PPFS Build Log
 
+06/03/26
+
 ### Session 1 — Done
 - Fixed type column bug in add_transaction (models.py)
 - Added income table to database.py
@@ -35,3 +37,22 @@
 - SQLite database (ppfs.db)
 - Deployed on Render via GitHub
 - Local testing: python app.py in terminal
+
+07/03/26
+
+### Session 4 — Done
+- Added flask-login and multi-user auth
+- Built register and login pages
+- All routes protected with @login_required
+- Every query filters by user_id
+- Switched to PostgreSQL — data persists forever
+- Fixed afford route to read from database
+- Fixed monthly spending to filter by user
+- Cleaned up unused code
+- Pushed to GitHub — live on Render
+
+### Next Session
+- Build onboarding flow for new users
+- Build landing page
+- Test with real friends
+- Start thinking about Stripe payments
