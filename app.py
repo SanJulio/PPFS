@@ -108,7 +108,7 @@ class User(UserMixin):
 @login_manager.user_loader
 def load_user(user_id):
     print(f">>> load_user called with: {user_id}", flush=True)
-    if user_id is None:
+    if not user_id or user_id == "None":
         return None
     db = get_db()
     cursor = db.cursor()
