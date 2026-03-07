@@ -1,3 +1,5 @@
+from flask_session import Session
+
 from __future__ import annotations
 
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
@@ -34,14 +36,18 @@ BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "Data"
 
 app = Flask(__name__)
-from werkzeug.middleware.proxy_fix import ProxyFix
-app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
+app.config["SESSION_TYPE"] = "filesystem"
 app.config["SESSION_COOKIE_SECURE"] = True
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["REMEMBER_COOKIE_SECURE"] = True
 app.config["REMEMBER_COOKIE_HTTPONLY"] = True
+
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+Session(app)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
