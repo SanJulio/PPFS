@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
-
+from flask import session
 from werkzeug.security import generate_password_hash, check_password_hash
 
 import traceback
@@ -35,11 +35,10 @@ BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "Data"
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
+app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 app.config["SESSION_COOKIE_SECURE"] = True
 app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_DOMAIN"] = os.environ.get("SESSION_COOKIE_DOMAIN", None)
+app.config["SESSION_COOKIE_SAMESITE"] = "None"
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
