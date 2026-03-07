@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import traceback
+import sys
+
 import csv
 from datetime import date
 from pathlib import Path
@@ -19,6 +22,8 @@ from models import (
 )
 
 from database import get_db
+
+from database import USE_POSTGRES
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "Data"
@@ -74,38 +79,32 @@ import calendar
 from datetime import datetime
 
 def load_scheduled_expenses_web():
-    from database import get_db
-
+    from database import get_db, USE_POSTGRES
     db = get_db()
-    rows = db.execute("SELECT * FROM scheduled_expenses").fetchall()
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM scheduled_expenses")
+    if USE_POSTGRES:
+        cols = [d[0] for d in cursor.description]
+        rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+    else:
+        rows = [dict(r) for r in cursor.fetchall()]
+    cursor.close()
     db.close()
-
-    expenses = []
-    for row in rows:
-        expenses.append({
-            "name": row["name"],
-            "amount": row["amount"],
-            "day": row["day"],
-            "account": row["account"]
-        })
-    return expenses
+    return rows
 
 def get_all_scheduled_expenses():
-    from database import get_db
-
+    from database import get_db, USE_POSTGRES
     db = get_db()
-    rows = db.execute("SELECT * FROM scheduled_expenses ORDER BY day").fetchall()
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM scheduled_expenses ORDER BY day")
+    if USE_POSTGRES:
+        cols = [d[0] for d in cursor.description]
+        rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+    else:
+        rows = [dict(r) for r in cursor.fetchall()]
+    cursor.close()
     db.close()
-
-    bills = []
-    for row in rows:
-        bills.append({
-            "name": row["name"],
-            "amount": row["amount"],
-            "day": row["day"],
-            "account": row["account"]
-        })
-    return bills
+    return rows
 
 def calculate_financial_overview(accounts):
     today = datetime.today()
@@ -155,35 +154,42 @@ def calculate_financial_overview(accounts):
     }
 
 def calculate_monthly_spending():
-
     today = date.today()
     year = today.year
     month = today.month
 
     db = get_db()
+    cursor = db.cursor()
 
-    rows = db.execute(
-        """
-        SELECT amount
-        FROM transactions
-        WHERE strftime('%Y', date) = ?
-        AND strftime('%m', date) = ?
-        """,
-        (str(year), f"{month:02d}")
-    ).fetchall()
+    if USE_POSTGRES:
+        cursor.execute(
+            """
+            SELECT amount FROM transactions
+            WHERE EXTRACT(YEAR FROM date::date) = %s
+            AND EXTRACT(MONTH FROM date::date) = %s
+            """,
+            (year, month)
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT amount FROM transactions
+            WHERE strftime('%Y', date) = ?
+            AND strftime('%m', date) = ?
+            """,
+            (str(year), f"{month:02d}")
+        )
 
+    rows = cursor.fetchall()
+    cursor.close()
     db.close()
 
     normal_spend = 0.0
-    income = 0.0
 
     for r in rows:
-        amount = r["amount"]
-
+        amount = r[0] if USE_POSTGRES else r["amount"]
         if amount < 0:
             normal_spend += abs(amount)
-        else:
-            income += amount
 
     return {
         "normal": normal_spend,
@@ -413,13 +419,24 @@ def afford():
 
 @app.get("/settings")
 def settings():
-    from database import get_db
+    from database import get_db, USE_POSTGRES
     db = get_db()
-    accounts = [dict(r) for r in db.execute("SELECT * FROM accounts WHERE active = 1 ORDER BY LOWER(name)").fetchall()]
-    bills = [dict(r) for r in db.execute("SELECT * FROM scheduled_expenses ORDER BY day").fetchall()]
-    savings_rules = [dict(r) for r in db.execute("SELECT * FROM savings_rules ORDER BY day").fetchall()]
-    future_events = [dict(r) for r in db.execute("SELECT * FROM future_events ORDER BY date").fetchall()]
-    income = [dict(r) for r in db.execute("SELECT * FROM income").fetchall()]
+    cursor = db.cursor()
+
+    def fetch(query):
+        cursor.execute(query)
+        if USE_POSTGRES:
+            cols = [d[0] for d in cursor.description]
+            return [dict(zip(cols, row)) for row in cursor.fetchall()]
+        return [dict(r) for r in cursor.fetchall()]
+
+    accounts = fetch("SELECT * FROM accounts WHERE active = 1 ORDER BY LOWER(name)")
+    bills = fetch("SELECT * FROM scheduled_expenses ORDER BY day")
+    savings_rules = fetch("SELECT * FROM savings_rules ORDER BY day")
+    future_events = fetch("SELECT * FROM future_events ORDER BY date")
+    income = fetch("SELECT * FROM income")
+
+    cursor.close()
     db.close()
     return render_template("settings.html",
         accounts=accounts,
@@ -443,23 +460,55 @@ def settings_add_account():
     except ValueError:
         return redirect(url_for("settings", msg="Invalid balance."))
 
-    from database import get_db
     db = get_db()
-    db.execute("INSERT OR IGNORE INTO accounts (name, balance, type, active) VALUES (?, ?, ?, 1)",
-               (name, balance, acc_type))
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("INSERT INTO accounts (name, balance, type, active) VALUES (%s, %s, %s, 1) ON CONFLICT (name) DO NOTHING", (name, balance, acc_type))
+    else:
+        cursor.execute("INSERT OR IGNORE INTO accounts (name, balance, type, active) VALUES (?, ?, ?, 1)", (name, balance, acc_type))
     db.commit()
+    cursor.close()
     db.close()
     return redirect(url_for("settings", msg=f"Account '{name}' created."))
 
 @app.post("/settings/deactivate-account")
 def settings_deactivate_account():
     name = (request.form.get("name") or "").strip()
-    from database import get_db
     db = get_db()
-    db.execute("UPDATE accounts SET active = 0 WHERE name = ?", (name,))
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE accounts SET active = 0 WHERE name = %s", (name,))
+    else:
+        cursor.execute("UPDATE accounts SET active = 0 WHERE name = ?", (name,))
     db.commit()
+    cursor.close()
     db.close()
     return redirect(url_for("settings", msg=f"Account '{name}' deactivated."))
+
+@app.post("/settings/edit-account")
+def settings_edit_account():
+    account_id = request.form.get("id")
+    name = (request.form.get("name") or "").strip()
+    acc_type = (request.form.get("type") or "").strip()
+    balance = (request.form.get("balance") or "").strip()
+
+    if not name or not acc_type or not balance:
+        return redirect(url_for("settings", msg="Missing fields."))
+    try:
+        balance = float(balance)
+    except ValueError:
+        return redirect(url_for("settings", msg="Invalid balance."))
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE accounts SET name=%s, type=%s, balance=%s WHERE id=%s", (name, acc_type, balance, account_id))
+    else:
+        cursor.execute("UPDATE accounts SET name=?, type=?, balance=? WHERE id=?", (name, acc_type, balance, account_id))
+    db.commit()
+    cursor.close()
+    db.close()
+    return redirect(url_for("settings", msg="Account updated."))
 
 @app.post("/settings/add-bill")
 def settings_add_bill():
@@ -476,21 +525,55 @@ def settings_add_bill():
     except ValueError:
         return redirect(url_for("settings", msg="Invalid amount or day."))
 
-    from database import get_db
     db = get_db()
-    db.execute("INSERT INTO scheduled_expenses (name, amount, day, account) VALUES (?, ?, ?, ?)",
-               (name, amount, day, account))
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("INSERT INTO scheduled_expenses (name, amount, day, account) VALUES (%s, %s, %s, %s)", (name, amount, day, account))
+    else:
+        cursor.execute("INSERT INTO scheduled_expenses (name, amount, day, account) VALUES (?, ?, ?, ?)", (name, amount, day, account))
     db.commit()
+    cursor.close()
     db.close()
     return redirect(url_for("settings", msg=f"Bill '{name}' added."))
+
+@app.post("/settings/edit-bill")
+def settings_edit_bill():
+    bill_id = request.form.get("id")
+    name = (request.form.get("name") or "").strip()
+    amount = (request.form.get("amount") or "").strip()
+    day = (request.form.get("day") or "").strip()
+    account = (request.form.get("account") or "").strip()
+
+    if not name or not amount or not day or not account:
+        return redirect(url_for("settings", msg="Missing fields."))
+    try:
+        amount = float(amount)
+        day = int(day)
+    except ValueError:
+        return redirect(url_for("settings", msg="Invalid amount or day."))
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE scheduled_expenses SET name=%s, amount=%s, day=%s, account=%s WHERE id=%s", (name, amount, day, account, bill_id))
+    else:
+        cursor.execute("UPDATE scheduled_expenses SET name=?, amount=?, day=?, account=? WHERE id=?", (name, amount, day, account, bill_id))
+    db.commit()
+    cursor.close()
+    db.close()
+    return redirect(url_for("settings", msg="Bill updated."))
 
 @app.post("/settings/delete-bill")
 def settings_delete_bill():
     bill_id = request.form.get("id")
-    from database import get_db
     db = get_db()
-    db.execute("DELETE FROM scheduled_expenses WHERE id = ?", (bill_id,))
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("DELETE FROM scheduled_expenses WHERE id = %s", (bill_id,))
+    else:
+        cursor.execute("DELETE FROM scheduled_expenses WHERE id = ?", (bill_id,))
     db.commit()
+    cursor.close()
     db.close()
     return redirect(url_for("settings", msg="Bill deleted."))
 
@@ -510,118 +593,16 @@ def settings_add_savings_rule():
     except ValueError:
         return redirect(url_for("settings", msg="Invalid amount or day."))
 
-    from database import get_db
     db = get_db()
-    db.execute("INSERT INTO savings_rules (name, amount, day, from_account, to_account) VALUES (?, ?, ?, ?, ?)",
-               (name, amount, day, from_account, to_account))
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("INSERT INTO savings_rules (name, amount, day, from_account, to_account) VALUES (%s, %s, %s, %s, %s)", (name, amount, day, from_account, to_account))
+    else:
+        cursor.execute("INSERT INTO savings_rules (name, amount, day, from_account, to_account) VALUES (?, ?, ?, ?, ?)", (name, amount, day, from_account, to_account))
     db.commit()
+    cursor.close()
     db.close()
     return redirect(url_for("settings", msg=f"Savings rule '{name}' added."))
-
-@app.post("/settings/delete-savings-rule")
-def settings_delete_savings_rule():
-    rule_id = request.form.get("id")
-    from database import get_db
-    db = get_db()
-    db.execute("DELETE FROM savings_rules WHERE id = ?", (rule_id,))
-    db.commit()
-    db.close()
-    return redirect(url_for("settings", msg="Savings rule deleted."))
-
-@app.post("/settings/add-future-event")
-def settings_add_future_event():
-    name = (request.form.get("name") or "").strip()
-    amount = (request.form.get("amount") or "").strip()
-    date_input = (request.form.get("date") or "").strip()
-    account = (request.form.get("account") or "").strip()
-
-    if not name or not amount or not date_input or not account:
-        return redirect(url_for("settings", msg="Missing fields."))
-    try:
-        amount = float(amount)
-    except ValueError:
-        return redirect(url_for("settings", msg="Invalid amount."))
-
-    from database import get_db
-    db = get_db()
-    db.execute("INSERT INTO future_events (name, amount, date, account) VALUES (?, ?, ?, ?)",
-               (name, amount, date_input, account))
-    db.commit()
-    db.close()
-    return redirect(url_for("settings", msg=f"Future event '{name}' added."))
-
-@app.post("/settings/update-income")
-def settings_update_income():
-    income_id = request.form.get("id")
-    amount = (request.form.get("amount") or "").strip()
-
-    try:
-        amount = float(amount)
-    except ValueError:
-        return redirect(url_for("settings", msg="Invalid amount."))
-
-    from database import get_db
-    db = get_db()
-    db.execute("UPDATE income SET amount = ? WHERE id = ?", (amount, income_id))
-    db.commit()
-    db.close()
-    return redirect(url_for("settings", msg="Income updated."))
-
-@app.post("/settings/add-income")
-def settings_add_income():
-    name = (request.form.get("name") or "").strip()
-    amount = (request.form.get("amount") or "").strip()
-    frequency = (request.form.get("frequency") or "").strip()
-    account = (request.form.get("account") or "").strip()
-
-    if not name or not amount or not frequency or not account:
-        return redirect(url_for("settings", msg="Missing fields."))
-    try:
-        amount = float(amount)
-    except ValueError:
-        return redirect(url_for("settings", msg="Invalid amount."))
-
-    from database import get_db
-    db = get_db()
-    db.execute("INSERT INTO income (name, amount, frequency, account) VALUES (?, ?, ?, ?)",
-               (name, amount, frequency, account))
-    db.commit()
-    db.close()
-    return redirect(url_for("settings", msg=f"Income source '{name}' added."))
-
-@app.post("/settings/delete-income")
-def settings_delete_income():
-    income_id = request.form.get("id")
-    from database import get_db
-    db = get_db()
-    db.execute("DELETE FROM income WHERE id = ?", (income_id,))
-    db.commit()
-    db.close()
-    return redirect(url_for("settings", msg="Income source deleted."))
-
-@app.post("/settings/edit-bill")
-def settings_edit_bill():
-    bill_id = request.form.get("id")
-    name = (request.form.get("name") or "").strip()
-    amount = (request.form.get("amount") or "").strip()
-    day = (request.form.get("day") or "").strip()
-    account = (request.form.get("account") or "").strip()
-
-    if not name or not amount or not day or not account:
-        return redirect(url_for("settings", msg="Missing fields."))
-    try:
-        amount = float(amount)
-        day = int(day)
-    except ValueError:
-        return redirect(url_for("settings", msg="Invalid amount or day."))
-
-    from database import get_db
-    db = get_db()
-    db.execute("UPDATE scheduled_expenses SET name=?, amount=?, day=?, account=? WHERE id=?",
-               (name, amount, day, account, bill_id))
-    db.commit()
-    db.close()
-    return redirect(url_for("settings", msg="Bill updated."))
 
 @app.post("/settings/edit-savings-rule")
 def settings_edit_savings_rule():
@@ -640,13 +621,55 @@ def settings_edit_savings_rule():
     except ValueError:
         return redirect(url_for("settings", msg="Invalid amount or day."))
 
-    from database import get_db
     db = get_db()
-    db.execute("UPDATE savings_rules SET name=?, amount=?, day=?, from_account=?, to_account=? WHERE id=?",
-               (name, amount, day, from_account, to_account, rule_id))
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE savings_rules SET name=%s, amount=%s, day=%s, from_account=%s, to_account=%s WHERE id=%s", (name, amount, day, from_account, to_account, rule_id))
+    else:
+        cursor.execute("UPDATE savings_rules SET name=?, amount=?, day=?, from_account=?, to_account=? WHERE id=?", (name, amount, day, from_account, to_account, rule_id))
     db.commit()
+    cursor.close()
     db.close()
     return redirect(url_for("settings", msg="Savings rule updated."))
+
+@app.post("/settings/delete-savings-rule")
+def settings_delete_savings_rule():
+    rule_id = request.form.get("id")
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("DELETE FROM savings_rules WHERE id = %s", (rule_id,))
+    else:
+        cursor.execute("DELETE FROM savings_rules WHERE id = ?", (rule_id,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return redirect(url_for("settings", msg="Savings rule deleted."))
+
+@app.post("/settings/add-future-event")
+def settings_add_future_event():
+    name = (request.form.get("name") or "").strip()
+    amount = (request.form.get("amount") or "").strip()
+    date_input = (request.form.get("date") or "").strip()
+    account = (request.form.get("account") or "").strip()
+
+    if not name or not amount or not date_input or not account:
+        return redirect(url_for("settings", msg="Missing fields."))
+    try:
+        amount = float(amount)
+    except ValueError:
+        return redirect(url_for("settings", msg="Invalid amount."))
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("INSERT INTO future_events (name, amount, date, account) VALUES (%s, %s, %s, %s)", (name, amount, date_input, account))
+    else:
+        cursor.execute("INSERT INTO future_events (name, amount, date, account) VALUES (?, ?, ?, ?)", (name, amount, date_input, account))
+    db.commit()
+    cursor.close()
+    db.close()
+    return redirect(url_for("settings", msg=f"Future event '{name}' added."))
 
 @app.post("/settings/edit-future-event")
 def settings_edit_future_event():
@@ -663,35 +686,80 @@ def settings_edit_future_event():
     except ValueError:
         return redirect(url_for("settings", msg="Invalid amount."))
 
-    from database import get_db
     db = get_db()
-    db.execute("UPDATE future_events SET name=?, amount=?, date=?, account=? WHERE id=?",
-               (name, amount, date_input, account, event_id))
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE future_events SET name=%s, amount=%s, date=%s, account=%s WHERE id=%s", (name, amount, date_input, account, event_id))
+    else:
+        cursor.execute("UPDATE future_events SET name=?, amount=?, date=?, account=? WHERE id=?", (name, amount, date_input, account, event_id))
     db.commit()
+    cursor.close()
     db.close()
     return redirect(url_for("settings", msg="Future event updated."))
 
-@app.post("/settings/edit-account")
-def settings_edit_account():
-    account_id = request.form.get("id")
+@app.post("/settings/add-income")
+def settings_add_income():
     name = (request.form.get("name") or "").strip()
-    acc_type = (request.form.get("type") or "").strip()
-    balance = (request.form.get("balance") or "").strip()
+    amount = (request.form.get("amount") or "").strip()
+    frequency = (request.form.get("frequency") or "").strip()
+    account = (request.form.get("account") or "").strip()
 
-    if not name or not acc_type or not balance:
+    if not name or not amount or not frequency or not account:
         return redirect(url_for("settings", msg="Missing fields."))
     try:
-        balance = float(balance)
+        amount = float(amount)
     except ValueError:
-        return redirect(url_for("settings", msg="Invalid balance."))
+        return redirect(url_for("settings", msg="Invalid amount."))
 
-    from database import get_db
     db = get_db()
-    db.execute("UPDATE accounts SET name=?, type=?, balance=? WHERE id=?",
-               (name, acc_type, balance, account_id))
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("INSERT INTO income (name, amount, frequency, account) VALUES (%s, %s, %s, %s)", (name, amount, frequency, account))
+    else:
+        cursor.execute("INSERT INTO income (name, amount, frequency, account) VALUES (?, ?, ?, ?)", (name, amount, frequency, account))
     db.commit()
+    cursor.close()
     db.close()
-    return redirect(url_for("settings", msg="Account updated."))
+    return redirect(url_for("settings", msg=f"Income source '{name}' added."))
+
+@app.post("/settings/update-income")
+def settings_update_income():
+    income_id = request.form.get("id")
+    amount = (request.form.get("amount") or "").strip()
+
+    try:
+        amount = float(amount)
+    except ValueError:
+        return redirect(url_for("settings", msg="Invalid amount."))
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE income SET amount = %s WHERE id = %s", (amount, income_id))
+    else:
+        cursor.execute("UPDATE income SET amount = ? WHERE id = ?", (amount, income_id))
+    db.commit()
+    cursor.close()
+    db.close()
+    return redirect(url_for("settings", msg="Income updated."))
+
+@app.post("/settings/delete-income")
+def settings_delete_income():
+    income_id = request.form.get("id")
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("DELETE FROM income WHERE id = %s", (income_id,))
+    else:
+        cursor.execute("DELETE FROM income WHERE id = ?", (income_id,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return redirect(url_for("settings", msg="Income source deleted."))
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)
+    try:
+        app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)
+    except Exception as e:
+        traceback.print_exc()
+        sys.exit(1)
