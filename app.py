@@ -107,7 +107,6 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    print(f">>> load_user called with: {user_id}", flush=True)
     if not user_id or user_id == "None":
         return None
     db = get_db()
@@ -122,16 +121,13 @@ def load_user(user_id):
     db.close()
     if row:
         row = dict(zip(cols, row))
-        print(f">>> load_user found user: {row['email']}", flush=True)
         return User(row["id"], row["email"])
-    print(f">>> load_user found NO user for id: {user_id}", flush=True)
     return None
 
 from database import init_db
 try:
     with app.app_context():
         init_db()
-    print(">>> init_db completed successfully", flush=True)
 except Exception as e:
     print(f">>> init_db FAILED: {e}", flush=True)
 
@@ -972,10 +968,8 @@ def login_post():
     row = dict(zip(cols, row))
 
     if not check_password_hash(row["password"], password):
-        print(f">>> Password check failed for {email}", flush=True)
         return render_template("login.html", error="Invalid email or password.")
     
-    print(f">>> Password check passed for {email}", flush=True)
 
     user = User(row["id"], row["email"])
     login_user(user, remember=True)
