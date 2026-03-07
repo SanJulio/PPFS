@@ -652,7 +652,17 @@ def simulate_balances_until(target_date, accounts, scheduled_expenses, future_ev
 
         # ---------- SAVINGS RULES ----------
         for rule in savings_rules:
-            if rule["day"] == sim_day.day:
+            freq = rule.get("frequency", "monthly")
+            apply_rule = False
+
+            if freq == "monthly" and rule["day"] == sim_day.day:
+                apply_rule = True
+            elif freq == "weekly" and sim_day.weekday() == 4:  # Friday
+                apply_rule = True
+            elif freq == "daily":
+                apply_rule = True
+
+            if apply_rule:
                 from_acc = rule["from_account"]
                 to_acc = rule["to_account"]
                 amt = rule["amount"]

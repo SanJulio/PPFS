@@ -581,11 +581,12 @@ def settings_delete_bill():
 def settings_add_savings_rule():
     name = (request.form.get("name") or "").strip()
     amount = (request.form.get("amount") or "").strip()
-    day = (request.form.get("day") or "").strip()
+    day = (request.form.get("day") or "1").strip()
+    frequency = (request.form.get("frequency") or "monthly").strip()
     from_account = (request.form.get("from_account") or "").strip()
     to_account = (request.form.get("to_account") or "").strip()
 
-    if not name or not amount or not day or not from_account or not to_account:
+    if not name or not amount or not from_account or not to_account:
         return redirect(url_for("settings", msg="Missing fields."))
     try:
         amount = float(amount)
@@ -596,9 +597,9 @@ def settings_add_savings_rule():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("INSERT INTO savings_rules (name, amount, day, from_account, to_account) VALUES (%s, %s, %s, %s, %s)", (name, amount, day, from_account, to_account))
+        cursor.execute("INSERT INTO savings_rules (name, amount, day, frequency, from_account, to_account) VALUES (%s, %s, %s, %s, %s, %s)", (name, amount, day, frequency, from_account, to_account))
     else:
-        cursor.execute("INSERT INTO savings_rules (name, amount, day, from_account, to_account) VALUES (?, ?, ?, ?, ?)", (name, amount, day, from_account, to_account))
+        cursor.execute("INSERT INTO savings_rules (name, amount, day, frequency, from_account, to_account) VALUES (?, ?, ?, ?, ?, ?)", (name, amount, day, frequency, from_account, to_account))
     db.commit()
     cursor.close()
     db.close()
@@ -609,11 +610,12 @@ def settings_edit_savings_rule():
     rule_id = request.form.get("id")
     name = (request.form.get("name") or "").strip()
     amount = (request.form.get("amount") or "").strip()
-    day = (request.form.get("day") or "").strip()
+    day = (request.form.get("day") or "1").strip()
+    frequency = (request.form.get("frequency") or "monthly").strip()
     from_account = (request.form.get("from_account") or "").strip()
     to_account = (request.form.get("to_account") or "").strip()
 
-    if not name or not amount or not day or not from_account or not to_account:
+    if not name or not amount or not from_account or not to_account:
         return redirect(url_for("settings", msg="Missing fields."))
     try:
         amount = float(amount)
@@ -624,9 +626,9 @@ def settings_edit_savings_rule():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("UPDATE savings_rules SET name=%s, amount=%s, day=%s, from_account=%s, to_account=%s WHERE id=%s", (name, amount, day, from_account, to_account, rule_id))
+        cursor.execute("UPDATE savings_rules SET name=%s, amount=%s, day=%s, frequency=%s, from_account=%s, to_account=%s WHERE id=%s", (name, amount, day, frequency, from_account, to_account, rule_id))
     else:
-        cursor.execute("UPDATE savings_rules SET name=?, amount=?, day=?, from_account=?, to_account=? WHERE id=?", (name, amount, day, from_account, to_account, rule_id))
+        cursor.execute("UPDATE savings_rules SET name=?, amount=?, day=?, frequency=?, from_account=?, to_account=? WHERE id=?", (name, amount, day, frequency, from_account, to_account, rule_id))
     db.commit()
     cursor.close()
     db.close()

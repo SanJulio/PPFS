@@ -79,6 +79,7 @@ def init_db():
         name TEXT NOT NULL,
         amount REAL NOT NULL,
         day INTEGER NOT NULL,
+        frequency TEXT NOT NULL DEFAULT 'monthly',
         from_account TEXT NOT NULL,
         to_account TEXT NOT NULL
     )

@@ -237,6 +237,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <tr>
             <th>Name</th>
             <th class="text-end">Amount</th>
+            <th class="text-end">Frequency</th>
             <th class="text-end">Day</th>
             <th></th>
           </tr>
@@ -246,6 +247,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <tr>
             <td>{{ r.name }}</td>
             <td class="text-end money">£{{ "%.2f"|format(r.amount) }}</td>
+            <td class="text-end"><span class="badge text-bg-light">{{ r.frequency or 'monthly' }}</span></td>
             <td class="text-end">{{ r.day }}</td>
             <td class="text-end">
               <div class="d-flex gap-1 justify-content-end">
@@ -271,9 +273,16 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                     <input class="form-control form-control-sm" name="amount" value="{{ '%.2f'|format(r.amount) }}" placeholder="Amount" required>
                   </div>
                   <div class="col-6">
-                    <input class="form-control form-control-sm" name="day" value="{{ r.day }}" placeholder="Day" required>
+                    <input class="form-control form-control-sm" name="day" value="{{ r.day }}" placeholder="Day">
                   </div>
                   <div class="col-6">
+                    <select class="form-select form-select-sm" name="frequency">
+                      <option value="monthly" {% if r.frequency == 'monthly' %}selected{% endif %}>Monthly</option>
+                      <option value="weekly" {% if r.frequency == 'weekly' %}selected{% endif %}>Weekly</option>
+                      <option value="daily" {% if r.frequency == 'daily' %}selected{% endif %}>Daily</option>
+                    </select>
+                  </div>
+                  <div class="col-12">
                     <select class="form-select form-select-sm" name="from_account" required>
                       {% for a in accounts %}
                         <option value="{{ a.name }}" {% if a.name == r.from_account %}selected{% endif %}>{{ a.name }}</option>
@@ -311,7 +320,14 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         <input class="form-control" name="amount" inputmode="decimal" placeholder="Amount (£)" required>
       </div>
       <div class="mb-2">
-        <input class="form-control" name="day" inputmode="numeric" placeholder="Day of month (1-31)" required>
+        <select class="form-select" name="frequency" required>
+          <option value="monthly">Monthly</option>
+          <option value="weekly">Weekly</option>
+          <option value="daily">Daily</option>
+        </select>
+      </div>
+      <div class="mb-2" id="day-field">
+        <input class="form-control" name="day" inputmode="numeric" placeholder="Day of month (1-31)">
       </div>
       <div class="mb-2">
         <select class="form-select" name="from_account" required>
