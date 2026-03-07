@@ -407,5 +407,287 @@ def afford():
         monthly=calculate_monthly_spending(),
     )
 
+@app.get("/settings")
+def settings():
+    from database import get_db
+    db = get_db()
+    accounts = [dict(r) for r in db.execute("SELECT * FROM accounts WHERE active = 1 ORDER BY LOWER(name)").fetchall()]
+    bills = [dict(r) for r in db.execute("SELECT * FROM scheduled_expenses ORDER BY day").fetchall()]
+    savings_rules = [dict(r) for r in db.execute("SELECT * FROM savings_rules ORDER BY day").fetchall()]
+    future_events = [dict(r) for r in db.execute("SELECT * FROM future_events ORDER BY date").fetchall()]
+    income = [dict(r) for r in db.execute("SELECT * FROM income").fetchall()]
+    db.close()
+    return render_template("settings.html",
+        accounts=accounts,
+        bills=bills,
+        savings_rules=savings_rules,
+        future_events=future_events,
+        income=income,
+        message=request.args.get("msg", "")
+    )
+
+@app.post("/settings/add-account")
+def settings_add_account():
+    name = (request.form.get("name") or "").strip()
+    acc_type = (request.form.get("type") or "").strip()
+    balance = (request.form.get("balance") or "0").strip()
+
+    if not name or not acc_type:
+        return redirect(url_for("settings", msg="Missing fields."))
+    try:
+        balance = float(balance)
+    except ValueError:
+        return redirect(url_for("settings", msg="Invalid balance."))
+
+    from database import get_db
+    db = get_db()
+    db.execute("INSERT OR IGNORE INTO accounts (name, balance, type, active) VALUES (?, ?, ?, 1)",
+               (name, balance, acc_type))
+    db.commit()
+    db.close()
+    return redirect(url_for("settings", msg=f"Account '{name}' created."))
+
+@app.post("/settings/deactivate-account")
+def settings_deactivate_account():
+    name = (request.form.get("name") or "").strip()
+    from database import get_db
+    db = get_db()
+    db.execute("UPDATE accounts SET active = 0 WHERE name = ?", (name,))
+    db.commit()
+    db.close()
+    return redirect(url_for("settings", msg=f"Account '{name}' deactivated."))
+
+@app.post("/settings/add-bill")
+def settings_add_bill():
+    name = (request.form.get("name") or "").strip()
+    amount = (request.form.get("amount") or "").strip()
+    day = (request.form.get("day") or "").strip()
+    account = (request.form.get("account") or "").strip()
+
+    if not name or not amount or not day or not account:
+        return redirect(url_for("settings", msg="Missing fields."))
+    try:
+        amount = float(amount)
+        day = int(day)
+    except ValueError:
+        return redirect(url_for("settings", msg="Invalid amount or day."))
+
+    from database import get_db
+    db = get_db()
+    db.execute("INSERT INTO scheduled_expenses (name, amount, day, account) VALUES (?, ?, ?, ?)",
+               (name, amount, day, account))
+    db.commit()
+    db.close()
+    return redirect(url_for("settings", msg=f"Bill '{name}' added."))
+
+@app.post("/settings/delete-bill")
+def settings_delete_bill():
+    bill_id = request.form.get("id")
+    from database import get_db
+    db = get_db()
+    db.execute("DELETE FROM scheduled_expenses WHERE id = ?", (bill_id,))
+    db.commit()
+    db.close()
+    return redirect(url_for("settings", msg="Bill deleted."))
+
+@app.post("/settings/add-savings-rule")
+def settings_add_savings_rule():
+    name = (request.form.get("name") or "").strip()
+    amount = (request.form.get("amount") or "").strip()
+    day = (request.form.get("day") or "").strip()
+    from_account = (request.form.get("from_account") or "").strip()
+    to_account = (request.form.get("to_account") or "").strip()
+
+    if not name or not amount or not day or not from_account or not to_account:
+        return redirect(url_for("settings", msg="Missing fields."))
+    try:
+        amount = float(amount)
+        day = int(day)
+    except ValueError:
+        return redirect(url_for("settings", msg="Invalid amount or day."))
+
+    from database import get_db
+    db = get_db()
+    db.execute("INSERT INTO savings_rules (name, amount, day, from_account, to_account) VALUES (?, ?, ?, ?, ?)",
+               (name, amount, day, from_account, to_account))
+    db.commit()
+    db.close()
+    return redirect(url_for("settings", msg=f"Savings rule '{name}' added."))
+
+@app.post("/settings/delete-savings-rule")
+def settings_delete_savings_rule():
+    rule_id = request.form.get("id")
+    from database import get_db
+    db = get_db()
+    db.execute("DELETE FROM savings_rules WHERE id = ?", (rule_id,))
+    db.commit()
+    db.close()
+    return redirect(url_for("settings", msg="Savings rule deleted."))
+
+@app.post("/settings/add-future-event")
+def settings_add_future_event():
+    name = (request.form.get("name") or "").strip()
+    amount = (request.form.get("amount") or "").strip()
+    date_input = (request.form.get("date") or "").strip()
+    account = (request.form.get("account") or "").strip()
+
+    if not name or not amount or not date_input or not account:
+        return redirect(url_for("settings", msg="Missing fields."))
+    try:
+        amount = float(amount)
+    except ValueError:
+        return redirect(url_for("settings", msg="Invalid amount."))
+
+    from database import get_db
+    db = get_db()
+    db.execute("INSERT INTO future_events (name, amount, date, account) VALUES (?, ?, ?, ?)",
+               (name, amount, date_input, account))
+    db.commit()
+    db.close()
+    return redirect(url_for("settings", msg=f"Future event '{name}' added."))
+
+@app.post("/settings/update-income")
+def settings_update_income():
+    income_id = request.form.get("id")
+    amount = (request.form.get("amount") or "").strip()
+
+    try:
+        amount = float(amount)
+    except ValueError:
+        return redirect(url_for("settings", msg="Invalid amount."))
+
+    from database import get_db
+    db = get_db()
+    db.execute("UPDATE income SET amount = ? WHERE id = ?", (amount, income_id))
+    db.commit()
+    db.close()
+    return redirect(url_for("settings", msg="Income updated."))
+
+@app.post("/settings/add-income")
+def settings_add_income():
+    name = (request.form.get("name") or "").strip()
+    amount = (request.form.get("amount") or "").strip()
+    frequency = (request.form.get("frequency") or "").strip()
+    account = (request.form.get("account") or "").strip()
+
+    if not name or not amount or not frequency or not account:
+        return redirect(url_for("settings", msg="Missing fields."))
+    try:
+        amount = float(amount)
+    except ValueError:
+        return redirect(url_for("settings", msg="Invalid amount."))
+
+    from database import get_db
+    db = get_db()
+    db.execute("INSERT INTO income (name, amount, frequency, account) VALUES (?, ?, ?, ?)",
+               (name, amount, frequency, account))
+    db.commit()
+    db.close()
+    return redirect(url_for("settings", msg=f"Income source '{name}' added."))
+
+@app.post("/settings/delete-income")
+def settings_delete_income():
+    income_id = request.form.get("id")
+    from database import get_db
+    db = get_db()
+    db.execute("DELETE FROM income WHERE id = ?", (income_id,))
+    db.commit()
+    db.close()
+    return redirect(url_for("settings", msg="Income source deleted."))
+
+@app.post("/settings/edit-bill")
+def settings_edit_bill():
+    bill_id = request.form.get("id")
+    name = (request.form.get("name") or "").strip()
+    amount = (request.form.get("amount") or "").strip()
+    day = (request.form.get("day") or "").strip()
+    account = (request.form.get("account") or "").strip()
+
+    if not name or not amount or not day or not account:
+        return redirect(url_for("settings", msg="Missing fields."))
+    try:
+        amount = float(amount)
+        day = int(day)
+    except ValueError:
+        return redirect(url_for("settings", msg="Invalid amount or day."))
+
+    from database import get_db
+    db = get_db()
+    db.execute("UPDATE scheduled_expenses SET name=?, amount=?, day=?, account=? WHERE id=?",
+               (name, amount, day, account, bill_id))
+    db.commit()
+    db.close()
+    return redirect(url_for("settings", msg="Bill updated."))
+
+@app.post("/settings/edit-savings-rule")
+def settings_edit_savings_rule():
+    rule_id = request.form.get("id")
+    name = (request.form.get("name") or "").strip()
+    amount = (request.form.get("amount") or "").strip()
+    day = (request.form.get("day") or "").strip()
+    from_account = (request.form.get("from_account") or "").strip()
+    to_account = (request.form.get("to_account") or "").strip()
+
+    if not name or not amount or not day or not from_account or not to_account:
+        return redirect(url_for("settings", msg="Missing fields."))
+    try:
+        amount = float(amount)
+        day = int(day)
+    except ValueError:
+        return redirect(url_for("settings", msg="Invalid amount or day."))
+
+    from database import get_db
+    db = get_db()
+    db.execute("UPDATE savings_rules SET name=?, amount=?, day=?, from_account=?, to_account=? WHERE id=?",
+               (name, amount, day, from_account, to_account, rule_id))
+    db.commit()
+    db.close()
+    return redirect(url_for("settings", msg="Savings rule updated."))
+
+@app.post("/settings/edit-future-event")
+def settings_edit_future_event():
+    event_id = request.form.get("id")
+    name = (request.form.get("name") or "").strip()
+    amount = (request.form.get("amount") or "").strip()
+    date_input = (request.form.get("date") or "").strip()
+    account = (request.form.get("account") or "").strip()
+
+    if not name or not amount or not date_input or not account:
+        return redirect(url_for("settings", msg="Missing fields."))
+    try:
+        amount = float(amount)
+    except ValueError:
+        return redirect(url_for("settings", msg="Invalid amount."))
+
+    from database import get_db
+    db = get_db()
+    db.execute("UPDATE future_events SET name=?, amount=?, date=?, account=? WHERE id=?",
+               (name, amount, date_input, account, event_id))
+    db.commit()
+    db.close()
+    return redirect(url_for("settings", msg="Future event updated."))
+
+@app.post("/settings/edit-account")
+def settings_edit_account():
+    account_id = request.form.get("id")
+    name = (request.form.get("name") or "").strip()
+    acc_type = (request.form.get("type") or "").strip()
+    balance = (request.form.get("balance") or "").strip()
+
+    if not name or not acc_type or not balance:
+        return redirect(url_for("settings", msg="Missing fields."))
+    try:
+        balance = float(balance)
+    except ValueError:
+        return redirect(url_for("settings", msg="Invalid balance."))
+
+    from database import get_db
+    db = get_db()
+    db.execute("UPDATE accounts SET name=?, type=?, balance=? WHERE id=?",
+               (name, acc_type, balance, account_id))
+    db.commit()
+    db.close()
+    return redirect(url_for("settings", msg="Account updated."))
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)
