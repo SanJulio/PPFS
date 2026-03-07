@@ -56,3 +56,24 @@
 - Build landing page
 - Test with real friends
 - Start thinking about Stripe payments
+
+07/03/26
+
+### Session 5 — Done
+- Built register.html and login.html templates
+- Added Flask-Login with register, login, logout routes
+- All routes protected with @login_required
+- All queries filter by current_user.id — users only see their own data
+- Switched from SQLite to PostgreSQL on Render
+- Fixed load_dotenv overriding Render environment variables
+- Fixed load_user crashing on "None" remember cookie
+- Stored sessions in PostgreSQL via custom session interface
+- Switched to gunicorn for production serving
+- Live on https://ppfs.onrender.com and fully working
+- Added all personal data (accounts, bills, income, savings rules)
+
+### Next Session
+- Onboarding flow for new users
+- Landing page
+- Balance forecasting page
+- Stripe payments
