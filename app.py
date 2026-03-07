@@ -871,8 +871,7 @@ def register_post():
     db.close()
 
     user = User(user_id, email)
-    login_user(user)
-
+    login_user(user, remember=True)
     return redirect(url_for("home"))
 
 
@@ -910,8 +909,7 @@ def login_post():
         return render_template("login.html", error="Invalid email or password.")
 
     user = User(row["id"], row["email"])
-    login_user(user)
-
+    login_user(user, remember=True)
     return redirect(url_for("home"))
 
 
