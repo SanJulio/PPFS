@@ -27,6 +27,10 @@ DAILY_EXPENSES = DATA_DIR / "Daily_Expenses.csv"
 
 app = Flask(__name__)
 
+from database import init_db
+with app.app_context():
+    init_db()
+
 import time
 
 @app.get("/ping")
