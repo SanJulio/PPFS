@@ -108,6 +108,8 @@ class User(UserMixin):
 @login_manager.user_loader
 def load_user(user_id):
     print(f">>> load_user called with: {user_id}", flush=True)
+    if user_id is None:
+        return None
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
@@ -120,7 +122,9 @@ def load_user(user_id):
     db.close()
     if row:
         row = dict(zip(cols, row))
+        print(f">>> load_user found user: {row['email']}", flush=True)
         return User(row["id"], row["email"])
+    print(f">>> load_user found NO user for id: {user_id}", flush=True)
     return None
 
 from database import init_db
