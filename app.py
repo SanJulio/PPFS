@@ -48,7 +48,9 @@ app.config["REMEMBER_COOKIE_HTTPONLY"] = True
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL").replace("postgresql://", "postgresql+psycopg2://")
+database_url = os.environ.get("DATABASE_URL", "")
+database_url = database_url.replace("postgres://", "postgresql+psycopg2://").replace("postgresql://", "postgresql+psycopg2://")
+app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 db_sql = SQLAlchemy(app)
 app.config["SESSION_SQLALCHEMY"] = db_sql
 
