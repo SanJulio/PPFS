@@ -104,6 +104,13 @@ def init_db():
     )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS flask_sessions (
+            sid TEXT PRIMARY KEY,
+            data TEXT NOT NULL
+        )
+    """)
+
     db.commit()
     cursor.close()
     db.close()
