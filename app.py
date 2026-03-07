@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
-from flask_session import Session
-from flask_sqlalchemy import SQLAlchemy
+
 from werkzeug.security import generate_password_hash, check_password_hash
 
 import traceback
@@ -37,24 +36,12 @@ DATA_DIR = BASE_DIR / "Data"
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
-app.config["SESSION_TYPE"] = "sqlalchemy"
-app.config["SESSION_PERMANENT"] = True
 app.config["SESSION_COOKIE_SECURE"] = True
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["REMEMBER_COOKIE_SECURE"] = True
-app.config["REMEMBER_COOKIE_HTTPONLY"] = True
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
-
-database_url = os.environ.get("DATABASE_URL", "")
-database_url = database_url.replace("postgres://", "postgresql+psycopg2://").replace("postgresql://", "postgresql+psycopg2://")
-app.config["SQLALCHEMY_DATABASE_URI"] = database_url
-db_sql = SQLAlchemy(app)
-app.config["SESSION_SQLALCHEMY"] = db_sql
-
-Session(app)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
