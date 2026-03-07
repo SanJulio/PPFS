@@ -1,8 +1,7 @@
-from flask_session import Session
-
 from __future__ import annotations
 
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from flask_session import Session
 from werkzeug.security import generate_password_hash, check_password_hash
 
 import traceback
