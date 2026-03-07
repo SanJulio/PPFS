@@ -128,8 +128,12 @@ def load_user(user_id):
     return None
 
 from database import init_db
-with app.app_context():
-    init_db()
+try:
+    with app.app_context():
+        init_db()
+    print(">>> init_db completed successfully", flush=True)
+except Exception as e:
+    print(f">>> init_db FAILED: {e}", flush=True)
 
 import time
 
