@@ -910,7 +910,10 @@ def login_post():
     row = dict(zip(cols, row))
 
     if not check_password_hash(row["password"], password):
+        print(f">>> Password check failed for {email}", flush=True)
         return render_template("login.html", error="Invalid email or password.")
+    
+    print(f">>> Password check passed for {email}", flush=True)
 
     user = User(row["id"], row["email"])
     login_user(user, remember=True)
