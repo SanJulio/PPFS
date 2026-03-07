@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+
 import traceback
 import sys
+
+import os
 
 import csv
 from datetime import date
@@ -31,6 +36,33 @@ DATA_DIR = BASE_DIR / "Data"
 DAILY_EXPENSES = DATA_DIR / "Daily_Expenses.csv"
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+
+class User(UserMixin):
+    def __init__(self, id, email):
+        self.id = id
+        self.email = email
+
+@login_manager.user_loader
+def load_user(user_id):
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+    else:
+        cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    cols = [d[0] for d in cursor.description]
+    row = cursor.fetchone()
+    cursor.close()
+    db.close()
+    if row:
+        row = dict(zip(cols, row))
+        return User(row["id"], row["email"])
+    return None
 
 from database import init_db
 with app.app_context():
@@ -80,28 +112,30 @@ from datetime import datetime
 
 def load_scheduled_expenses_web():
     from database import get_db, USE_POSTGRES
+    from flask_login import current_user
     db = get_db()
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM scheduled_expenses")
     if USE_POSTGRES:
-        cols = [d[0] for d in cursor.description]
-        rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = %s", (current_user.id,))
     else:
-        rows = [dict(r) for r in cursor.fetchall()]
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = ?", (current_user.id,))
+    cols = [d[0] for d in cursor.description]
+    rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
     cursor.close()
     db.close()
     return rows
 
 def get_all_scheduled_expenses():
     from database import get_db, USE_POSTGRES
+    from flask_login import current_user
     db = get_db()
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM scheduled_expenses ORDER BY day")
     if USE_POSTGRES:
-        cols = [d[0] for d in cursor.description]
-        rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = %s ORDER BY day", (current_user.id,))
     else:
-        rows = [dict(r) for r in cursor.fetchall()]
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = ? ORDER BY day", (current_user.id,))
+    cols = [d[0] for d in cursor.description]
+    rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
     cursor.close()
     db.close()
     return rows
@@ -198,9 +232,10 @@ def calculate_monthly_spending():
     }
 
 @app.get("/")
+@login_required
 def home():
 
-    accounts_rows = get_active_accounts()
+    accounts_rows = get_active_accounts(current_user.id)
     accounts = {}
 
     for r in accounts_rows:
@@ -234,9 +269,10 @@ def home():
     )
 
 @app.get("/transactions")
+@login_required
 def transactions():
 
-    tx = get_recent_transactions()
+    tx = get_recent_transactions(current_user.id)
 
     return render_template(
         "transactions.html",
@@ -244,12 +280,14 @@ def transactions():
     )
 
 @app.get("/actions")
+@login_required
 def actions():
-    accounts_rows = get_active_accounts()
+    accounts_rows = get_active_accounts(current_user.id)
     accounts = [r["name"] for r in accounts_rows]
     return render_template("actions.html", accounts=accounts, message=request.args.get("msg", ""))
 
 @app.get("/bills")
+@login_required
 def bills():
     return render_template(
         "bills.html",
@@ -257,6 +295,7 @@ def bills():
     )
 
 @app.post("/add-expense")
+@login_required
 def add_expense():
 
     description = (request.form.get("description") or "").strip()
@@ -275,15 +314,16 @@ def add_expense():
 
     today_str = date.today().isoformat()
 
-    add_transaction(today_str, description, amount, account)
+    add_transaction(today_str, description, amount, account, current_user.id)
 
-    update_account_balance(account, amount)
+    update_account_balance(account, amount, current_user.id)
 
     return redirect(
         url_for("actions", msg=f"Added {description}: £{abs(amount):.2f} from {account}")
     )
 
 @app.post("/add-income")
+@login_required
 def add_income():
 
     description = (request.form.get("description") or "").strip()
@@ -302,15 +342,16 @@ def add_income():
 
     today_str = date.today().isoformat()
 
-    add_transaction(today_str, description, amount, account)
+    add_transaction(today_str, description, amount, account, current_user.id)
 
-    update_account_balance(account, amount)
+    update_account_balance(account, amount, current_user.id)
 
     return redirect(
         url_for("actions", msg=f"Added income {description}: £{amount:.2f} to {account}")
     )
 
 @app.post("/transfer")
+@login_required
 def transfer():
     from_account = (request.form.get("from_account") or "").strip()
     to_account = (request.form.get("to_account") or "").strip()
@@ -331,17 +372,18 @@ def transfer():
 
     today_str = date.today().isoformat()
 
-    add_transaction(today_str, f"Transfer to {to_account}", -amount, from_account)
-    add_transaction(today_str, f"Transfer from {from_account}", amount, to_account)
+    add_transaction(today_str, f"Transfer to {to_account}", -amount, from_account, current_user.id)
+    add_transaction(today_str, f"Transfer from {from_account}", amount, to_account, current_user.id)
 
-    update_account_balance(from_account, -amount)
-    update_account_balance(to_account, amount)
+    update_account_balance(from_account, -amount, current_user.id)
+    update_account_balance(to_account, amount, current_user.id)
 
     return redirect(
         url_for("actions", msg=f"Transferred £{amount:.2f} from {from_account} → {to_account}")
     )
 
 @app.post("/afford")
+@login_required
 def afford():
     from datetime import date
 
@@ -355,7 +397,7 @@ def afford():
     except ValueError:
         return redirect(url_for("home", msg="Invalid purchase amount."))
 
-    accounts_rows = get_active_accounts()
+    accounts_rows = get_active_accounts(current_user.id)
 
     accounts = {}
     for r in accounts_rows:
@@ -418,23 +460,26 @@ def afford():
     )
 
 @app.get("/settings")
+@login_required
 def settings():
     from database import get_db, USE_POSTGRES
     db = get_db()
     cursor = db.cursor()
 
-    def fetch(query):
-        cursor.execute(query)
+    uid = current_user.id
+
+    def fetch_filtered(query, params):
+        cursor.execute(query, params)
         if USE_POSTGRES:
             cols = [d[0] for d in cursor.description]
             return [dict(zip(cols, row)) for row in cursor.fetchall()]
         return [dict(r) for r in cursor.fetchall()]
 
-    accounts = fetch("SELECT * FROM accounts WHERE active = 1 ORDER BY LOWER(name)")
-    bills = fetch("SELECT * FROM scheduled_expenses ORDER BY day")
-    savings_rules = fetch("SELECT * FROM savings_rules ORDER BY day")
-    future_events = fetch("SELECT * FROM future_events ORDER BY date")
-    income = fetch("SELECT * FROM income")
+    accounts = fetch_filtered("SELECT * FROM accounts WHERE active = 1 AND user_id = %s ORDER BY LOWER(name)" if USE_POSTGRES else "SELECT * FROM accounts WHERE active = 1 AND user_id = ? ORDER BY LOWER(name)", (uid,))
+    bills = fetch_filtered("SELECT * FROM scheduled_expenses WHERE user_id = %s ORDER BY day" if USE_POSTGRES else "SELECT * FROM scheduled_expenses WHERE user_id = ? ORDER BY day", (uid,))
+    savings_rules = fetch_filtered("SELECT * FROM savings_rules WHERE user_id = %s ORDER BY day" if USE_POSTGRES else "SELECT * FROM savings_rules WHERE user_id = ? ORDER BY day", (uid,))
+    future_events = fetch_filtered("SELECT * FROM future_events WHERE user_id = %s ORDER BY date" if USE_POSTGRES else "SELECT * FROM future_events WHERE user_id = ? ORDER BY date", (uid,))
+    income = fetch_filtered("SELECT * FROM income WHERE user_id = %s" if USE_POSTGRES else "SELECT * FROM income WHERE user_id = ?", (uid,))
 
     cursor.close()
     db.close()
@@ -448,6 +493,7 @@ def settings():
     )
 
 @app.post("/settings/add-account")
+@login_required
 def settings_add_account():
     name = (request.form.get("name") or "").strip()
     acc_type = (request.form.get("type") or "").strip()
@@ -463,15 +509,16 @@ def settings_add_account():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("INSERT INTO accounts (name, balance, type, active) VALUES (%s, %s, %s, 1) ON CONFLICT (name) DO NOTHING", (name, balance, acc_type))
+        cursor.execute("INSERT INTO accounts (name, balance, type, active, user_id) VALUES (%s, %s, %s, 1, %s) ON CONFLICT (name) DO NOTHING", (name, balance, acc_type, current_user.id))
     else:
-        cursor.execute("INSERT OR IGNORE INTO accounts (name, balance, type, active) VALUES (?, ?, ?, 1)", (name, balance, acc_type))
+        cursor.execute("INSERT OR IGNORE INTO accounts (name, balance, type, active, user_id) VALUES (?, ?, ?, 1, ?)", (name, balance, acc_type, current_user.id))
     db.commit()
     cursor.close()
     db.close()
     return redirect(url_for("settings", msg=f"Account '{name}' created."))
 
 @app.post("/settings/deactivate-account")
+@login_required
 def settings_deactivate_account():
     name = (request.form.get("name") or "").strip()
     db = get_db()
@@ -486,6 +533,7 @@ def settings_deactivate_account():
     return redirect(url_for("settings", msg=f"Account '{name}' deactivated."))
 
 @app.post("/settings/edit-account")
+@login_required
 def settings_edit_account():
     account_id = request.form.get("id")
     name = (request.form.get("name") or "").strip()
@@ -502,15 +550,16 @@ def settings_edit_account():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("UPDATE accounts SET name=%s, type=%s, balance=%s WHERE id=%s", (name, acc_type, balance, account_id))
+        cursor.execute("UPDATE accounts SET name=%s, type=%s, balance=%s WHERE id=%s AND user_id=%s", (name, acc_type, balance, account_id, current_user.id))
     else:
-        cursor.execute("UPDATE accounts SET name=?, type=?, balance=? WHERE id=?", (name, acc_type, balance, account_id))
+        cursor.execute("UPDATE accounts SET name=?, type=?, balance=? WHERE id=? AND user_id=?", (name, acc_type, balance, account_id, current_user.id))
     db.commit()
     cursor.close()
     db.close()
     return redirect(url_for("settings", msg="Account updated."))
 
 @app.post("/settings/add-bill")
+@login_required
 def settings_add_bill():
     name = (request.form.get("name") or "").strip()
     amount = (request.form.get("amount") or "").strip()
@@ -528,15 +577,16 @@ def settings_add_bill():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("INSERT INTO scheduled_expenses (name, amount, day, account) VALUES (%s, %s, %s, %s)", (name, amount, day, account))
+        cursor.execute("INSERT INTO scheduled_expenses (name, amount, day, account, user_id) VALUES (%s, %s, %s, %s, %s)", (name, amount, day, account, current_user.id))
     else:
-        cursor.execute("INSERT INTO scheduled_expenses (name, amount, day, account) VALUES (?, ?, ?, ?)", (name, amount, day, account))
+        cursor.execute("INSERT INTO scheduled_expenses (name, amount, day, account, user_id) VALUES (?, ?, ?, ?, ?)", (name, amount, day, account, current_user.id))
     db.commit()
     cursor.close()
     db.close()
     return redirect(url_for("settings", msg=f"Bill '{name}' added."))
 
 @app.post("/settings/edit-bill")
+@login_required
 def settings_edit_bill():
     bill_id = request.form.get("id")
     name = (request.form.get("name") or "").strip()
@@ -555,29 +605,31 @@ def settings_edit_bill():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("UPDATE scheduled_expenses SET name=%s, amount=%s, day=%s, account=%s WHERE id=%s", (name, amount, day, account, bill_id))
+        cursor.execute("UPDATE scheduled_expenses SET name=%s, amount=%s, day=%s, account=%s WHERE id=%s AND user_id=%s", (name, amount, day, account, bill_id, current_user.id))
     else:
-        cursor.execute("UPDATE scheduled_expenses SET name=?, amount=?, day=?, account=? WHERE id=?", (name, amount, day, account, bill_id))
+        cursor.execute("UPDATE scheduled_expenses SET name=?, amount=?, day=?, account=? WHERE id=? AND user_id=?", (name, amount, day, account, bill_id, current_user.id))
     db.commit()
     cursor.close()
     db.close()
     return redirect(url_for("settings", msg="Bill updated."))
 
 @app.post("/settings/delete-bill")
+@login_required
 def settings_delete_bill():
     bill_id = request.form.get("id")
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("DELETE FROM scheduled_expenses WHERE id = %s", (bill_id,))
+        cursor.execute("DELETE FROM scheduled_expenses WHERE id = %s AND user_id = %s", (bill_id, current_user.id))
     else:
-        cursor.execute("DELETE FROM scheduled_expenses WHERE id = ?", (bill_id,))
+        cursor.execute("DELETE FROM scheduled_expenses WHERE id = ? AND user_id = ?", (bill_id, current_user.id))
     db.commit()
     cursor.close()
     db.close()
     return redirect(url_for("settings", msg="Bill deleted."))
 
 @app.post("/settings/add-savings-rule")
+@login_required
 def settings_add_savings_rule():
     name = (request.form.get("name") or "").strip()
     amount = (request.form.get("amount") or "").strip()
@@ -597,15 +649,16 @@ def settings_add_savings_rule():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("INSERT INTO savings_rules (name, amount, day, frequency, from_account, to_account) VALUES (%s, %s, %s, %s, %s, %s)", (name, amount, day, frequency, from_account, to_account))
+        cursor.execute("INSERT INTO savings_rules (name, amount, day, frequency, from_account, to_account, user_id) VALUES (%s, %s, %s, %s, %s, %s, %s)", (name, amount, day, frequency, from_account, to_account, current_user.id))
     else:
-        cursor.execute("INSERT INTO savings_rules (name, amount, day, frequency, from_account, to_account) VALUES (?, ?, ?, ?, ?, ?)", (name, amount, day, frequency, from_account, to_account))
+        cursor.execute("INSERT INTO savings_rules (name, amount, day, frequency, from_account, to_account, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)", (name, amount, day, frequency, from_account, to_account, current_user.id))
     db.commit()
     cursor.close()
     db.close()
     return redirect(url_for("settings", msg=f"Savings rule '{name}' added."))
 
 @app.post("/settings/edit-savings-rule")
+@login_required
 def settings_edit_savings_rule():
     rule_id = request.form.get("id")
     name = (request.form.get("name") or "").strip()
@@ -626,29 +679,31 @@ def settings_edit_savings_rule():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("UPDATE savings_rules SET name=%s, amount=%s, day=%s, frequency=%s, from_account=%s, to_account=%s WHERE id=%s", (name, amount, day, frequency, from_account, to_account, rule_id))
+        cursor.execute("UPDATE savings_rules SET name=%s, amount=%s, day=%s, frequency=%s, from_account=%s, to_account=%s WHERE id=%s AND user_id=%s", (name, amount, day, frequency, from_account, to_account, rule_id, current_user.id))
     else:
-        cursor.execute("UPDATE savings_rules SET name=?, amount=?, day=?, frequency=?, from_account=?, to_account=? WHERE id=?", (name, amount, day, frequency, from_account, to_account, rule_id))
+        cursor.execute("UPDATE savings_rules SET name=?, amount=?, day=?, frequency=?, from_account=?, to_account=? WHERE id=? AND user_id=?", (name, amount, day, frequency, from_account, to_account, rule_id, current_user.id))
     db.commit()
     cursor.close()
     db.close()
     return redirect(url_for("settings", msg="Savings rule updated."))
 
 @app.post("/settings/delete-savings-rule")
+@login_required
 def settings_delete_savings_rule():
     rule_id = request.form.get("id")
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("DELETE FROM savings_rules WHERE id = %s", (rule_id,))
+        cursor.execute("DELETE FROM savings_rules WHERE id = %s AND user_id = %s", (rule_id, current_user.id))
     else:
-        cursor.execute("DELETE FROM savings_rules WHERE id = ?", (rule_id,))
+        cursor.execute("DELETE FROM savings_rules WHERE id = ? AND user_id = ?", (rule_id, current_user.id))
     db.commit()
     cursor.close()
     db.close()
     return redirect(url_for("settings", msg="Savings rule deleted."))
 
 @app.post("/settings/add-future-event")
+@login_required
 def settings_add_future_event():
     name = (request.form.get("name") or "").strip()
     amount = (request.form.get("amount") or "").strip()
@@ -665,15 +720,16 @@ def settings_add_future_event():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("INSERT INTO future_events (name, amount, date, account) VALUES (%s, %s, %s, %s)", (name, amount, date_input, account))
+        cursor.execute("INSERT INTO future_events (name, amount, date, account, user_id) VALUES (%s, %s, %s, %s, %s)", (name, amount, date_input, account, current_user.id))
     else:
-        cursor.execute("INSERT INTO future_events (name, amount, date, account) VALUES (?, ?, ?, ?)", (name, amount, date_input, account))
+        cursor.execute("INSERT INTO future_events (name, amount, date, account, user_id) VALUES (?, ?, ?, ?, ?)", (name, amount, date_input, account, current_user.id))
     db.commit()
     cursor.close()
     db.close()
     return redirect(url_for("settings", msg=f"Future event '{name}' added."))
 
 @app.post("/settings/edit-future-event")
+@login_required
 def settings_edit_future_event():
     event_id = request.form.get("id")
     name = (request.form.get("name") or "").strip()
@@ -691,15 +747,16 @@ def settings_edit_future_event():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("UPDATE future_events SET name=%s, amount=%s, date=%s, account=%s WHERE id=%s", (name, amount, date_input, account, event_id))
+        cursor.execute("UPDATE future_events SET name=%s, amount=%s, date=%s, account=%s WHERE id=%s AND user_id=%s", (name, amount, date_input, account, event_id, current_user.id))
     else:
-        cursor.execute("UPDATE future_events SET name=?, amount=?, date=?, account=? WHERE id=?", (name, amount, date_input, account, event_id))
+        cursor.execute("UPDATE future_events SET name=?, amount=?, date=?, account=? WHERE id=? AND user_id=?", (name, amount, date_input, account, event_id, current_user.id))
     db.commit()
     cursor.close()
     db.close()
     return redirect(url_for("settings", msg="Future event updated."))
 
 @app.post("/settings/add-income")
+@login_required
 def settings_add_income():
     name = (request.form.get("name") or "").strip()
     amount = (request.form.get("amount") or "").strip()
@@ -716,15 +773,16 @@ def settings_add_income():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("INSERT INTO income (name, amount, frequency, account) VALUES (%s, %s, %s, %s)", (name, amount, frequency, account))
+        cursor.execute("INSERT INTO income (name, amount, frequency, account, user_id) VALUES (%s, %s, %s, %s, %s)", (name, amount, frequency, account, current_user.id))
     else:
-        cursor.execute("INSERT INTO income (name, amount, frequency, account) VALUES (?, ?, ?, ?)", (name, amount, frequency, account))
+        cursor.execute("INSERT INTO income (name, amount, frequency, account, user_id) VALUES (?, ?, ?, ?, ?)", (name, amount, frequency, account, current_user.id))
     db.commit()
     cursor.close()
     db.close()
     return redirect(url_for("settings", msg=f"Income source '{name}' added."))
 
 @app.post("/settings/update-income")
+@login_required
 def settings_update_income():
     income_id = request.form.get("id")
     amount = (request.form.get("amount") or "").strip()
@@ -737,27 +795,128 @@ def settings_update_income():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("UPDATE income SET amount = %s WHERE id = %s", (amount, income_id))
+        cursor.execute("UPDATE income SET amount = %s WHERE id = %s AND user_id = %s", (amount, income_id, current_user.id))
     else:
-        cursor.execute("UPDATE income SET amount = ? WHERE id = ?", (amount, income_id))
+        cursor.execute("UPDATE income SET amount = ? WHERE id = ? AND user_id = ?", (amount, income_id, current_user.id))
     db.commit()
     cursor.close()
     db.close()
     return redirect(url_for("settings", msg="Income updated."))
 
 @app.post("/settings/delete-income")
+@login_required
 def settings_delete_income():
     income_id = request.form.get("id")
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("DELETE FROM income WHERE id = %s", (income_id,))
+        cursor.execute("DELETE FROM income WHERE id = %s AND user_id = %s", (income_id, current_user.id))
     else:
-        cursor.execute("DELETE FROM income WHERE id = ?", (income_id,))
+        cursor.execute("DELETE FROM income WHERE id = ? AND user_id = ?", (income_id, current_user.id))
     db.commit()
     cursor.close()
     db.close()
     return redirect(url_for("settings", msg="Income source deleted."))
+
+@app.get("/register")
+def register():
+    return render_template("register.html")
+
+@app.post("/register")
+def register_post():
+    email = (request.form.get("email") or "").strip().lower()
+    password = (request.form.get("password") or "").strip()
+    confirm = (request.form.get("confirm") or "").strip()
+
+    if not email or not password:
+        return render_template("register.html", error="All fields are required.")
+
+    if password != confirm:
+        return render_template("register.html", error="Passwords do not match.")
+
+    if len(password) < 6:
+        return render_template("register.html", error="Password must be at least 6 characters.")
+
+    db = get_db()
+    cursor = db.cursor()
+
+    if USE_POSTGRES:
+        cursor.execute("SELECT id FROM users WHERE email = %s", (email, current_user.id))
+    else:
+        cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+
+    existing = cursor.fetchone()
+
+    if existing:
+        cursor.close()
+        db.close()
+        return render_template("register.html", error="An account with that email already exists.")
+
+    hashed = generate_password_hash(password)
+    today_str = date.today().isoformat()
+
+    if USE_POSTGRES:
+        cursor.execute("INSERT INTO users (email, password, created_at) VALUES (%s, %s, %s) RETURNING id",
+                       (email, hashed, today_str))
+        user_id = cursor.fetchone()[0]
+    else:
+        cursor.execute("INSERT INTO users (email, password, created_at) VALUES (?, ?, ?)",
+                       (email, hashed, today_str))
+        user_id = cursor.lastrowid
+
+    db.commit()
+    cursor.close()
+    db.close()
+
+    user = User(user_id, email)
+    login_user(user)
+
+    return redirect(url_for("home"))
+
+
+@app.get("/login")
+def login():
+    return render_template("login.html")
+
+@app.post("/login")
+def login_post():
+    email = (request.form.get("email") or "").strip().lower()
+    password = (request.form.get("password") or "").strip()
+
+    if not email or not password:
+        return render_template("login.html", error="All fields are required.")
+
+    db = get_db()
+    cursor = db.cursor()
+
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+    else:
+        cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
+
+    cols = [d[0] for d in cursor.description]
+    row = cursor.fetchone()
+    cursor.close()
+    db.close()
+
+    if not row:
+        return render_template("login.html", error="Invalid email or password.")
+
+    row = dict(zip(cols, row))
+
+    if not check_password_hash(row["password"], password):
+        return render_template("login.html", error="Invalid email or password.")
+
+    user = User(row["id"], row["email"])
+    login_user(user)
+
+    return redirect(url_for("home"))
+
+
+@app.get("/logout")
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
 
 if __name__ == "__main__":
     try:
