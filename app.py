@@ -45,35 +45,45 @@ class PostgresSession(CallbackDict, SessionMixin):
         self.modified = False
 
 class PostgresSessionInterface(SessionInterface):
+    def _get_db(self):
+        import psycopg2
+        return psycopg2.connect(os.environ.get("DATABASE_URL"))
+
     def open_session(self, app, request):
         sid = request.cookies.get("session")
-        if sid:
-            db = get_db()
-            cur = db.cursor()
-            cur.execute("SELECT data FROM flask_sessions WHERE sid = %s", (sid,))
-            row = cur.fetchone()
-            cur.close()
-            db.close()
-            if row:
-                data = json.loads(row[0])
-                return PostgresSession(data, sid=sid)
+        if sid and os.environ.get("DATABASE_URL"):
+            try:
+                db = self._get_db()
+                cur = db.cursor()
+                cur.execute("SELECT data FROM flask_sessions WHERE sid = %s", (sid,))
+                row = cur.fetchone()
+                cur.close()
+                db.close()
+                if row:
+                    data = json.loads(row[0])
+                    return PostgresSession(data, sid=sid)
+            except Exception as e:
+                print(f">>> Session open error: {e}", flush=True)
         sid = str(uuid.uuid4())
         return PostgresSession(sid=sid)
 
     def save_session(self, app, session, response):
-        if not session:
+        if not session or not os.environ.get("DATABASE_URL"):
             return
         sid = session.sid
         data = json.dumps(dict(session))
-        db = get_db()
-        cur = db.cursor()
-        cur.execute("""
-            INSERT INTO flask_sessions (sid, data) VALUES (%s, %s)
-            ON CONFLICT (sid) DO UPDATE SET data = EXCLUDED.data
-        """, (sid, data))
-        db.commit()
-        cur.close()
-        db.close()
+        try:
+            db = self._get_db()
+            cur = db.cursor()
+            cur.execute("""
+                INSERT INTO flask_sessions (sid, data) VALUES (%s, %s)
+                ON CONFLICT (sid) DO UPDATE SET data = EXCLUDED.data
+            """, (sid, data))
+            db.commit()
+            cur.close()
+            db.close()
+        except Exception as e:
+            print(f">>> Session save error: {e}", flush=True)
         response.set_cookie("session", sid, httponly=True, secure=True, samesite="Lax")
 
 app = Flask(__name__)
