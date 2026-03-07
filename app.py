@@ -33,8 +33,6 @@ from database import USE_POSTGRES
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "Data"
 
-DAILY_EXPENSES = DATA_DIR / "Daily_Expenses.csv"
-
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key")
 
@@ -70,42 +68,12 @@ with app.app_context():
 
 import time
 
-@app.get("/ping")
-def ping():
-    print(">>> /ping hit", flush=True)
-    return "pong"
-
-@app.get("/bills-debug")
-def bills_debug():
-    print(">>> /bills-debug hit (start)", flush=True)
-    t0 = time.time()
-
-    try:
-        bills = get_all_scheduled_expenses()
-        print(f">>> loaded bills: {len(bills)} in {time.time()-t0:.3f}s", flush=True)
-        return {
-            "ok": True,
-            "count": len(bills),
-            "first": bills[0] if bills else None
-        }
-    except Exception as e:
-        print(">>> ERROR in /bills-debug:", repr(e), flush=True)
-        return {"ok": False, "error": repr(e)}, 500
-
-SCHEDULED_CACHE = None
 @app.after_request
 def add_no_cache_headers(response):
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return response
-
-def ensure_csv_header(file_path: Path, header: List[str]) -> None:
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    if not file_path.exists() or file_path.stat().st_size == 0:
-        with open(file_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(header)
 
 import calendar
 from datetime import datetime
@@ -201,8 +169,9 @@ def calculate_monthly_spending():
             SELECT amount FROM transactions
             WHERE EXTRACT(YEAR FROM date::date) = %s
             AND EXTRACT(MONTH FROM date::date) = %s
+            AND user_id = %s
             """,
-            (year, month)
+            (year, month, current_user.id)
         )
     else:
         cursor.execute(
@@ -210,8 +179,9 @@ def calculate_monthly_spending():
             SELECT amount FROM transactions
             WHERE strftime('%Y', date) = ?
             AND strftime('%m', date) = ?
+            AND user_id = ?
             """,
-            (str(year), f"{month:02d}")
+            (str(year), f"{month:02d}", current_user.id)
         )
 
     rows = cursor.fetchall()
@@ -406,8 +376,37 @@ def afford():
             "type": r["type"],
             "active": bool(r["active"])
         }
-    scheduled = load_scheduled_expenses(DATA_DIR)
-    future_events = load_future_events(DATA_DIR)
+    from database import get_db, USE_POSTGRES
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = %s", (current_user.id,))
+    else:
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = ?", (current_user.id,))
+    cols = [d[0] for d in cursor.description]
+    scheduled = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM future_events WHERE user_id = %s", (current_user.id,))
+    else:
+        cursor.execute("SELECT * FROM future_events WHERE user_id = ?", (current_user.id,))
+    cols = [d[0] for d in cursor.description]
+    future_events_raw = [dict(zip(cols, row)) for row in cursor.fetchall()]
+    cursor.close()
+    db.close()
+
+    from datetime import date as date_type
+    future_events = []
+    for e in future_events_raw:
+        try:
+            future_events.append({
+                "date": date_type.fromisoformat(e["date"]),
+                "name": e["name"],
+                "amount": e["amount"],
+                "account": e["account"]
+            })
+        except:
+            continue
 
     # end of next month horizon
     today = date.today()
@@ -524,9 +523,9 @@ def settings_deactivate_account():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("UPDATE accounts SET active = 0 WHERE name = %s", (name,))
+        cursor.execute("UPDATE accounts SET active = 0 WHERE name = %s AND user_id = %s", (name, current_user.id))
     else:
-        cursor.execute("UPDATE accounts SET active = 0 WHERE name = ?", (name,))
+        cursor.execute("UPDATE accounts SET active = 0 WHERE name = ? AND user_id = ?", (name, current_user.id))
     db.commit()
     cursor.close()
     db.close()
@@ -841,7 +840,7 @@ def register_post():
     cursor = db.cursor()
 
     if USE_POSTGRES:
-        cursor.execute("SELECT id FROM users WHERE email = %s", (email, current_user.id))
+        cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
     else:
         cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
 
