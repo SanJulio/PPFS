@@ -3,7 +3,7 @@ import sqlite3
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=False)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
