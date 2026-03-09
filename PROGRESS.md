@@ -23,15 +23,6 @@
 - Removed forms from homepage
 - Pushed to GitHub
 
-### Next Session
-- Build settings page containing:
-  - Create new account
-  - Deactivate account
-  - Add/delete bills
-  - Add/delete savings rules
-  - Add future event
-  - Edit income source
-
 ### Current Stack
 - Flask backend (app.py)
 - SQLite database (ppfs.db)
@@ -51,12 +42,6 @@
 - Cleaned up unused code
 - Pushed to GitHub — live on Render
 
-### Next Session
-- Build onboarding flow for new users
-- Build landing page
-- Test with real friends
-- Start thinking about Stripe payments
-
 07/03/26
 
 ### Session 5 — Done
@@ -72,8 +57,11 @@
 - Live on https://ppfs.onrender.com and fully working
 - Added all personal data (accounts, bills, income, savings rules)
 
-### Next Session
-- Onboarding flow for new users
-- Landing page
-- Balance forecasting page
-- Stripe payments
+09/03/26
+
+### Session 6 — Done
+- Added Mark as Paid button on bills page
+- Redesigned bills page with expandable table rows
+- Added Undo and Edit on transactions page
+- Fixed VS Code Jinja2/JS warnings
+- Set up UptimeRobot to prevent Render spin-down
