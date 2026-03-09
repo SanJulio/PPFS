@@ -19,7 +19,7 @@ body { background: #f2f4f7; padding-bottom: 110px; }
 .card { border-radius: 18px; border: none; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
 .money { font-variant-numeric: tabular-nums; }
 .ellipsis {
-  max-width: 160px;
+  max-width: 120px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -32,6 +32,10 @@ body { background: #f2f4f7; padding-bottom: 110px; }
   font-weight: 600;
   font-size: 12px;
 }
+tbody tr.tx-row { cursor: pointer; }
+tbody tr.tx-row:hover { background: #f8f9fa; }
+.expand-row td { background: #f8f9fa; border-top: none !important; }
+input.form-control-sm { border-radius: 10px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -41,6 +45,10 @@ body { background: #f2f4f7; padding-bottom: 110px; }
     <h1 class="display-6 fw-bold">Transactions</h1>
     <div class="text-muted">Last 100 entries</div>
   </div>
+
+  {% if message %}
+    <div class="alert alert-success rounded-4">{{ message }}</div>
+  {% endif %}
 
   <div class="card p-3 mb-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -52,6 +60,7 @@ body { background: #f2f4f7; padding-bottom: 110px; }
       <table class="table table-sm align-middle mb-0">
         <thead>
           <tr>
+            <th></th>
             <th>Date</th>
             <th>Description</th>
             <th class="text-end">Amount</th>
@@ -60,24 +69,63 @@ body { background: #f2f4f7; padding-bottom: 110px; }
         </thead>
         <tbody>
           {% for t in transactions %}
-            <tr>
-              <td class="text-muted small">{{ t.date }}</td>
-              <td><span class="ellipsis d-inline-block">{{ t.description }}</span></td>
-              <td class="text-end money fw-semibold
-                {% if t.amount < 0 %}text-danger{% else %}text-success{% endif %}">
-                {% if t.amount < 0 %}
-                  -£{{ "%.2f"|format(t.amount|abs) }}
-                {% else %}
-                  +£{{ "%.2f"|format(t.amount) }}
-                {% endif %}
-              </td>
-              <td><span class="badge text-bg-light">{{ t.account }}</span></td>
-            </tr>
+          <tr class="tx-row" data-id="{{ t.id }}" onclick="toggleTx(this.dataset.id)">
+            <td><span id="arrow-{{ t.id }}" class="fw-bold" style="font-size:13px; color:#111">+</span></td>
+            <td class="text-muted small">{{ t.date }}</td>
+            <td><span class="ellipsis d-inline-block">{{ t.description }}</span></td>
+            <td class="text-end money fw-semibold {% if t.amount < 0 %}text-danger{% else %}text-success{% endif %}">
+              {% if t.amount < 0 %}-£{{ "%.2f"|format(t.amount|abs) }}{% else %}+£{{ "%.2f"|format(t.amount) }}{% endif %}
+            </td>
+            <td><span class="badge text-bg-light">{{ t.account }}</span></td>
+          </tr>
+          <tr class="expand-row d-none" id="expand-{{ t.id }}">
+            <td colspan="5" class="py-2 px-3">
+              <div class="d-flex gap-2 align-items-start flex-wrap">
+
+                <form method="POST" action="/transactions/undo" class="d-inline">
+                  <input type="hidden" name="tx_id" value="{{ t.id }}">
+                  <button type="submit" class="btn btn-outline-danger btn-sm rounded-3 px-3"
+                    onclick="return confirm('Reverse this transaction?')">
+                    ↩ Undo
+                  </button>
+                </form>
+
+                <button class="btn btn-outline-secondary btn-sm rounded-3 px-3"
+                  data-id="{{ t.id }}" onclick="toggleEdit(this.dataset.id); event.stopPropagation()">
+                  ✏️ Edit
+                </button>
+
+              </div>
+
+              <div id="edit-{{ t.id }}" class="d-none mt-3">
+                <form method="POST" action="/transactions/edit">
+                  <input type="hidden" name="tx_id" value="{{ t.id }}">
+                  <div class="row g-2">
+                    <div class="col-12 col-sm-4">
+                      <input type="text" name="description" class="form-control form-control-sm"
+                        value="{{ t.description }}" placeholder="Description">
+                    </div>
+                    <div class="col-6 col-sm-3">
+                      <input type="number" name="amount" step="0.01" class="form-control form-control-sm"
+                        value="{{ t.amount }}" placeholder="Amount">
+                    </div>
+                    <div class="col-6 col-sm-3">
+                      <input type="text" name="account" class="form-control form-control-sm"
+                        value="{{ t.account }}" placeholder="Account">
+                    </div>
+                    <div class="col-12 col-sm-2">
+                      <button type="submit" class="btn btn-dark btn-sm w-100 rounded-3">Save</button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+
+            </td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-
   </div>
 
 </div>
@@ -110,5 +158,20 @@ body { background: #f2f4f7; padding-bottom: 110px; }
     </a>
   </div>
 </nav>
+
+<script>
+function toggleTx(id) {
+  const row = document.getElementById('expand-' + id);
+  const arrow = document.getElementById('arrow-' + id);
+  row.classList.toggle('d-none');
+  arrow.textContent = row.classList.contains('d-none') ? '+' : '−';
+}
+
+function toggleEdit(id) {
+  const editRow = document.getElementById('edit-' + id);
+  editRow.classList.toggle('d-none');
+}
+</script>
+
 </body>
 </html>

@@ -17,7 +17,6 @@ html { scroll-behavior: smooth; scroll-padding-bottom: 110px; }
 .fixed-bottom { position: fixed !important; bottom: 0; left: 0; right: 0; z-index: 9999; }
 body { background: #f2f4f7; padding-bottom: 110px; }
 .card { border-radius: 18px; border: none; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
-.money { font-variant-numeric: tabular-nums; }
 .badge-soft {
   background: rgba(0,0,0,0.06);
   color: #111;
@@ -26,6 +25,9 @@ body { background: #f2f4f7; padding-bottom: 110px; }
   font-weight: 600;
   font-size: 12px;
 }
+tbody tr.bill-row { cursor: pointer; }
+tbody tr.bill-row:hover { background: #f8f9fa; }
+.expand-row td { background: #f8f9fa; border-top: none !important; }
 </style>
 </head>
 <body>
@@ -36,12 +38,18 @@ body { background: #f2f4f7; padding-bottom: 110px; }
     <div class="text-muted">Scheduled monthly expenses</div>
   </div>
 
-  <div class="card p-3 mb-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h5 class="mb-0">Scheduled Expenses</h5>
-      <span class="badge-soft">{{ bills|length }} bills</span>
-    </div>
+  {% if message %}
+    <div class="alert alert-success rounded-4">{{ message }}</div>
+  {% endif %}
 
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <span class="badge-soft">{{ bills|length }} bills</span>
+    {% set total = namespace(value=0) %}
+    {% for b in bills %}{% set total.value = total.value + b.amount %}{% endfor %}
+    <span class="fw-bold">Total: £{{ "%.2f"|format(total.value) }}</span>
+  </div>
+
+  <div class="card p-3">
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0">
         <thead>
@@ -53,18 +61,28 @@ body { background: #f2f4f7; padding-bottom: 110px; }
           </tr>
         </thead>
         <tbody>
-          {% set total = namespace(value=0) %}
           {% for b in bills %}
-            {% set total.value = total.value + b.amount %}
-            <tr>
-              <td>{{ b.name }}</td>
-              <td class="text-end money">£{{ "%.2f"|format(b.amount) }}</td>
-              <td class="text-end">{{ b.day }}</td>
-              <td class="text-end"><span class="badge text-bg-light">{{ b.account }}</span></td>
-            </tr>
+          <tr class="bill-row" data-id="{{ b.id }}" onclick="toggleBill(this.dataset.id)" id="row-{{ b.id }}">
+            <td><span id="arrow-{{ b.id }}" class="me-2 fw-bold" style="font-size:13px; color:#111" data-id="{{ b.id }}">+</span>{{ b.name }}</td>
+            <td class="text-end money">£{{ "%.2f"|format(b.amount) }}</td>
+            <td class="text-end">{{ b.day }}</td>
+            <td class="text-end"><span class="badge text-bg-light">{{ b.account }}</span></td>
+          </tr>
+          <tr class="expand-row d-none" id="expand-{{ b.id }}">
+            <td colspan="4" class="py-2 px-3">
+              <form method="POST" action="/bills/pay">
+                <input type="hidden" name="bill_id" value="{{ b.id }}">
+                <button type="submit" class="btn btn-dark btn-sm rounded-3 px-4">
+                  ✓ Mark as Paid
+                </button>
+              </form>
+            </td>
+          </tr>
           {% endfor %}
         </tbody>
         <tfoot>
+          {% set total = namespace(value=0) %}
+          {% for b in bills %}{% set total.value = total.value + b.amount %}{% endfor %}
           <tr class="fw-bold">
             <td>Total</td>
             <td class="text-end money">£{{ "%.2f"|format(total.value) }}</td>
@@ -106,5 +124,16 @@ body { background: #f2f4f7; padding-bottom: 110px; }
     </a>
   </div>
 </nav>
+
+<script>
+function toggleBill(id) {
+  const row = document.getElementById('expand-' + id);
+  const arrow = document.getElementById('arrow-' + id);
+  row.classList.toggle('d-none');
+  arrow.textContent = row.classList.contains('d-none') ? '+' : '−';
+}
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

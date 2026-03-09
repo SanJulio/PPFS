@@ -329,6 +329,33 @@ def bills():
         bills=get_all_scheduled_expenses()
     )
 
+@app.post("/bills/pay")
+@login_required
+def bills_pay():
+    bill_id = request.form.get("bill_id")
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE id = %s AND user_id = %s", (bill_id, current_user.id))
+    else:
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE id = ? AND user_id = ?", (bill_id, current_user.id))
+    cols = [d[0] for d in cursor.description]
+    row = cursor.fetchone()
+    cursor.close()
+    db.close()
+
+    if not row:
+        return redirect(url_for("bills", msg="Bill not found."))
+
+    bill = dict(zip(cols, row))
+    today_str = date.today().isoformat()
+
+    add_transaction(today_str, bill["name"], -bill["amount"], bill["account"], current_user.id)
+    update_account_balance(bill["account"], -bill["amount"], current_user.id)
+
+    return redirect(url_for("bills", msg=f"{bill['name']} — £{bill['amount']:.2f} paid."))
+
 @app.post("/add-expense")
 @login_required
 def add_expense():
@@ -416,6 +443,90 @@ def transfer():
     return redirect(
         url_for("actions", msg=f"Transferred £{amount:.2f} from {from_account} → {to_account}")
     )
+
+@app.post("/transactions/undo")
+@login_required
+def transaction_undo():
+    tx_id = request.form.get("tx_id")
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM transactions WHERE id = %s AND user_id = %s", (tx_id, current_user.id))
+    else:
+        cursor.execute("SELECT * FROM transactions WHERE id = ? AND user_id = ?", (tx_id, current_user.id))
+    cols = [d[0] for d in cursor.description]
+    row = cursor.fetchone()
+    cursor.close()
+    db.close()
+
+    if not row:
+        return redirect(url_for("transactions", msg="Transaction not found."))
+
+    tx = dict(zip(cols, row))
+
+    update_account_balance(tx["account"], -tx["amount"], current_user.id)
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("DELETE FROM transactions WHERE id = %s AND user_id = %s", (tx_id, current_user.id))
+    else:
+        cursor.execute("DELETE FROM transactions WHERE id = ? AND user_id = ?", (tx_id, current_user.id))
+    db.commit()
+    cursor.close()
+    db.close()
+
+    return redirect(url_for("transactions", msg="Transaction reversed."))
+
+
+@app.post("/transactions/edit")
+@login_required
+def transaction_edit():
+    tx_id = request.form.get("tx_id")
+    description = (request.form.get("description") or "").strip()
+    amount_raw = (request.form.get("amount") or "").strip()
+    account = (request.form.get("account") or "").strip()
+
+    if not description or not amount_raw or not account:
+        return redirect(url_for("transactions", msg="Missing fields."))
+
+    try:
+        new_amount = float(amount_raw)
+    except ValueError:
+        return redirect(url_for("transactions", msg="Invalid amount."))
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM transactions WHERE id = %s AND user_id = %s", (tx_id, current_user.id))
+    else:
+        cursor.execute("SELECT * FROM transactions WHERE id = ? AND user_id = ?", (tx_id, current_user.id))
+    cols = [d[0] for d in cursor.description]
+    row = cursor.fetchone()
+    cursor.close()
+    db.close()
+
+    if not row:
+        return redirect(url_for("transactions", msg="Transaction not found."))
+
+    tx = dict(zip(cols, row))
+    diff = new_amount - tx["amount"]
+
+    update_account_balance(tx["account"], diff, current_user.id)
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE transactions SET description=%s, amount=%s, account=%s WHERE id=%s AND user_id=%s",
+                       (description, new_amount, account, tx_id, current_user.id))
+    else:
+        cursor.execute("UPDATE transactions SET description=?, amount=?, account=? WHERE id=? AND user_id=?",
+                       (description, new_amount, account, tx_id, current_user.id))
+    db.commit()
+    cursor.close()
+    db.close()
+
+    return redirect(url_for("transactions", msg="Transaction updated."))
 
 @app.post("/afford")
 @login_required

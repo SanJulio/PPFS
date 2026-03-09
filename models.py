@@ -83,12 +83,12 @@ def get_recent_transactions(user_id: int, limit=100):
     cursor = db.cursor()
     if USE_POSTGRES:
         cursor.execute(
-            "SELECT date, description, amount, account FROM transactions WHERE user_id = %s ORDER BY date DESC LIMIT %s",
+            "SELECT id, date, description, amount, account FROM transactions WHERE user_id = %s ORDER BY date DESC LIMIT %s",
             (user_id, limit)
         )
     else:
         cursor.execute(
-            "SELECT date, description, amount, account FROM transactions WHERE user_id = ? ORDER BY date DESC LIMIT ?",
+            "SELECT id, date, description, amount, account FROM transactions WHERE user_id = ? ORDER BY date DESC LIMIT ?",
             (user_id, limit)
         )
     rows = _rows_as_dicts(cursor, cursor.fetchall())
