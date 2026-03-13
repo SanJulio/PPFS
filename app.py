@@ -1156,6 +1156,30 @@ def logout():
     logout_user()
     return redirect(url_for("login"))
 
+@app.get("/fix-transfers")
+@login_required
+def fix_transfers():
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("""
+            UPDATE transactions 
+            SET type = 'transfer' 
+            WHERE (description LIKE 'Transfer to%%' OR description LIKE 'Transfer from%%')
+            AND user_id = %s
+        """, (current_user.id,))
+    else:
+        cursor.execute("""
+            UPDATE transactions 
+            SET type = 'transfer' 
+            WHERE (description LIKE 'Transfer to%' OR description LIKE 'Transfer from%')
+            AND user_id = ?
+        """, (current_user.id,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return redirect(url_for("home", msg="Transfers fixed!"))
+
 if __name__ == "__main__":
     try:
         app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)
