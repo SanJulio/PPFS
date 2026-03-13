@@ -115,11 +115,23 @@ def init_db():
 
     # Add include_in_overview column if it doesn't exist yet
     try:
-        cursor.execute("ALTER TABLE accounts ADD COLUMN include_in_overview INTEGER NOT NULL DEFAULT 1")
-        db.commit()
-    except Exception:
-        db.rollback()
-        pass  # column already exists, that's fine
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name='accounts' AND column_name='include_in_overview'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE accounts ADD COLUMN include_in_overview INTEGER NOT NULL DEFAULT 1")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN include_in_overview INTEGER NOT NULL DEFAULT 1")
+            db.commit()
+    except Exception as e:
+        print(f">>> Column migration error: {e}", flush=True)
+        try:
+            db.rollback()
+        except:
+            pass
 
     cursor.close()
     db.close()
