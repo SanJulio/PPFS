@@ -36,28 +36,50 @@ tbody tr.tx-row { cursor: pointer; }
 tbody tr.tx-row:hover { background: #f8f9fa; }
 .expand-row td { background: #f8f9fa; border-top: none !important; }
 input.form-control-sm { border-radius: 10px; font-size: 13px; }
+.search-input { border-radius: 12px; border: 1px solid rgba(0,0,0,0.1); padding: 10px 14px; font-size: 14px; }
+.search-input:focus { outline: none; border-color: #111; box-shadow: none; }
 </style>
 </head>
 <body>
 <div class="container py-4">
 
   <div class="mb-4">
+    <img src="{{ url_for('static', filename='6000-logo.png') }}" alt="PPFS Logo" style="height:50px; object-fit:contain;" class="mb-2 d-block">
     <h1 class="display-6 fw-bold">Transactions</h1>
-    <div class="text-muted">Last 100 entries</div>
+    <div class="text-muted">All entries</div>
   </div>
 
   {% if message %}
     <div class="alert alert-success rounded-4">{{ message }}</div>
   {% endif %}
 
+  <!-- Search and filter -->
+  <div class="card p-3 mb-3">
+    <div class="row g-2">
+      <div class="col-12 col-sm-5">
+        <input type="text" id="searchInput" class="form-control search-input w-100"
+          placeholder="🔍 Search description or account...">
+      </div>
+      <div class="col-6 col-sm-3">
+        <input type="date" id="dateFrom" class="form-control search-input w-100">
+      </div>
+      <div class="col-6 col-sm-3">
+        <input type="date" id="dateTo" class="form-control search-input w-100">
+      </div>
+      <div class="col-12 col-sm-1">
+        <button onclick="clearFilters()" class="btn btn-outline-secondary w-100 rounded-3" style="padding:10px">✕</button>
+      </div>
+    </div>
+  </div>
+
   <div class="card p-3 mb-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h5 class="mb-0">Recent Transactions</h5>
-      <span class="badge-soft">{{ transactions|length }} shown</span>
+      <span class="badge-soft" id="countBadge">{{ transactions|length }} shown</span>
     </div>
 
     <div class="table-responsive">
-      <table class="table table-sm align-middle mb-0">
+      <table class="table table-sm align-middle mb-0" id="txTable">
         <thead>
           <tr>
             <th></th>
@@ -67,9 +89,11 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
             <th>Account</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="txBody">
           {% for t in transactions %}
-          <tr class="tx-row" data-id="{{ t.id }}" onclick="toggleTx(this.dataset.id)">
+          <tr class="tx-row" data-id="{{ t.id }}" data-description="{{ t.description|lower }}"
+            data-account="{{ t.account|lower }}" data-date="{{ t.date }}"
+            onclick="toggleTx(this.dataset.id)">
             <td><span id="arrow-{{ t.id }}" class="fw-bold" style="font-size:13px; color:#111">+</span></td>
             <td class="text-muted small">{{ t.date }}</td>
             <td><span class="ellipsis d-inline-block">{{ t.description }}</span></td>
@@ -81,7 +105,6 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
           <tr class="expand-row d-none" id="expand-{{ t.id }}">
             <td colspan="5" class="py-2 px-3">
               <div class="d-flex gap-2 align-items-start flex-wrap">
-
                 <form method="POST" action="/transactions/undo" class="d-inline">
                   <input type="hidden" name="tx_id" value="{{ t.id }}">
                   <button type="submit" class="btn btn-outline-danger btn-sm rounded-3 px-3"
@@ -89,14 +112,11 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
                     ↩ Undo
                   </button>
                 </form>
-
                 <button class="btn btn-outline-secondary btn-sm rounded-3 px-3"
                   data-id="{{ t.id }}" onclick="toggleEdit(this.dataset.id); event.stopPropagation()">
                   ✏️ Edit
                 </button>
-
               </div>
-
               <div id="edit-{{ t.id }}" class="d-none mt-3">
                 <form method="POST" action="/transactions/edit">
                   <input type="hidden" name="tx_id" value="{{ t.id }}">
@@ -119,7 +139,6 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
                   </div>
                 </form>
               </div>
-
             </td>
           </tr>
           {% endfor %}
@@ -171,6 +190,43 @@ function toggleEdit(id) {
   const editRow = document.getElementById('edit-' + id);
   editRow.classList.toggle('d-none');
 }
+
+function filterTransactions() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const dateFrom = document.getElementById('dateFrom').value;
+  const dateTo = document.getElementById('dateTo').value;
+  const rows = document.querySelectorAll('#txBody tr.tx-row');
+  let visible = 0;
+
+  rows.forEach(row => {
+    const desc = row.dataset.description || '';
+    const account = row.dataset.account || '';
+    const date = row.dataset.date || '';
+    const expandRow = document.getElementById('expand-' + row.dataset.id);
+
+    const matchSearch = !search || desc.includes(search) || account.includes(search);
+    const matchFrom = !dateFrom || date >= dateFrom;
+    const matchTo = !dateTo || date <= dateTo;
+    const show = matchSearch && matchFrom && matchTo;
+
+    row.style.display = show ? '' : 'none';
+    if (expandRow) expandRow.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+
+  document.getElementById('countBadge').textContent = visible + ' shown';
+}
+
+function clearFilters() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('dateFrom').value = '';
+  document.getElementById('dateTo').value = '';
+  filterTransactions();
+}
+
+document.getElementById('searchInput').addEventListener('input', filterTransactions);
+document.getElementById('dateFrom').addEventListener('change', filterTransactions);
+document.getElementById('dateTo').addEventListener('change', filterTransactions);
 </script>
 
 </body>

@@ -231,20 +231,22 @@ def calculate_monthly_spending():
     if USE_POSTGRES:
         cursor.execute(
             """
-            SELECT amount FROM transactions
+            SELECT amount, type FROM transactions
             WHERE EXTRACT(YEAR FROM date::date) = %s
             AND EXTRACT(MONTH FROM date::date) = %s
             AND user_id = %s
+            AND amount < 0
             """,
             (year, month, current_user.id)
         )
     else:
         cursor.execute(
             """
-            SELECT amount FROM transactions
+            SELECT amount, type FROM transactions
             WHERE strftime('%Y', date) = ?
             AND strftime('%m', date) = ?
             AND user_id = ?
+            AND amount < 0
             """,
             (str(year), f"{month:02d}", current_user.id)
         )
@@ -253,17 +255,26 @@ def calculate_monthly_spending():
     cursor.close()
     db.close()
 
-    normal_spend = 0.0
+    normal = 0.0
+    scheduled = 0.0
 
     for r in rows:
-        amount = r[0] if USE_POSTGRES else r["amount"]
-        if amount < 0:
-            normal_spend += abs(amount)
+        if USE_POSTGRES:
+            amount = abs(r[0])
+            tx_type = r[1]
+        else:
+            amount = abs(r["amount"])
+            tx_type = r["type"]
+
+        if tx_type == "bill":
+            scheduled += amount
+        else:
+            normal += amount
 
     return {
-        "normal": normal_spend,
-        "scheduled": 0,
-        "total": normal_spend
+        "normal": normal,
+        "scheduled": scheduled,
+        "total": normal + scheduled
     }
 
 @app.get("/")
@@ -351,7 +362,7 @@ def bills_pay():
     bill = dict(zip(cols, row))
     today_str = date.today().isoformat()
 
-    add_transaction(today_str, bill["name"], -bill["amount"], bill["account"], current_user.id)
+    add_transaction(today_str, bill["name"], -bill["amount"], bill["account"], current_user.id, type="bill")
     update_account_balance(bill["account"], -bill["amount"], current_user.id)
 
     return redirect(url_for("bills", msg=f"{bill['name']} — £{bill['amount']:.2f} paid."))

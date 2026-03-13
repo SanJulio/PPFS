@@ -65,3 +65,13 @@
 - Added Undo and Edit on transactions page
 - Fixed VS Code Jinja2/JS warnings
 - Set up UptimeRobot to prevent Render spin-down
+
+13/03/26
+
+### Session 7 — Done
+- Removed 100 transaction limit — now loads all transactions
+- Added search bar and date range filters on transactions page
+- Added Mark as Paid button on bills page
+- Fixed monthly spending to correctly split bills and normal transactions
+- Added undo and edit on transactions page
+- Added logo to header on all pages
