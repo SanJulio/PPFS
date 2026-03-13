@@ -117,41 +117,95 @@ input, select {
 
   <div class="card p-3 mb-4">
   <h5 class="mb-3">Financial Overview</h5>
-
   <div class="row g-3">
 
     <div class="col-6">
-      <div class="p-3 bg-white rounded-4 shadow-sm">
-        <div class="text-muted small">Available</div>
+      <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('available')">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="text-muted small">Available</div>
+          <span id="arrow-available" class="fw-bold" style="font-size:13px;color:#111">+</span>
+        </div>
         <div class="fs-4 fw-bold">£{{ "%.2f"|format(overview.spending_balance) }}</div>
       </div>
+      <div id="tile-available" class="d-none mt-2 px-1">
+        {% for a in overview.spending_accounts %}
+        <div class="d-flex justify-content-between small py-1 border-bottom">
+          <span>{{ a.name }}</span>
+          <span class="fw-semibold">£{{ "%.2f"|format(a.balance) }}</span>
+        </div>
+        {% endfor %}
+      </div>
     </div>
 
     <div class="col-6">
-      <div class="p-3 bg-white rounded-4 shadow-sm">
-        <div class="text-muted small">Bills left</div>
+      <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('bills')">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="text-muted small">Bills left</div>
+          <span id="arrow-bills" class="fw-bold" style="font-size:13px;color:#111">+</span>
+        </div>
         <div class="fs-4 fw-bold text-danger">£{{ "%.2f"|format(overview.future_bills) }}</div>
       </div>
-    </div>
-
-    <div class="col-6">
-      <div class="p-3 bg-white rounded-4 shadow-sm">
-        <div class="text-muted small">Safe to spend</div>
-        <div class="fs-4 fw-bold text-success">£{{ "%.2f"|format(overview.safe_spending) }}</div>
+      <div id="tile-bills" class="d-none mt-2 px-1">
+        {% for b in overview.future_bills_list %}
+        <div class="d-flex justify-content-between small py-1 border-bottom">
+          <span>{{ b.name }} <span class="text-muted">(day {{ b.day }})</span></span>
+          <span class="fw-semibold text-danger">£{{ "%.2f"|format(b.amount) }}</span>
+        </div>
+        {% endfor %}
+        {% if not overview.future_bills_list %}
+        <div class="small text-muted py-1">No bills remaining this month 🎉</div>
+        {% endif %}
       </div>
     </div>
 
     <div class="col-6">
-      <div class="p-3 bg-white rounded-4 shadow-sm">
-        <div class="text-muted small">Savings</div>
+      <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('safe')">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="text-muted small">Safe to spend</div>
+          <span id="arrow-safe" class="fw-bold" style="font-size:13px;color:#111">+</span>
+        </div>
+        <div class="fs-4 fw-bold text-success">£{{ "%.2f"|format(overview.safe_spending) }}</div>
+      </div>
+      <div id="tile-safe" class="d-none mt-2 px-1">
+        <div class="small text-muted py-1">Available (£{{ "%.2f"|format(overview.spending_balance) }}) minus Bills left (£{{ "%.2f"|format(overview.future_bills) }})</div>
+      </div>
+    </div>
+
+    <div class="col-6">
+      <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('savings')">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="text-muted small">Savings</div>
+          <span id="arrow-savings" class="fw-bold" style="font-size:13px;color:#111">+</span>
+        </div>
         <div class="fs-4 fw-bold">£{{ "%.2f"|format(overview.savings_balance) }}</div>
+      </div>
+      <div id="tile-savings" class="d-none mt-2 px-1">
+        {% for a in overview.savings_accounts %}
+        <div class="d-flex justify-content-between small py-1 border-bottom">
+          <span>{{ a.name }}</span>
+          <span class="fw-semibold">£{{ "%.2f"|format(a.balance) }}</span>
+        </div>
+        {% endfor %}
       </div>
     </div>
 
     <div class="col-12">
-      <div class="p-3 bg-dark text-white rounded-4 text-center">
-        <div class="small">Net Worth</div>
+      <div class="p-3 bg-dark text-white rounded-4 tile" onclick="toggleTile('networth')">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="small">Net Worth</div>
+          <span id="arrow-networth" class="fw-bold" style="font-size:13px;color:#fff">+</span>
+        </div>
         <div class="fs-3 fw-bold">£{{ "%.2f"|format(overview.net_worth) }}</div>
+      </div>
+      <div id="tile-networth" class="d-none mt-2 px-1">
+        <div class="d-flex justify-content-between small py-1 border-bottom">
+          <span>Available</span>
+          <span class="fw-semibold">£{{ "%.2f"|format(overview.spending_balance) }}</span>
+        </div>
+        <div class="d-flex justify-content-between small py-1">
+          <span>Savings</span>
+          <span class="fw-semibold">£{{ "%.2f"|format(overview.savings_balance) }}</span>
+        </div>
       </div>
     </div>
 
@@ -160,27 +214,67 @@ input, select {
 
 <div class="card p-3 mb-4">
   <h5 class="mb-3">This Month's Spending</h5>
-
   <div class="row g-3">
 
     <div class="col-4">
-      <div class="p-3 bg-white rounded-4 shadow-sm text-center">
-        <div class="text-muted small">Normal spending</div>
+      <div class="p-3 bg-white rounded-4 shadow-sm text-center tile" onclick="toggleTile('normal')">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="text-muted small">Normal spending</div>
+          <span id="arrow-normal" class="fw-bold" style="font-size:13px;color:#111">+</span>
+        </div>
         <div class="fs-5 fw-bold">£{{ "%.2f"|format(monthly.normal) }}</div>
       </div>
-    </div>
-
-    <div class="col-4">
-      <div class="p-3 bg-white rounded-4 shadow-sm text-center">
-        <div class="text-muted small">Bills paid</div>
-        <div class="fs-5 fw-bold">£{{ "%.2f"|format(monthly.scheduled) }}</div>
+      <div id="tile-normal" class="d-none mt-2 px-1">
+        {% for t in monthly.normal_list %}
+        <div class="d-flex justify-content-between small py-1 border-bottom">
+          <span>{{ t.description }}</span>
+          <span class="fw-semibold text-danger">£{{ "%.2f"|format(t.amount) }}</span>
+        </div>
+        {% endfor %}
+        {% if not monthly.normal_list %}
+        <div class="small text-muted py-1">No expenses this month yet</div>
+        {% endif %}
       </div>
     </div>
 
     <div class="col-4">
-      <div class="p-3 bg-dark text-white rounded-4 text-center">
-        <div class="small">Total outflow</div>
+      <div class="p-3 bg-white rounded-4 shadow-sm text-center tile" onclick="toggleTile('billspaid')">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="text-muted small">Bills paid</div>
+          <span id="arrow-billspaid" class="fw-bold" style="font-size:13px;color:#111">+</span>
+        </div>
+        <div class="fs-5 fw-bold">£{{ "%.2f"|format(monthly.scheduled) }}</div>
+      </div>
+      <div id="tile-billspaid" class="d-none mt-2 px-1">
+        {% for t in monthly.bills_list %}
+        <div class="d-flex justify-content-between small py-1 border-bottom">
+          <span>{{ t.description }}</span>
+          <span class="fw-semibold text-danger">£{{ "%.2f"|format(t.amount) }}</span>
+        </div>
+        {% endfor %}
+        {% if not monthly.bills_list %}
+        <div class="small text-muted py-1">No bills paid this month yet</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-4">
+      <div class="p-3 bg-dark text-white rounded-4 text-center tile" onclick="toggleTile('outflow')">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="small">Total outflow</div>
+          <span id="arrow-outflow" class="fw-bold" style="font-size:13px;color:#fff">+</span>
+        </div>
         <div class="fs-5 fw-bold">£{{ "%.2f"|format(monthly.total) }}</div>
+      </div>
+      <div id="tile-outflow" class="d-none mt-2 px-1">
+        <div class="d-flex justify-content-between small py-1 border-bottom">
+          <span>Normal spending</span>
+          <span class="fw-semibold">£{{ "%.2f"|format(monthly.normal) }}</span>
+        </div>
+        <div class="d-flex justify-content-between small py-1">
+          <span>Bills paid</span>
+          <span class="fw-semibold">£{{ "%.2f"|format(monthly.scheduled) }}</span>
+        </div>
       </div>
     </div>
 
@@ -250,6 +344,7 @@ input, select {
           <th>Account</th>
           <th class="text-end">Balance</th>
           <th class="text-end">Type</th>
+          <th class="text-end">In Overview</th>
         </tr>
       </thead>
       <tbody>
@@ -262,12 +357,20 @@ input, select {
             <td class="text-end">
               <span class="badge text-bg-light">{{ row.type }}</span>
             </td>
+            <td class="text-end">
+              <form method="POST" action="/toggle-account-overview" class="d-inline">
+                <input type="hidden" name="account_id" value="{{ row.id }}">
+                <button type="submit" class="btn btn-sm rounded-3 px-2
+                  {% if row.include_in_overview %}btn-dark{% else %}btn-outline-secondary{% endif %}">
+                  {% if row.include_in_overview %}✓{% else %}−{% endif %}
+                </button>
+              </form>
+            </td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-
 </div>
 
 </div>
@@ -305,5 +408,13 @@ input, select {
 
   </div>
 </nav>
+<script>
+function toggleTile(id) {
+  const tile = document.getElementById('tile-' + id);
+  const arrow = document.getElementById('arrow-' + id);
+  tile.classList.toggle('d-none');
+  arrow.textContent = tile.classList.contains('d-none') ? '+' : '−';
+}
+</script>
 </body>
 </html>

@@ -184,22 +184,25 @@ def calculate_financial_overview(accounts):
 
     spending_balance = 0.0
     savings_balance = 0.0
+    spending_accounts = []
+    savings_accounts = []
 
-    # split balances
     for name, info in accounts.items():
         if not info.get("active", True):
             continue
-
+        if not info.get("include_in_overview", 1):
+            continue
         acc_type = info.get("type")
         balance = float(info.get("balance", 0.0))
-
         if acc_type in spending_types:
             spending_balance += balance
+            spending_accounts.append({"name": name, "balance": balance})
         elif acc_type in savings_types:
             savings_balance += balance
+            savings_accounts.append({"name": name, "balance": balance})
 
-    # future bills remaining this month
     spending_future_bills = 0.0
+    future_bills_list = []
 
     for expense in scheduled_expenses:
         if expense["day"] is None:
@@ -208,6 +211,12 @@ def calculate_financial_overview(accounts):
             acc = expense["account"]
             if acc in accounts and accounts[acc]["type"] in spending_types:
                 spending_future_bills += expense["amount"]
+                future_bills_list.append({
+                    "name": expense["name"],
+                    "amount": expense["amount"],
+                    "day": expense["day"],
+                    "account": expense["account"]
+                })
 
     safe_spending = spending_balance - spending_future_bills
     net_worth = spending_balance + savings_balance
@@ -217,7 +226,10 @@ def calculate_financial_overview(accounts):
         "future_bills": spending_future_bills,
         "safe_spending": safe_spending,
         "savings_balance": savings_balance,
-        "net_worth": net_worth
+        "net_worth": net_worth,
+        "spending_accounts": sorted(spending_accounts, key=lambda x: x["name"].lower()),
+        "savings_accounts": sorted(savings_accounts, key=lambda x: x["name"].lower()),
+        "future_bills_list": sorted(future_bills_list, key=lambda x: x["day"]),
     }
 
 def calculate_monthly_spending():
@@ -231,22 +243,24 @@ def calculate_monthly_spending():
     if USE_POSTGRES:
         cursor.execute(
             """
-            SELECT amount, type FROM transactions
+            SELECT amount, type, description, date, account FROM transactions
             WHERE EXTRACT(YEAR FROM date::date) = %s
             AND EXTRACT(MONTH FROM date::date) = %s
             AND user_id = %s
             AND amount < 0
+            AND type != 'transfer'
             """,
             (year, month, current_user.id)
         )
     else:
         cursor.execute(
             """
-            SELECT amount, type FROM transactions
+            SELECT amount, type, description, date, account FROM transactions
             WHERE strftime('%Y', date) = ?
             AND strftime('%m', date) = ?
             AND user_id = ?
             AND amount < 0
+            AND type != 'transfer'
             """,
             (str(year), f"{month:02d}", current_user.id)
         )
@@ -257,24 +271,36 @@ def calculate_monthly_spending():
 
     normal = 0.0
     scheduled = 0.0
+    normal_list = []
+    bills_list = []
 
     for r in rows:
         if USE_POSTGRES:
             amount = abs(r[0])
             tx_type = r[1]
+            description = r[2]
+            tx_date = r[3]
+            account = r[4]
         else:
             amount = abs(r["amount"])
             tx_type = r["type"]
+            description = r["description"]
+            tx_date = r["date"]
+            account = r["account"]
 
         if tx_type == "bill":
             scheduled += amount
+            bills_list.append({"description": description, "amount": amount, "date": tx_date, "account": account})
         else:
             normal += amount
+            normal_list.append({"description": description, "amount": amount, "date": tx_date, "account": account})
 
     return {
         "normal": normal,
         "scheduled": scheduled,
-        "total": normal + scheduled
+        "total": normal + scheduled,
+        "normal_list": normal_list,
+        "bills_list": bills_list,
     }
 
 @app.get("/")
@@ -285,11 +311,13 @@ def home():
     accounts = {}
 
     for r in accounts_rows:
-      accounts[r["name"]] = {
-          "balance": r["balance"],
-          "type": r["type"],
-          "active": bool(r["active"])
-      }
+        accounts[r["name"]] = {
+            "id": r["id"],
+            "balance": r["balance"],
+            "type": r["type"],
+            "active": bool(r["active"]),
+            "include_in_overview": bool(r.get("include_in_overview", 1))
+        }
 
     overview = calculate_financial_overview(accounts)
     monthly = calculate_monthly_spending()
@@ -302,7 +330,9 @@ def home():
         balances.append({
             "name": n,
             "balance": float(accounts[n].get("balance", 0.0)),
-            "type": accounts[n].get("type", "")
+            "type": accounts[n].get("type", ""),
+            "id": accounts[n].get("id"),
+            "include_in_overview": accounts[n].get("include_in_overview", True)
         })
 
     return render_template(
@@ -445,8 +475,8 @@ def transfer():
 
     today_str = date.today().isoformat()
 
-    add_transaction(today_str, f"Transfer to {to_account}", -amount, from_account, current_user.id)
-    add_transaction(today_str, f"Transfer from {from_account}", amount, to_account, current_user.id)
+    add_transaction(today_str, f"Transfer to {to_account}", -amount, from_account, current_user.id, type="transfer")
+    add_transaction(today_str, f"Transfer from {from_account}", amount, to_account, current_user.id, type="transfer")
 
     update_account_balance(from_account, -amount, current_user.id)
     update_account_balance(to_account, amount, current_user.id)
@@ -538,6 +568,29 @@ def transaction_edit():
     db.close()
 
     return redirect(url_for("transactions", msg="Transaction updated."))
+
+@app.post("/toggle-account-overview")
+@login_required
+def toggle_account_overview():
+    account_id = request.form.get("account_id")
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT include_in_overview FROM accounts WHERE id = %s AND user_id = %s", (account_id, current_user.id))
+    else:
+        cursor.execute("SELECT include_in_overview FROM accounts WHERE id = ? AND user_id = ?", (account_id, current_user.id))
+    row = cursor.fetchone()
+    if row:
+        current_val = row[0] if USE_POSTGRES else row["include_in_overview"]
+        new_val = 0 if current_val else 1
+        if USE_POSTGRES:
+            cursor.execute("UPDATE accounts SET include_in_overview = %s WHERE id = %s AND user_id = %s", (new_val, account_id, current_user.id))
+        else:
+            cursor.execute("UPDATE accounts SET include_in_overview = ? WHERE id = ? AND user_id = ?", (new_val, account_id, current_user.id))
+        db.commit()
+    cursor.close()
+    db.close()
+    return redirect(url_for("home"))
 
 @app.post("/afford")
 @login_required

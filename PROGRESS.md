@@ -75,3 +75,12 @@
 - Fixed monthly spending to correctly split bills and normal transactions
 - Added undo and edit on transactions page
 - Added logo to header on all pages
+
+13/03/26
+
+### Session 8 — Done
+- Fixed transfers being counted as spending — now saved as type='transfer' and excluded
+- Clickable overview tiles — tap any tile to see full breakdown of what feeds into it
+- Account toggles — include/exclude any account from the financial overview calculations
+- Added include_in_overview column to accounts table
+- Cleaned up database.py — removed duplicate flask_sessions table creation

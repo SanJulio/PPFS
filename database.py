@@ -111,13 +111,15 @@ def init_db():
     )
     """)
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS flask_sessions (
-        sid TEXT PRIMARY KEY,
-        data TEXT NOT NULL
-    )
-    """)
-
     db.commit()
+
+    # Add include_in_overview column if it doesn't exist yet
+    try:
+        cursor.execute("ALTER TABLE accounts ADD COLUMN include_in_overview INTEGER NOT NULL DEFAULT 1")
+        db.commit()
+    except Exception:
+        db.rollback()
+        pass  # column already exists, that's fine
+
     cursor.close()
     db.close()
