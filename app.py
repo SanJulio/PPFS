@@ -1156,38 +1156,6 @@ def logout():
     logout_user()
     return redirect(url_for("login"))
 
-@app.get("/fix-bills")
-@login_required
-def fix_bills():
-    db = get_db()
-    cursor = db.cursor()
-    
-    # Get all bill names for this user
-    if USE_POSTGRES:
-        cursor.execute("SELECT name FROM scheduled_expenses WHERE user_id = %s", (current_user.id,))
-    else:
-        cursor.execute("SELECT name FROM scheduled_expenses WHERE user_id = ?", (current_user.id,))
-    
-    bill_names = [row[0] if USE_POSTGRES else row["name"] for row in cursor.fetchall()]
-    
-    # Update matching transactions to type='bill'
-    for name in bill_names:
-        if USE_POSTGRES:
-            cursor.execute("""
-                UPDATE transactions SET type = 'bill'
-                WHERE description = %s AND user_id = %s AND type = 'manual'
-            """, (name, current_user.id))
-        else:
-            cursor.execute("""
-                UPDATE transactions SET type = 'bill'
-                WHERE description = ? AND user_id = ? AND type = 'manual'
-            """, (name, current_user.id))
-    
-    db.commit()
-    cursor.close()
-    db.close()
-    return redirect(url_for("home", msg="Bills fixed!"))
-
 if __name__ == "__main__":
     try:
         app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)
