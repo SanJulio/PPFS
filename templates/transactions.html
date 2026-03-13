@@ -59,12 +59,11 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
       <div class="col-12 col-sm-5">
         <input type="text" id="searchInput" class="form-control search-input w-100"
           placeholder="🔍 Search description or account...">
+      <div class="col-6 col-sm-3">
+        <input type="text" id="dateFrom" class="form-control search-input w-100" placeholder="From: YYYY-MM-DD" onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'">
       </div>
       <div class="col-6 col-sm-3">
-        <input type="date" id="dateFrom" class="form-control search-input w-100">
-      </div>
-      <div class="col-6 col-sm-3">
-        <input type="date" id="dateTo" class="form-control search-input w-100">
+        <input type="text" id="dateTo" class="form-control search-input w-100" placeholder="To: YYYY-MM-DD" onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'">
       </div>
       <div class="col-12 col-sm-1">
         <button onclick="clearFilters()" class="btn btn-outline-secondary w-100 rounded-3" style="padding:10px">✕</button>
