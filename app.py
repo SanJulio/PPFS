@@ -362,15 +362,27 @@ def actions():
     accounts = [r["name"] for r in accounts_rows]
     return render_template("actions.html", accounts=accounts, message=request.args.get("msg", ""))
 
-@app.get("/bills")
+@app.get("/flow")
 @login_required
-def bills():
+def flow():
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM income WHERE user_id = %s", (current_user.id,))
+    else:
+        cursor.execute("SELECT * FROM income WHERE user_id = ?", (current_user.id,))
+    cols = [d[0] for d in cursor.description]
+    income = [dict(zip(cols, row)) for row in cursor.fetchall()]
+    cursor.close()
+    db.close()
+
     return render_template(
-        "bills.html",
-        bills=get_all_scheduled_expenses()
+        "flow.html",
+        bills=get_all_scheduled_expenses(),
+        income=income
     )
 
-@app.post("/bills/pay")
+@app.post("/flow/pay-bill")
 @login_required
 def bills_pay():
     bill_id = request.form.get("bill_id")
@@ -395,7 +407,34 @@ def bills_pay():
     add_transaction(today_str, bill["name"], -bill["amount"], bill["account"], current_user.id, type="bill")
     update_account_balance(bill["account"], -bill["amount"], current_user.id)
 
-    return redirect(url_for("bills", msg=f"{bill['name']} — £{bill['amount']:.2f} paid."))
+    return redirect(url_for("flow", msg=f"{bill['name']} — £{bill['amount']:.2f} paid."))
+
+@app.post("/flow/pay-income")
+@login_required
+def income_pay():
+    income_id = request.form.get("income_id")
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM income WHERE id = %s AND user_id = %s", (income_id, current_user.id))
+    else:
+        cursor.execute("SELECT * FROM income WHERE id = ? AND user_id = ?", (income_id, current_user.id))
+    cols = [d[0] for d in cursor.description]
+    row = cursor.fetchone()
+    cursor.close()
+    db.close()
+
+    if not row:
+        return redirect(url_for("flow", msg="Income not found."))
+
+    income = dict(zip(cols, row))
+    today_str = date.today().isoformat()
+
+    add_transaction(today_str, income["name"], income["amount"], income["account"], current_user.id, type="income")
+    update_account_balance(income["account"], income["amount"], current_user.id)
+
+    return redirect(url_for("flow", msg=f"{income['name']} — £{income['amount']:.2f} received."))
 
 @app.post("/add-expense")
 @login_required
@@ -1020,12 +1059,17 @@ def settings_add_income():
     db.close()
     return redirect(url_for("settings", msg=f"Income source '{name}' added."))
 
-@app.post("/settings/update-income")
+@app.post("/settings/edit-income")
 @login_required
-def settings_update_income():
+def settings_edit_income():
     income_id = request.form.get("id")
+    name = (request.form.get("name") or "").strip()
     amount = (request.form.get("amount") or "").strip()
+    frequency = (request.form.get("frequency") or "").strip()
+    account = (request.form.get("account") or "").strip()
 
+    if not name or not amount or not frequency or not account:
+        return redirect(url_for("settings", msg="Missing fields."))
     try:
         amount = float(amount)
     except ValueError:
@@ -1034,9 +1078,11 @@ def settings_update_income():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("UPDATE income SET amount = %s WHERE id = %s AND user_id = %s", (amount, income_id, current_user.id))
+        cursor.execute("UPDATE income SET name=%s, amount=%s, frequency=%s, account=%s WHERE id=%s AND user_id=%s",
+                       (name, amount, frequency, account, income_id, current_user.id))
     else:
-        cursor.execute("UPDATE income SET amount = ? WHERE id = ? AND user_id = ?", (amount, income_id, current_user.id))
+        cursor.execute("UPDATE income SET name=?, amount=?, frequency=?, account=? WHERE id=? AND user_id=?",
+                       (name, amount, frequency, account, income_id, current_user.id))
     db.commit()
     cursor.close()
     db.close()

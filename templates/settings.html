@@ -445,23 +445,71 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       <span class="badge-soft">{{ income|length }} sources</span>
     </div>
 
-    {% for i in income %}
-    <div class="border rounded-4 p-3 mb-2 bg-white">
-      <div class="fw-semibold">{{ i.name }}</div>
-      <div class="text-muted small mb-2">{{ i.frequency }} → {{ i.account }}</div>
-      <div class="d-flex gap-2">
-        <form method="POST" action="/settings/update-income" class="d-flex gap-2 flex-grow-1">
-          <input type="hidden" name="id" value="{{ i.id }}">
-          <input class="form-control" name="amount" value="{{ '%.2f'|format(i.amount) }}" inputmode="decimal">
-          <button class="btn btn-dark">Save</button>
-        </form>
-        <form method="POST" action="/settings/delete-income" onsubmit="return confirm('Delete {{ i.name }}?')">
-          <input type="hidden" name="id" value="{{ i.id }}">
-          <button class="btn btn-outline-danger">Delete</button>
-        </form>
-      </div>
+    <div class="table-responsive mb-3">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th class="text-end">Amount</th>
+            <th class="text-end">Frequency</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in income %}
+          <tr>
+            <td>{{ i.name }}</td>
+            <td class="text-end money">£{{ "%.2f"|format(i.amount) }}</td>
+            <td class="text-end"><span class="badge text-bg-light">{{ i.frequency }}</span></td>
+            <td class="text-end">
+              <div class="d-flex gap-1 justify-content-end">
+                <button class="btn btn-sm btn-outline-secondary"
+                  onclick="toggleEdit('income-{{ i.id }}')">Edit</button>
+                <form method="POST" action="/settings/delete-income"
+                  onsubmit="return confirm('Delete {{ i.name }}?')">
+                  <input type="hidden" name="id" value="{{ i.id }}">
+                  <button class="btn btn-sm btn-outline-danger">Delete</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          <tr id="income-{{ i.id }}" style="display:none; background:#f8f9fa;">
+            <td colspan="4">
+              <form method="POST" action="/settings/edit-income" class="p-2">
+                <input type="hidden" name="id" value="{{ i.id }}">
+                <div class="row g-2">
+                  <div class="col-6">
+                    <input class="form-control form-control-sm" name="name" value="{{ i.name }}" placeholder="Name" required>
+                  </div>
+                  <div class="col-6">
+                    <input class="form-control form-control-sm" name="amount" value="{{ '%.2f'|format(i.amount) }}" placeholder="Amount" required>
+                  </div>
+                  <div class="col-6">
+                    <select class="form-select form-select-sm" name="frequency" required>
+                      <option value="weekly" {% if i.frequency == 'weekly' %}selected{% endif %}>Weekly</option>
+                      <option value="monthly" {% if i.frequency == 'monthly' %}selected{% endif %}>Monthly</option>
+                    </select>
+                  </div>
+                  <div class="col-6">
+                    <select class="form-select form-select-sm" name="account" required>
+                      {% for a in accounts %}
+                        <option value="{{ a.name }}" {% if a.name == i.account %}selected{% endif %}>{{ a.name }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-12 d-flex gap-2">
+                    <button class="btn btn-sm btn-dark">Save</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                      onclick="toggleEdit('income-{{ i.id }}')">Cancel</button>
+                  </div>
+                </div>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
-    {% endfor %}
 
     <hr>
     <div class="small fw-bold mb-2">Add New Income Source</div>
@@ -503,9 +551,9 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       <div style="font-size:20px">⚡</div>
       <small>Actions</small>
     </a>
-    <a href="/bills" class="text-decoration-none text-dark">
-      <div style="font-size:20px">💳</div>
-      <small>Bills</small>
+    <a href="/flow" class="text-decoration-none text-dark">
+      <div style="font-size:20px">💸</div>
+      <small>Flow</small>
     </a>
     <a href="/transactions" class="text-decoration-none text-dark">
       <div style="font-size:20px">📜</div>
