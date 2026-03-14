@@ -32,107 +32,109 @@ def init_db():
     db = get_db()
     cursor = db.cursor()
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        created_at TEXT NOT NULL
-    )
-    """)
+    tables = [
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS accounts (
+            id SERIAL PRIMARY KEY,
+            name TEXT UNIQUE NOT NULL,
+            balance REAL NOT NULL,
+            type TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS transactions (
+            id SERIAL PRIMARY KEY,
+            date TEXT NOT NULL,
+            description TEXT NOT NULL,
+            amount REAL NOT NULL,
+            account TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT 'manual'
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS scheduled_expenses (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            amount REAL NOT NULL,
+            day INTEGER,
+            account TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS income (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            amount REAL NOT NULL,
+            frequency TEXT NOT NULL,
+            account TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS savings_rules (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            amount REAL NOT NULL,
+            day INTEGER NOT NULL,
+            frequency TEXT NOT NULL DEFAULT 'monthly',
+            from_account TEXT NOT NULL,
+            to_account TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS future_events (
+            id SERIAL PRIMARY KEY,
+            date TEXT NOT NULL,
+            name TEXT NOT NULL,
+            amount REAL NOT NULL,
+            account TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS flask_sessions (
+            sid TEXT PRIMARY KEY,
+            data TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS investments (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            initial_amount REAL NOT NULL,
+            date TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS investment_updates (
+            id SERIAL PRIMARY KEY,
+            investment_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            value REAL NOT NULL,
+            date TEXT NOT NULL
+        )
+        """,
+    ]
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS accounts (
-        id SERIAL PRIMARY KEY,
-        name TEXT UNIQUE NOT NULL,
-        balance REAL NOT NULL,
-        type TEXT NOT NULL,
-        active INTEGER NOT NULL DEFAULT 1
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS transactions (
-        id SERIAL PRIMARY KEY,
-        date TEXT NOT NULL,
-        description TEXT NOT NULL,
-        amount REAL NOT NULL,
-        account TEXT NOT NULL,
-        type TEXT NOT NULL DEFAULT 'manual'
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS scheduled_expenses (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        amount REAL NOT NULL,
-        day INTEGER,
-        account TEXT NOT NULL
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS income (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        amount REAL NOT NULL,
-        frequency TEXT NOT NULL,
-        account TEXT NOT NULL
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS savings_rules (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        amount REAL NOT NULL,
-        day INTEGER NOT NULL,
-        frequency TEXT NOT NULL DEFAULT 'monthly',
-        from_account TEXT NOT NULL,
-        to_account TEXT NOT NULL
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS future_events (
-        id SERIAL PRIMARY KEY,
-        date TEXT NOT NULL,
-        name TEXT NOT NULL,
-        amount REAL NOT NULL,
-        account TEXT NOT NULL
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS flask_sessions (
-        sid TEXT PRIMARY KEY,
-        data TEXT NOT NULL
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS investments (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER NOT NULL,
-        name TEXT NOT NULL,
-        type TEXT NOT NULL,
-        initial_amount REAL NOT NULL,
-        date TEXT NOT NULL
-    )
-    """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS investment_updates (
-        id SERIAL PRIMARY KEY,
-        investment_id INTEGER NOT NULL,
-        user_id INTEGER NOT NULL,
-        value REAL NOT NULL,
-        date TEXT NOT NULL
-    )
-    """)
-
-    db.commit()
+    for table in tables:
+        try:
+            cursor.execute(table)
+            db.commit()
+        except Exception as e:
+            print(f">>> Table creation error: {e}", flush=True)
+            try:
+                db.rollback()
+            except:
+                pass
 
     # Add include_in_overview column if it doesn't exist yet
     try:
