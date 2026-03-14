@@ -28,8 +28,15 @@ body { background: #f2f4f7; padding-bottom: 110px; }
 tbody tr.flow-row { cursor: pointer; }
 tbody tr.flow-row:hover { background: #f8f9fa; }
 .expand-row td { background: #f8f9fa; border-top: none !important; }
-.toggle-btn { border-radius: 12px; padding: 10px 24px; font-weight: 600; }
+.toggle-btn { border-radius: 12px; padding: 10px 16px; font-weight: 600; font-size: 13px; }
 .toggle-btn.active { background: #111; color: #fff; border-color: #111; }
+.acc-row { cursor: pointer; }
+.acc-row:hover { background: #f8f9fa; }
+.inner-section { cursor: pointer; }
+.inner-section:hover { background: #f0f0f0; }
+.traffic-green { color: #198754; font-size: 10px; }
+.traffic-amber { color: #fd7e14; font-size: 10px; }
+.traffic-red { color: #dc3545; font-size: 10px; }
 </style>
 </head>
 <body>
@@ -41,17 +48,26 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
     <div class="text-muted">Scheduled money in and out</div>
   </div>
 
-  {% if message %}
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <div class="alert alert-success rounded-4">{{ messages[0] }}</div>
+    {% endif %}
+  {% endwith %}
+
+  {% if message is defined and message %}
     <div class="alert alert-success rounded-4">{{ message }}</div>
   {% endif %}
 
   <!-- Toggle buttons -->
-  <div class="d-flex gap-2 mb-4">
+  <div class="d-flex gap-2 mb-4 flex-wrap">
     <button class="toggle-btn btn btn-outline-dark active" id="btnExpenses" onclick="showSection('expenses')">
       💸 Expenses
     </button>
     <button class="toggle-btn btn btn-outline-dark" id="btnIncome" onclick="showSection('income')">
       💰 Income
+    </button>
+    <button class="toggle-btn btn btn-outline-dark" id="btnAccounts" onclick="showSection('accounts')">
+      🏦 Accounts
     </button>
   </div>
 
@@ -171,6 +187,144 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
     </div>
   </div>
 
+  <!-- ACCOUNTS SECTION -->
+  <div id="sectionAccounts" class="d-none">
+    <div class="vstack gap-3">
+      {% for acc in account_data %}
+      <div class="card p-3">
+
+        <!-- Account header -->
+        <div class="d-flex justify-content-between align-items-center acc-row"
+          onclick="toggleAcc('acc{{ acc.id }}')">
+          <div>
+            <span id="acc-arrow-{{ acc.id }}" class="fw-bold me-2" style="font-size:13px;color:#111">+</span>
+            <span class="fw-bold">{{ acc.name }}</span>
+            <span class="badge text-bg-light ms-2">{{ acc.type }}</span>
+          </div>
+          <div class="text-end">
+            <div class="fw-bold money">£{{ "%.2f"|format(acc.balance) }}</div>
+            <div class="small
+              {% if acc.traffic == 'green' %}traffic-green
+              {% elif acc.traffic == 'amber' %}traffic-amber
+              {% else %}traffic-red{% endif %}">
+              ● Projected: £{{ "%.2f"|format(acc.projected) }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Account detail -->
+        <div id="acc{{ acc.id }}" class="d-none mt-3">
+
+          <!-- Bills paid -->
+          <div class="inner-section rounded-3 p-2 mb-2"
+            onclick="toggleInner('bp{{ acc.id }}')">
+            <div class="d-flex justify-content-between">
+              <span class="small fw-bold">
+                <span id="bp-arrow-{{ acc.id }}">+</span>
+                Bills paid this month ({{ acc.bills_paid|length }})
+              </span>
+              <span class="small text-danger fw-bold">
+                £{{ "%.2f"|format(acc.bills_paid|sum(attribute='amount')|abs) }}
+              </span>
+            </div>
+          </div>
+          <div id="bp{{ acc.id }}" class="d-none px-2 mb-2">
+            {% if acc.bills_paid %}
+              {% for b in acc.bills_paid %}
+              <div class="d-flex justify-content-between small py-1 border-bottom">
+                <span>{{ b.description }}</span>
+                <span class="text-danger">£{{ "%.2f"|format(b.amount|abs) }}</span>
+              </div>
+              {% endfor %}
+            {% else %}
+              <div class="small text-muted py-1">None paid yet this month</div>
+            {% endif %}
+          </div>
+
+          <!-- Bills to pay -->
+          <div class="inner-section rounded-3 p-2 mb-2"
+            onclick="toggleInner('btp{{ acc.id }}')">
+            <div class="d-flex justify-content-between">
+              <span class="small fw-bold">
+                <span id="btp-arrow-{{ acc.id }}">+</span>
+                Bills to pay this month ({{ acc.bills_to_pay|length }})
+              </span>
+              <span class="small text-danger fw-bold">
+                £{{ "%.2f"|format(acc.bills_to_pay|sum(attribute='amount')) }}
+              </span>
+            </div>
+          </div>
+          <div id="btp{{ acc.id }}" class="d-none px-2 mb-2">
+            {% if acc.bills_to_pay %}
+              {% for b in acc.bills_to_pay %}
+              <div class="d-flex justify-content-between small py-1 border-bottom">
+                <span>{{ b.name }} <span class="text-muted">(day {{ b.day }})</span></span>
+                <span class="text-danger">£{{ "%.2f"|format(b.amount) }}</span>
+              </div>
+              {% endfor %}
+            {% else %}
+              <div class="small text-muted py-1">All bills paid this month 🎉</div>
+            {% endif %}
+          </div>
+
+          <!-- Income received -->
+          <div class="inner-section rounded-3 p-2 mb-2"
+            onclick="toggleInner('ir{{ acc.id }}')">
+            <div class="d-flex justify-content-between">
+              <span class="small fw-bold">
+                <span id="ir-arrow-{{ acc.id }}">+</span>
+                Income received this month ({{ acc.income_received|length }})
+              </span>
+              <span class="small text-success fw-bold">
+                £{{ "%.2f"|format(acc.income_received|sum(attribute='amount')) }}
+              </span>
+            </div>
+          </div>
+          <div id="ir{{ acc.id }}" class="d-none px-2 mb-2">
+            {% if acc.income_received %}
+              {% for i in acc.income_received %}
+              <div class="d-flex justify-content-between small py-1 border-bottom">
+                <span>{{ i.description }}</span>
+                <span class="text-success">£{{ "%.2f"|format(i.amount) }}</span>
+              </div>
+              {% endfor %}
+            {% else %}
+              <div class="small text-muted py-1">No income received yet this month</div>
+            {% endif %}
+          </div>
+
+          <!-- Income to receive -->
+          <div class="inner-section rounded-3 p-2 mb-2"
+            onclick="toggleInner('itr{{ acc.id }}')">
+            <div class="d-flex justify-content-between">
+              <span class="small fw-bold">
+                <span id="itr-arrow-{{ acc.id }}">+</span>
+                Income to receive ({{ acc.income_to_receive|length }})
+              </span>
+              <span class="small text-success fw-bold">
+                £{{ "%.2f"|format(acc.income_to_receive|sum(attribute='amount')) }}
+              </span>
+            </div>
+          </div>
+          <div id="itr{{ acc.id }}" class="d-none px-2 mb-2">
+            {% if acc.income_to_receive %}
+              {% for i in acc.income_to_receive %}
+              <div class="d-flex justify-content-between small py-1 border-bottom">
+                <span>{{ i.name }} <span class="text-muted">({{ i.frequency }})</span></span>
+                <span class="text-success">£{{ "%.2f"|format(i.amount) }}</span>
+              </div>
+              {% endfor %}
+            {% else %}
+              <div class="small text-muted py-1">All income received this month 🎉</div>
+            {% endif %}
+          </div>
+
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
 </div>
 
 <nav class="navbar fixed-bottom bg-white border-top">
@@ -212,18 +366,44 @@ function toggleFlow(id) {
 }
 
 function showSection(section) {
-  document.getElementById('sectionExpenses').classList.add('d-none');
-  document.getElementById('sectionIncome').classList.add('d-none');
-  document.getElementById('btnExpenses').classList.remove('active');
-  document.getElementById('btnIncome').classList.remove('active');
+  ['sectionExpenses', 'sectionIncome', 'sectionAccounts'].forEach(s => {
+    document.getElementById(s).classList.add('d-none');
+  });
+  ['btnExpenses', 'btnIncome', 'btnAccounts'].forEach(b => {
+    document.getElementById(b).classList.remove('active');
+  });
+  document.getElementById('section' + section.charAt(0).toUpperCase() + section.slice(1)).classList.remove('d-none');
+  document.getElementById('btn' + section.charAt(0).toUpperCase() + section.slice(1)).classList.add('active');
+}
 
-  if (section === 'expenses') {
-    document.getElementById('sectionExpenses').classList.remove('d-none');
-    document.getElementById('btnExpenses').classList.add('active');
-  } else {
-    document.getElementById('sectionIncome').classList.remove('d-none');
-    document.getElementById('btnIncome').classList.add('active');
+function toggleAcc(id) {
+  const el = document.getElementById(id);
+  const accId = id.replace('acc', '');
+  const arrow = document.getElementById('acc-arrow-' + accId);
+  el.classList.toggle('d-none');
+  arrow.textContent = el.classList.contains('d-none') ? '+' : '−';
+}
+
+function toggleInner(id) {
+  const el = document.getElementById(id);
+  const prefix = id.replace(/\d+$/, '').replace(/acc$/, '');
+  const accId = id.match(/\d+$/)[0];
+  const arrowId = prefix.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase() + 'arrow-' + accId;
+
+  // simpler arrow lookup
+  const arrows = {
+    'bp': 'bp-arrow-',
+    'btp': 'btp-arrow-',
+    'ir': 'ir-arrow-',
+    'itr': 'itr-arrow-'
+  };
+  const key = Object.keys(arrows).find(k => id.startsWith(k));
+  if (key) {
+    const arrow = document.getElementById(arrows[key] + accId);
+    if (arrow) arrow.textContent = el.classList.contains('d-none') ? '−' : '+';
   }
+
+  el.classList.toggle('d-none');
 }
 </script>
 </body>

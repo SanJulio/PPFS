@@ -365,21 +365,117 @@ def actions():
 @app.get("/flow")
 @login_required
 def flow():
+    from datetime import date as date_type
+    today = date_type.today()
+    year = today.year
+    month = today.month
+    current_day = today.day
+
     db = get_db()
     cursor = db.cursor()
+
+    # get income
     if USE_POSTGRES:
         cursor.execute("SELECT * FROM income WHERE user_id = %s", (current_user.id,))
     else:
         cursor.execute("SELECT * FROM income WHERE user_id = ?", (current_user.id,))
     cols = [d[0] for d in cursor.description]
     income = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    # get bills paid this month
+    if USE_POSTGRES:
+        cursor.execute("""
+            SELECT description, amount, account FROM transactions
+            WHERE user_id = %s AND type = 'bill'
+            AND EXTRACT(YEAR FROM date::date) = %s
+            AND EXTRACT(MONTH FROM date::date) = %s
+        """, (current_user.id, year, month))
+    else:
+        cursor.execute("""
+            SELECT description, amount, account FROM transactions
+            WHERE user_id = ? AND type = 'bill'
+            AND strftime('%Y', date) = ?
+            AND strftime('%m', date) = ?
+        """, (current_user.id, str(year), f"{month:02d}"))
+    cols = [d[0] for d in cursor.description]
+    bills_paid_this_month = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    # get income received this month
+    if USE_POSTGRES:
+        cursor.execute("""
+            SELECT description, amount, account FROM transactions
+            WHERE user_id = %s AND type = 'income'
+            AND EXTRACT(YEAR FROM date::date) = %s
+            AND EXTRACT(MONTH FROM date::date) = %s
+        """, (current_user.id, year, month))
+    else:
+        cursor.execute("""
+            SELECT description, amount, account FROM transactions
+            WHERE user_id = ? AND type = 'income'
+            AND strftime('%Y', date) = ?
+            AND strftime('%m', date) = ?
+        """, (current_user.id, str(year), f"{month:02d}"))
+    cols = [d[0] for d in cursor.description]
+    income_received_this_month = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
     cursor.close()
     db.close()
 
+    bills = get_all_scheduled_expenses()
+    accounts_rows = get_active_accounts(current_user.id)
+
+    # build account data
+    account_data = []
+    for acc in accounts_rows:
+        acc_name = acc["name"]
+
+        # bills paid from this account this month
+        acc_bills_paid = [b for b in bills_paid_this_month if b["account"] == acc_name]
+
+        # bills still to pay from this account this month
+        acc_bills_to_pay = [b for b in bills if b["account"] == acc_name and b["day"] > current_day]
+
+        # income received to this account this month
+        acc_income_received = [i for i in income_received_this_month if i["account"] == acc_name]
+
+        # income still to receive to this account this month
+        acc_income_to_receive = [i for i in income if i["account"] == acc_name]
+        # remove ones already received this month
+        received_names = [i["description"] for i in acc_income_received]
+        acc_income_to_receive = [i for i in acc_income_to_receive if i["name"] not in received_names]
+
+        # projected end of month balance
+        bills_still_out = sum(b["amount"] for b in acc_bills_to_pay)
+        income_still_in = sum(i["amount"] for i in acc_income_to_receive)
+        projected = acc["balance"] - bills_still_out + income_still_in
+
+        # traffic light
+        if projected < 0:
+            traffic = "red"
+        elif projected < 100:
+            traffic = "amber"
+        else:
+            traffic = "green"
+
+        account_data.append({
+            "id": acc["id"],
+            "name": acc_name,
+            "balance": acc["balance"],
+            "type": acc["type"],
+            "bills_paid": acc_bills_paid,
+            "bills_to_pay": acc_bills_to_pay,
+            "income_received": acc_income_received,
+            "income_to_receive": acc_income_to_receive,
+            "projected": projected,
+            "traffic": traffic,
+        })
+
     return render_template(
         "flow.html",
-        bills=get_all_scheduled_expenses(),
-        income=income
+        bills=bills,
+        income=income,
+        account_data=account_data,
+        message=request.args.get("msg", ""),
     )
 
 @app.post("/flow/pay-bill")
