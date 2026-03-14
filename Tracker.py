@@ -7,6 +7,20 @@ DATA_DIR = BASE_DIR / "Data"
 
 RUNNING_AS_LIBRARY = __name__ != "__main__"
 
+def _db_fetch(query, params=None):
+    from database import get_db, USE_POSTGRES
+    db = get_db()
+    cursor = db.cursor()
+    if params:
+        cursor.execute(query, params)
+    else:
+        cursor.execute(query)
+    cols = [d[0] for d in cursor.description]
+    rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+    cursor.close()
+    db.close()
+    return rows
+
 from datetime import date
 if not RUNNING_AS_LIBRARY:
     today = date.today()
@@ -38,9 +52,7 @@ def ensure_csv_header(file_path, header):
 def load_scheduled_expenses(data_dir=None):
     from database import get_db
 
-    db = get_db()
-    rows = db.execute("SELECT * FROM scheduled_expenses").fetchall()
-    db.close()
+    rows = _db_fetch("SELECT * FROM scheduled_expenses")
 
     scheduled_expenses = []
     for row in rows:
@@ -58,9 +70,7 @@ def load_future_events(data_dir=None):
     from database import get_db
     from datetime import date
 
-    db = get_db()
-    rows = db.execute("SELECT * FROM future_events").fetchall()
-    db.close()
+    rows = _db_fetch("SELECT * FROM future_events")
 
     future_events = []
     for row in rows:
@@ -598,6 +608,7 @@ def show_month_projection(accounts, scheduled_expenses):
 
 # --- SIMULATE BALANCES ---
 def simulate_balances_until(target_date, accounts, scheduled_expenses, future_events):
+    today = date.today()
     """
     Simulates balances from tomorrow up to target_date (inclusive),
     applying weekly income (Fridays), scheduled expenses, future events, and savings rules.
@@ -614,10 +625,7 @@ def simulate_balances_until(target_date, accounts, scheduled_expenses, future_ev
     lowest = simulated.copy()
 
     # Load savings rules ONCE (not every day)
-    from database import get_db
-    db = get_db()
-    savings_rules = [dict(r) for r in db.execute("SELECT * FROM savings_rules").fetchall()]
-    db.close()
+    savings_rules = _db_fetch("SELECT * FROM savings_rules")
 
     sim_day = today + timedelta(days=1)
 
@@ -625,10 +633,7 @@ def simulate_balances_until(target_date, accounts, scheduled_expenses, future_ev
 
         # ---------- WEEKLY INCOME ----------
         if sim_day.weekday() == 4:  # Friday
-            from database import get_db
-            db = get_db()
-            income_rows = db.execute("SELECT * FROM income WHERE frequency = 'weekly'").fetchall()
-            db.close()
+            income_rows = _db_fetch("SELECT * FROM income WHERE frequency = 'weekly'")
             for row in income_rows:
                 acc = row["account"]
                 if acc in simulated:
@@ -822,10 +827,7 @@ def apply_day(sim_day, accounts, scheduled_expenses, future_events):
                 accounts[acc]["balance"] -= event["amount"]
 
     # ---------- SAVINGS RULES ----------
-    from database import get_db
-    db = get_db()
-    savings_rules = [dict(r) for r in db.execute("SELECT * FROM savings_rules").fetchall()]
-    db.close()
+    savings_rules = _db_fetch("SELECT * FROM savings_rules")
 
     for rule in savings_rules:
         if rule["day"] == sim_day.day:
