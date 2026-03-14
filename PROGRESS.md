@@ -110,3 +110,4 @@
     - Value history per investment
     - Portfolio summary (total invested, current value, total gain)
 - Flow page now has 4 tabs: Expenses, Income, Accounts, Investments
+- Fixed init_db table creation with individual try/catch blocks
