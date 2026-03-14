@@ -142,6 +142,32 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     </form>
   </div>
 
+  <!-- UPDATE INVESTMENT -->
+  {% if investments %}
+  <div class="card p-3 mb-4" id="investment">
+    <h5 class="mb-3">Update Investment Value</h5>
+    <form method="POST" action="/actions/update-investment">
+      <div class="mb-3">
+        <label class="form-label">Investment</label>
+        <select class="form-select" name="investment_id" required>
+          {% for i in investments %}
+            <option value="{{ i.id }}">{{ i.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Current Value (£)</label>
+        <input class="form-control" name="value" inputmode="decimal" placeholder="e.g. 1250.00" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Date</label>
+        <input class="form-control" name="date" type="date" required>
+      </div>
+      <button type="submit" class="btn btn-dark w-100 py-3">Log Update</button>
+    </form>
+  </div>
+  {% endif %}
+
 </div>
 
 <!-- CALCULATOR MODAL -->

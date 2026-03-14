@@ -111,6 +111,27 @@ def init_db():
     )
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS investments (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        initial_amount REAL NOT NULL,
+        date TEXT NOT NULL
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS investment_updates (
+        id SERIAL PRIMARY KEY,
+        investment_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        value REAL NOT NULL,
+        date TEXT NOT NULL
+    )
+    """)
+
     db.commit()
 
     # Add include_in_overview column if it doesn't exist yet

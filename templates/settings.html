@@ -539,6 +539,71 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     </form>
   </div>
 
+  <!-- INVESTMENTS -->
+  <div class="card p-3 mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0">Investments</h5>
+      <span class="badge-soft">{{ investments|length }} investments</span>
+    </div>
+
+    {% if investments %}
+    <div class="table-responsive mb-3">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th class="text-end">Initial</th>
+            <th class="text-end">Date</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in investments %}
+          <tr>
+            <td>{{ i.name }}</td>
+            <td><span class="badge text-bg-light">{{ i.type }}</span></td>
+            <td class="text-end money">£{{ "%.2f"|format(i.initial_amount) }}</td>
+            <td class="text-end small text-muted">{{ i.date }}</td>
+            <td class="text-end">
+              <form method="POST" action="/settings/delete-investment"
+                onsubmit="return confirm('Delete {{ i.name }}?')">
+                <input type="hidden" name="id" value="{{ i.id }}">
+                <button class="btn btn-sm btn-outline-danger">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <hr>
+    {% endif %}
+
+    <div class="small fw-bold mb-2">Add New Investment</div>
+    <form method="POST" action="/settings/add-investment">
+      <div class="mb-2">
+        <input class="form-control" name="name" placeholder="e.g. Apple Stocks, Bitcoin, Flat" required>
+      </div>
+      <div class="mb-2">
+        <select class="form-select" name="type" required>
+          <option value="">Select type</option>
+          <option value="stocks">Stocks</option>
+          <option value="crypto">Crypto</option>
+          <option value="property">Property</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="mb-2">
+        <input class="form-control" name="initial_amount" inputmode="decimal" placeholder="Initial amount (£)" required>
+      </div>
+      <div class="mb-3">
+        <input class="form-control" name="date" type="date" required>
+      </div>
+      <button class="btn btn-dark w-100 py-3">Add Investment</button>
+    </form>
+  </div>
+
 </div>
 
 <nav class="navbar fixed-bottom bg-white border-top">

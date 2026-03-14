@@ -84,3 +84,29 @@
 - Account toggles — include/exclude any account from the financial overview calculations
 - Added include_in_overview column to accounts table
 - Cleaned up database.py — removed duplicate flask_sessions table creation
+
+14/03/26
+
+### Session 9 — Done
+- Renamed Bills to Flow in nav bar
+- Flow page with Expenses, Income and Accounts tabs
+- Mark as Received for income sources
+- Accounts tab with per-account breakdown:
+  - Bills paid this month
+  - Bills to pay this month
+  - Income received this month
+  - Income to receive
+  - Projected end of month balance with traffic light
+- Income edit/delete in Account settings (same style as bills)
+- Fixed afford section (Tracker.py PostgreSQL compatibility)
+- Fix-bills and fix-transfers data migration completed
+
+### Session 10 — Done
+- Investments feature:
+  - Add investments in Account settings (name, type, initial amount, date)
+  - Log value updates in Actions page
+  - Investments tab in Flow page showing:
+    - Current value, gain/loss in £ and %
+    - Value history per investment
+    - Portfolio summary (total invested, current value, total gain)
+- Flow page now has 4 tabs: Expenses, Income, Accounts, Investments

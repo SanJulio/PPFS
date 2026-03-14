@@ -360,7 +360,19 @@ def transactions():
 def actions():
     accounts_rows = get_active_accounts(current_user.id)
     accounts = [r["name"] for r in accounts_rows]
-    return render_template("actions.html", accounts=accounts, message=request.args.get("msg", ""))
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM investments WHERE user_id = %s ORDER BY name", (current_user.id,))
+    else:
+        cursor.execute("SELECT * FROM investments WHERE user_id = ? ORDER BY name", (current_user.id,))
+    cols = [d[0] for d in cursor.description]
+    investments = [dict(zip(cols, row)) for row in cursor.fetchall()]
+    cursor.close()
+    db.close()
+
+    return render_template("actions.html", accounts=accounts, investments=investments, message=request.args.get("msg", ""))
 
 @app.get("/flow")
 @login_required
@@ -470,11 +482,52 @@ def flow():
             "traffic": traffic,
         })
 
+    # get investments with their updates
+    db2 = get_db()
+    cursor2 = db2.cursor()
+    if USE_POSTGRES:
+        cursor2.execute("SELECT * FROM investments WHERE user_id = %s ORDER BY name", (current_user.id,))
+    else:
+        cursor2.execute("SELECT * FROM investments WHERE user_id = ? ORDER BY name", (current_user.id,))
+    cols2 = [d[0] for d in cursor2.description]
+    investments_raw = [dict(zip(cols2, row)) for row in cursor2.fetchall()]
+
+    investments = []
+    for inv in investments_raw:
+        if USE_POSTGRES:
+            cursor2.execute("SELECT * FROM investment_updates WHERE investment_id = %s AND user_id = %s ORDER BY date ASC",
+                           (inv["id"], current_user.id))
+        else:
+            cursor2.execute("SELECT * FROM investment_updates WHERE investment_id = ? AND user_id = ? ORDER BY date ASC",
+                           (inv["id"], current_user.id))
+        cols3 = [d[0] for d in cursor2.description]
+        updates = [dict(zip(cols3, row)) for row in cursor2.fetchall()]
+
+        current_value = updates[-1]["value"] if updates else inv["initial_amount"]
+        gain = current_value - inv["initial_amount"]
+        gain_pct = (gain / inv["initial_amount"] * 100) if inv["initial_amount"] else 0
+
+        investments.append({
+            "id": inv["id"],
+            "name": inv["name"],
+            "type": inv["type"],
+            "initial_amount": inv["initial_amount"],
+            "date": inv["date"],
+            "current_value": current_value,
+            "gain": gain,
+            "gain_pct": gain_pct,
+            "updates": updates,
+        })
+
+    cursor2.close()
+    db2.close()
+
     return render_template(
         "flow.html",
         bills=bills,
         income=income,
         account_data=account_data,
+        investments=investments,
         message=request.args.get("msg", ""),
     )
 
@@ -854,6 +907,7 @@ def settings():
     savings_rules = fetch_filtered("SELECT * FROM savings_rules WHERE user_id = %s ORDER BY day" if USE_POSTGRES else "SELECT * FROM savings_rules WHERE user_id = ? ORDER BY day", (uid,))
     future_events = fetch_filtered("SELECT * FROM future_events WHERE user_id = %s ORDER BY date" if USE_POSTGRES else "SELECT * FROM future_events WHERE user_id = ? ORDER BY date", (uid,))
     income = fetch_filtered("SELECT * FROM income WHERE user_id = %s" if USE_POSTGRES else "SELECT * FROM income WHERE user_id = ?", (uid,))
+    investments = fetch_filtered("SELECT * FROM investments WHERE user_id = %s ORDER BY date DESC" if USE_POSTGRES else "SELECT * FROM investments WHERE user_id = ? ORDER BY date DESC", (uid,))
 
     cursor.close()
     db.close()
@@ -863,6 +917,7 @@ def settings():
         savings_rules=savings_rules,
         future_events=future_events,
         income=income,
+        investments=investments,
         message=request.args.get("msg", "")
     )
 
@@ -1198,6 +1253,80 @@ def settings_delete_income():
     cursor.close()
     db.close()
     return redirect(url_for("settings", msg="Income source deleted."))
+
+@app.post("/settings/add-investment")
+@login_required
+def settings_add_investment():
+    name = (request.form.get("name") or "").strip()
+    inv_type = (request.form.get("type") or "").strip()
+    initial_amount = (request.form.get("initial_amount") or "").strip()
+    inv_date = (request.form.get("date") or "").strip()
+
+    if not name or not inv_type or not initial_amount or not inv_date:
+        return redirect(url_for("settings", msg="Missing fields."))
+    try:
+        initial_amount = float(initial_amount)
+    except ValueError:
+        return redirect(url_for("settings", msg="Invalid amount."))
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("INSERT INTO investments (user_id, name, type, initial_amount, date) VALUES (%s, %s, %s, %s, %s)",
+                       (current_user.id, name, inv_type, initial_amount, inv_date))
+    else:
+        cursor.execute("INSERT INTO investments (user_id, name, type, initial_amount, date) VALUES (?, ?, ?, ?, ?)",
+                       (current_user.id, name, inv_type, initial_amount, inv_date))
+    db.commit()
+    cursor.close()
+    db.close()
+    return redirect(url_for("settings", msg=f"Investment '{name}' added."))
+
+
+@app.post("/settings/delete-investment")
+@login_required
+def settings_delete_investment():
+    inv_id = request.form.get("id")
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("DELETE FROM investments WHERE id = %s AND user_id = %s", (inv_id, current_user.id))
+        cursor.execute("DELETE FROM investment_updates WHERE investment_id = %s AND user_id = %s", (inv_id, current_user.id))
+    else:
+        cursor.execute("DELETE FROM investments WHERE id = ? AND user_id = ?", (inv_id, current_user.id))
+        cursor.execute("DELETE FROM investment_updates WHERE investment_id = ? AND user_id = ?", (inv_id, current_user.id))
+    db.commit()
+    cursor.close()
+    db.close()
+    return redirect(url_for("settings", msg="Investment deleted."))
+
+
+@app.post("/actions/update-investment")
+@login_required
+def actions_update_investment():
+    inv_id = request.form.get("investment_id")
+    value = (request.form.get("value") or "").strip()
+    inv_date = (request.form.get("date") or "").strip()
+
+    if not inv_id or not value or not inv_date:
+        return redirect(url_for("actions", msg="Missing fields."))
+    try:
+        value = float(value)
+    except ValueError:
+        return redirect(url_for("actions", msg="Invalid value."))
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("INSERT INTO investment_updates (investment_id, user_id, value, date) VALUES (%s, %s, %s, %s)",
+                       (inv_id, current_user.id, value, inv_date))
+    else:
+        cursor.execute("INSERT INTO investment_updates (investment_id, user_id, value, date) VALUES (?, ?, ?, ?)",
+                       (inv_id, current_user.id, value, inv_date))
+    db.commit()
+    cursor.close()
+    db.close()
+    return redirect(url_for("actions", msg="Investment updated."))
 
 @app.get("/register")
 def register():

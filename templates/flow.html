@@ -69,6 +69,9 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
     <button class="toggle-btn btn btn-outline-dark" id="btnAccounts" onclick="showSection('accounts')">
       🏦 Accounts
     </button>
+    <button class="toggle-btn btn btn-outline-dark" id="btnInvestments" onclick="showSection('investments')">
+      📈 Investments
+    </button>
   </div>
 
   <!-- EXPENSES SECTION -->
@@ -325,6 +328,92 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
     </div>
   </div>
 
+  <!-- INVESTMENTS SECTION -->
+  <div id="sectionInvestments" class="d-none">
+
+    {% if investments %}
+    {% set total_invested = investments|sum(attribute='initial_amount') %}
+    {% set total_current = investments|sum(attribute='current_value') %}
+    {% set total_gain = total_current - total_invested %}
+
+    <div class="card p-3 mb-3">
+      <div class="row g-3 text-center">
+        <div class="col-4">
+          <div class="text-muted small">Invested</div>
+          <div class="fw-bold">£{{ "%.2f"|format(total_invested) }}</div>
+        </div>
+        <div class="col-4">
+          <div class="text-muted small">Current</div>
+          <div class="fw-bold">£{{ "%.2f"|format(total_current) }}</div>
+        </div>
+        <div class="col-4">
+          <div class="text-muted small">Total Gain</div>
+          <div class="fw-bold {% if total_gain >= 0 %}text-success{% else %}text-danger{% endif %}">
+            {% if total_gain >= 0 %}+{% endif %}£{{ "%.2f"|format(total_gain) }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="vstack gap-3">
+      {% for inv in investments %}
+      <div class="card p-3">
+
+        <!-- Investment header -->
+        <div class="d-flex justify-content-between align-items-center acc-row"
+          onclick="toggleAcc('inv{{ inv.id }}')">
+          <div>
+            <span id="acc-arrow-inv{{ inv.id }}" class="fw-bold me-2" style="font-size:13px;color:#111">+</span>
+            <span class="fw-bold">{{ inv.name }}</span>
+            <span class="badge text-bg-light ms-2">{{ inv.type }}</span>
+          </div>
+          <div class="text-end">
+            <div class="fw-bold money">£{{ "%.2f"|format(inv.current_value) }}</div>
+            <div class="small {% if inv.gain >= 0 %}text-success{% else %}text-danger{% endif %}">
+              {% if inv.gain >= 0 %}+{% endif %}£{{ "%.2f"|format(inv.gain) }}
+              ({% if inv.gain_pct >= 0 %}+{% endif %}{{ "%.1f"|format(inv.gain_pct) }}%)
+            </div>
+          </div>
+        </div>
+
+        <!-- Investment detail -->
+        <div id="inv{{ inv.id }}" class="d-none mt-3">
+
+          <div class="d-flex justify-content-between small text-muted py-1 border-bottom mb-2">
+            <span>Initial investment</span>
+            <span>£{{ "%.2f"|format(inv.initial_amount) }} on {{ inv.date }}</span>
+          </div>
+
+          {% if inv.updates %}
+          <div class="small fw-bold mb-2">Value History</div>
+          {% for u in inv.updates %}
+          <div class="d-flex justify-content-between small py-1 border-bottom">
+            <span class="text-muted">{{ u.date }}</span>
+            <span class="fw-semibold 
+              {% if u.value >= inv.initial_amount %}text-success{% else %}text-danger{% endif %}">
+              £{{ "%.2f"|format(u.value) }}
+            </span>
+          </div>
+          {% endfor %}
+          {% else %}
+          <div class="small text-muted">No updates logged yet — add one in Actions</div>
+          {% endif %}
+
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% else %}
+    <div class="card p-4 text-center text-muted">
+      <div class="fs-2 mb-2">📈</div>
+      <div class="fw-bold mb-1">No investments yet</div>
+      <div class="small">Add your first investment in the Account section</div>
+    </div>
+    {% endif %}
+
+  </div>
+
 </div>
 
 <nav class="navbar fixed-bottom bg-white border-top">
@@ -366,22 +455,22 @@ function toggleFlow(id) {
 }
 
 function showSection(section) {
-  ['sectionExpenses', 'sectionIncome', 'sectionAccounts'].forEach(s => {
+  ['sectionExpenses', 'sectionIncome', 'sectionAccounts', 'sectionInvestments'].forEach(s => {
     document.getElementById(s).classList.add('d-none');
   });
-  ['btnExpenses', 'btnIncome', 'btnAccounts'].forEach(b => {
+  ['btnExpenses', 'btnIncome', 'btnAccounts', 'btnInvestments'].forEach(b => {
     document.getElementById(b).classList.remove('active');
   });
-  document.getElementById('section' + section.charAt(0).toUpperCase() + section.slice(1)).classList.remove('d-none');
-  document.getElementById('btn' + section.charAt(0).toUpperCase() + section.slice(1)).classList.add('active');
+  const key = section.charAt(0).toUpperCase() + section.slice(1);
+  document.getElementById('section' + key).classList.remove('d-none');
+  document.getElementById('btn' + key).classList.add('active');
 }
 
 function toggleAcc(id) {
   const el = document.getElementById(id);
-  const accId = id.replace('acc', '');
-  const arrow = document.getElementById('acc-arrow-' + accId);
+  const arrow = document.getElementById('acc-arrow-' + id);
   el.classList.toggle('d-none');
-  arrow.textContent = el.classList.contains('d-none') ? '+' : '−';
+  if (arrow) arrow.textContent = el.classList.contains('d-none') ? '+' : '−';
 }
 
 function toggleInner(id) {
