@@ -1418,6 +1418,133 @@ def reset_all():
     db.close()
     return redirect(url_for("settings", msg="Account fully reset. Fresh start! 🌱"))
 
+@app.get("/forecast")
+@login_required
+def forecast():
+    from datetime import date as date_type, timedelta
+    import json
+
+    today = date_type.today()
+
+    accounts_rows = get_active_accounts(current_user.id)
+    accounts = {}
+    for r in accounts_rows:
+        accounts[r["name"]] = {
+            "balance": float(r["balance"]),
+            "type": r["type"],
+            "active": True
+        }
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = %s", (current_user.id,))
+    else:
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = ?", (current_user.id,))
+    cols = [d[0] for d in cursor.description]
+    scheduled = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM future_events WHERE user_id = %s", (current_user.id,))
+    else:
+        cursor.execute("SELECT * FROM future_events WHERE user_id = ?", (current_user.id,))
+    cols = [d[0] for d in cursor.description]
+    future_events_raw = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM income WHERE user_id = %s", (current_user.id,))
+    else:
+        cursor.execute("SELECT * FROM income WHERE user_id = ?", (current_user.id,))
+    cols = [d[0] for d in cursor.description]
+    income_rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM savings_rules WHERE user_id = %s", (current_user.id,))
+    else:
+        cursor.execute("SELECT * FROM savings_rules WHERE user_id = ?", (current_user.id,))
+    cols = [d[0] for d in cursor.description]
+    savings_rules = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    cursor.close()
+    db.close()
+
+    future_events = []
+    for e in future_events_raw:
+        try:
+            future_events.append({
+                "date": date_type.fromisoformat(str(e["date"])),
+                "name": e["name"],
+                "amount": e["amount"],
+                "account": e["account"]
+            })
+        except:
+            continue
+
+    # single pass simulation over 90 days
+    simulated = {}
+    for name, info in accounts.items():
+        simulated[name] = info["balance"]
+
+    account_names = list(accounts.keys())
+    snapshots = []
+
+    for day_offset in range(1, 91):
+        sim_day = today + timedelta(days=day_offset)
+
+        # weekly income on Fridays
+        if sim_day.weekday() == 4:
+            for inc in income_rows:
+                if inc["frequency"] == "weekly" and inc["account"] in simulated:
+                    simulated[inc["account"]] += float(inc["amount"])
+
+        # monthly income on correct day
+        for inc in income_rows:
+            if inc["frequency"] == "monthly" and inc["account"] in simulated:
+                if sim_day.day == 1:
+                    simulated[inc["account"]] += float(inc["amount"])
+
+        # scheduled bills
+        for expense in scheduled:
+            if expense["day"] == sim_day.day and expense["account"] in simulated:
+                simulated[expense["account"]] -= float(expense["amount"])
+
+        # future events
+        for event in future_events:
+            if event["date"] == sim_day and event["account"] in simulated:
+                simulated[event["account"]] -= float(event["amount"])
+
+        # savings rules
+        for rule in savings_rules:
+            freq = rule.get("frequency", "monthly")
+            apply_rule = False
+            if freq == "monthly" and rule["day"] == sim_day.day:
+                apply_rule = True
+            elif freq == "weekly" and sim_day.weekday() == 4:
+                apply_rule = True
+            elif freq == "daily":
+                apply_rule = True
+
+            if apply_rule:
+                from_acc = rule["from_account"]
+                to_acc = rule["to_account"]
+                amt = float(rule["amount"])
+                if from_acc in simulated and to_acc in simulated:
+                    if simulated[from_acc] >= amt:
+                        simulated[from_acc] -= amt
+                        simulated[to_acc] += amt
+
+        snapshot = {"date": sim_day.isoformat()}
+        for acc in account_names:
+            snapshot[acc] = round(simulated[acc], 2)
+        snapshots.append(snapshot)
+
+    return render_template(
+        "forecast.html",
+        snapshots=json.dumps(snapshots),
+        account_names=json.dumps(account_names),
+        today=today.isoformat()
+    )
+
 @app.get("/register")
 def register():
     return render_template("register.html")
