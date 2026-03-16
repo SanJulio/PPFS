@@ -1644,6 +1644,21 @@ def logout():
     logout_user()
     return redirect(url_for("login"))
 
+@app.get("/fix-db-constraint")
+@login_required
+def fix_db_constraint():
+    db = get_db()
+    cursor = db.cursor()
+    try:
+        cursor.execute("ALTER TABLE accounts DROP CONSTRAINT IF EXISTS accounts_name_key")
+        db.commit()
+        msg = "Constraint dropped successfully!"
+    except Exception as e:
+        msg = f"Error: {e}"
+    cursor.close()
+    db.close()
+    return msg
+
 if __name__ == "__main__":
     try:
         app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)
