@@ -1328,6 +1328,96 @@ def actions_update_investment():
     db.close()
     return redirect(url_for("actions", msg="Investment updated."))
 
+@app.post("/settings/reset-transactions")
+@login_required
+def reset_transactions():
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("DELETE FROM transactions WHERE user_id = %s", (current_user.id,))
+    else:
+        cursor.execute("DELETE FROM transactions WHERE user_id = ?", (current_user.id,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return redirect(url_for("settings", msg="All transactions cleared."))
+
+
+@app.post("/settings/reset-balances")
+@login_required
+def reset_balances():
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE accounts SET balance = 0 WHERE user_id = %s", (current_user.id,))
+    else:
+        cursor.execute("UPDATE accounts SET balance = 0 WHERE user_id = ?", (current_user.id,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return redirect(url_for("settings", msg="All account balances reset to £0."))
+
+
+@app.post("/settings/reset-bills")
+@login_required
+def reset_bills():
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("DELETE FROM scheduled_expenses WHERE user_id = %s", (current_user.id,))
+    else:
+        cursor.execute("DELETE FROM scheduled_expenses WHERE user_id = ?", (current_user.id,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return redirect(url_for("settings", msg="All scheduled bills deleted."))
+
+
+@app.post("/settings/reset-income")
+@login_required
+def reset_income():
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("DELETE FROM income WHERE user_id = %s", (current_user.id,))
+    else:
+        cursor.execute("DELETE FROM income WHERE user_id = ?", (current_user.id,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return redirect(url_for("settings", msg="All income sources deleted."))
+
+
+@app.post("/settings/reset-all")
+@login_required
+def reset_all():
+    db = get_db()
+    cursor = db.cursor()
+    uid = current_user.id
+    tables = [
+        "transactions",
+        "scheduled_expenses",
+        "income",
+        "savings_rules",
+        "future_events",
+        "investment_updates",
+        "investments",
+    ]
+    for table in tables:
+        if USE_POSTGRES:
+            cursor.execute(f"DELETE FROM {table} WHERE user_id = %s", (uid,))
+        else:
+            cursor.execute(f"DELETE FROM {table} WHERE user_id = ?", (uid,))
+    # Zero out balances but keep accounts
+    if USE_POSTGRES:
+        cursor.execute("UPDATE accounts SET balance = 0 WHERE user_id = %s", (uid,))
+    else:
+        cursor.execute("UPDATE accounts SET balance = 0 WHERE user_id = ?", (uid,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return redirect(url_for("settings", msg="Account fully reset. Fresh start! 🌱"))
+
 @app.get("/register")
 def register():
     return render_template("register.html")

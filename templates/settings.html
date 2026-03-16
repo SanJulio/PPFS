@@ -604,6 +604,62 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     </form>
   </div>
 
+  <!-- DANGER ZONE -->
+<div class="card p-3 mb-4 border border-danger border-opacity-25">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0 text-danger">⚠️ Reset Options</h5>
+    <span class="badge-soft" style="background:rgba(220,53,69,0.08); color:#dc3545;">Irreversible</span>
+  </div>
+  <p class="text-muted small mb-3">These actions cannot be undone. Use with caution.</p>
+
+  <div class="d-grid gap-2">
+
+    <!-- Reset Balances -->
+    <form method="POST" action="/settings/reset-balances"
+      onsubmit="return confirm('Zero out ALL account balances? This cannot be undone.')">
+      <button class="btn btn-outline-warning w-100 text-start px-3">
+        <strong>Reset Account Balances</strong>
+        <div class="small text-muted">Sets all account balances to £0. Keeps accounts, bills and history.</div>
+      </button>
+    </form>
+
+    <!-- Reset Transactions -->
+    <form method="POST" action="/settings/reset-transactions"
+      onsubmit="return confirm('Delete ALL transaction history? This cannot be undone.')">
+      <button class="btn btn-outline-warning w-100 text-start px-3">
+        <strong>Clear Transaction History</strong>
+        <div class="small text-muted">Wipes all transactions. Keeps accounts, bills and balances intact.</div>
+      </button>
+    </form>
+
+    <!-- Reset Bills -->
+    <form method="POST" action="/settings/reset-bills"
+      onsubmit="return confirm('Delete ALL scheduled bills? This cannot be undone.')">
+      <button class="btn btn-outline-danger w-100 text-start px-3">
+        <strong>Delete All Scheduled Bills</strong>
+        <div class="small text-muted">Removes all recurring bills. Does not affect transactions or balances.</div>
+      </button>
+    </form>
+
+    <!-- Reset Income -->
+    <form method="POST" action="/settings/reset-income"
+      onsubmit="return confirm('Delete ALL income sources? This cannot be undone.')">
+      <button class="btn btn-outline-danger w-100 text-start px-3">
+        <strong>Delete All Income Sources</strong>
+        <div class="small text-muted">Removes all income sources. Does not affect transactions or balances.</div>
+      </button>
+    </form>
+
+    <!-- Full Reset -->
+    <form method="POST" action="/settings/reset-all"
+      onsubmit="return confirm('⚠️ FULL RESET: This will wipe ALL transactions, bills, income, investments, savings rules, future events and zero all balances. Accounts are kept. Are you absolutely sure?')">
+      <button class="btn btn-danger w-100 text-start px-3">
+        <strong>🔴 Full Reset</strong>
+        <div class="small" style="color:rgba(255,255,255,0.8)">Wipes everything except accounts. Cannot be undone.</div>
+      </button>
+    </form>
+
+  </div>
 </div>
 
 <nav class="navbar fixed-bottom bg-white border-top">
