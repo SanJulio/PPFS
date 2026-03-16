@@ -938,9 +938,9 @@ def settings_add_account():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("INSERT INTO accounts (name, balance, type, active, user_id) VALUES (%s, %s, %s, 1, %s) ON CONFLICT (name) DO NOTHING", (name, balance, acc_type, current_user.id))
+        cursor.execute("INSERT INTO accounts (name, balance, type, active, user_id) VALUES (%s, %s, %s, 1, %s)", (name, balance, acc_type, current_user.id))
     else:
-        cursor.execute("INSERT OR IGNORE INTO accounts (name, balance, type, active, user_id) VALUES (?, ?, ?, 1, ?)", (name, balance, acc_type, current_user.id))
+        cursor.execute("INSERT INTO accounts (name, balance, type, active, user_id) VALUES (?, ?, ?, 1, ?)", (name, balance, acc_type, current_user.id))
     db.commit()
     cursor.close()
     db.close()
