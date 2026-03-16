@@ -111,3 +111,25 @@
     - Portfolio summary (total invested, current value, total gain)
 - Flow page now has 4 tabs: Expenses, Income, Accounts, Investments
 - Fixed init_db table creation with individual try/catch blocks
+
+16/03/26
+
+Fixes
+
+- Fixed Render deployment failing due to hardcoded port 5000 — changed to $PORT
+- Fixed account creation being silently blocked by a global unique constraint on account names — dropped accounts_name_key constraint via temporary route
+- Fixed forecast page timing out — rewrote to single pass 90 day simulation instead of 90 separate DB calls
+- Fixed VS Code Jinja2 errors in forecast.html — moved variables to data attributes
+- Fixed logo not centred on login page
+
+Features Added
+
+- Reset options on Account page — reset balances, transactions, bills, income, full reset
+- Balance forecast page at /forecast with 30/60/90 day toggle, per account chart, warnings and summary cards
+- Forecast added to navbar, logout moved to Account page header
+
+Bulletproofing
+
+✅ 404 and 500 error pages
+✅ Rate limiting on login and register
+✅ Database indexes on user_id across all 8 tables
