@@ -1664,6 +1664,33 @@ def page_not_found(e):
 def internal_error(e):
     return render_template("500.html"), 500
 
+@app.get("/add-db-indexes")
+@login_required
+def add_db_indexes():
+    db = get_db()
+    cursor = db.cursor()
+    commands = [
+        "CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_scheduled_expenses_user_id ON scheduled_expenses(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_income_user_id ON income(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_savings_rules_user_id ON savings_rules(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_future_events_user_id ON future_events(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_investments_user_id ON investments(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_investment_updates_user_id ON investment_updates(user_id)",
+    ]
+    results = []
+    for cmd in commands:
+        try:
+            cursor.execute(cmd)
+            db.commit()
+            results.append("✅ " + cmd)
+        except Exception as e:
+            results.append("❌ " + cmd + " — " + str(e))
+    cursor.close()
+    db.close()
+    return "<br>".join(results)
+
 if __name__ == "__main__":
     try:
         app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)
