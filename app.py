@@ -87,6 +87,17 @@ class PostgresSessionInterface(SessionInterface):
         response.set_cookie("session", sid, httponly=True, secure=True, samesite="Lax")
 
 app = Flask(__name__)
+
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri="memory://"
+)
+
 app.session_interface = PostgresSessionInterface()
 app.secret_key = os.environ.get("SECRET_KEY", "waheguruji")
 app.config["SESSION_COOKIE_SECURE"] = True
@@ -1550,6 +1561,7 @@ def register():
     return render_template("register.html")
 
 @app.post("/register")
+@limiter.limit("5 per minute")
 def register_post():
     email = (request.form.get("email") or "").strip().lower()
     password = (request.form.get("password") or "").strip()
@@ -1605,6 +1617,7 @@ def login():
     return render_template("login.html")
 
 @app.post("/login")
+@limiter.limit("10 per minute")
 def login_post():
     email = (request.form.get("email") or "").strip().lower()
     password = (request.form.get("password") or "").strip()
