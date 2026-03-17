@@ -1672,6 +1672,11 @@ def logout():
     logout_user()
     return redirect(url_for("login"))
 
+@app.get("/debug-session")
+@login_required
+def debug_session():
+    return f"Session contents: {dict(session)}"
+
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template("404.html"), 404
