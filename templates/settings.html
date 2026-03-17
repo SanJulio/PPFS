@@ -77,7 +77,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                   onclick="toggleEdit('account-{{ a.id }}')">Edit</button>
                 <form method="POST" action="/settings/deactivate-account"
                   onsubmit="return confirm('Deactivate {{ a.name }}?')">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
                   <input type="hidden" name="name" value="{{ a.name }}">
                   <button class="btn btn-sm btn-outline-danger">Remove</button>
                 </form>
@@ -87,7 +87,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <tr id="account-{{ a.id }}" style="display:none; background:#f8f9fa;">
             <td colspan="4">
               <form method="POST" action="/settings/edit-account" class="p-2">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
                 <input type="hidden" name="id" value="{{ a.id }}">
                 <div class="row g-2">
                   <div class="col-6">
@@ -120,7 +120,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     <hr>
     <div class="small fw-bold mb-2">Add New Account</div>
     <form method="POST" action="/settings/add-account">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
       <div class="mb-2">
         <input class="form-control" name="name" placeholder="Account name" required>
       </div>
@@ -168,7 +168,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                   onclick="toggleEdit('bill-{{ b.id }}')">Edit</button>
                 <form method="POST" action="/settings/delete-bill"
                   onsubmit="return confirm('Delete {{ b.name }}?')">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
                   <input type="hidden" name="id" value="{{ b.id }}">
                   <button class="btn btn-sm btn-outline-danger">Delete</button>
                 </form>
@@ -178,7 +178,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <tr id="bill-{{ b.id }}" style="display:none; background:#f8f9fa;">
             <td colspan="4">
               <form method="POST" action="/settings/edit-bill" class="p-2">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
                 <input type="hidden" name="id" value="{{ b.id }}">
                 <div class="row g-2">
                   <div class="col-6">
@@ -214,7 +214,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     <hr>
     <div class="small fw-bold mb-2">Add New Bill</div>
     <form method="POST" action="/settings/add-bill">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
       <div class="mb-2">
         <input class="form-control" name="name" placeholder="Bill name" required>
       </div>
@@ -267,7 +267,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                   onclick="toggleEdit('rule-{{ r.id }}')">Edit</button>
                 <form method="POST" action="/settings/delete-savings-rule"
                   onsubmit="return confirm('Delete {{ r.name }}?')">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
                   <input type="hidden" name="id" value="{{ r.id }}">
                   <button class="btn btn-sm btn-outline-danger">Delete</button>
                 </form>
@@ -277,7 +277,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <tr id="rule-{{ r.id }}" style="display:none; background:#f8f9fa;">
             <td colspan="4">
               <form method="POST" action="/settings/edit-savings-rule" class="p-2">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
                 <input type="hidden" name="id" value="{{ r.id }}">
                 <div class="row g-2">
                   <div class="col-6">
@@ -327,7 +327,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     <hr>
     <div class="small fw-bold mb-2">Add New Savings Rule</div>
     <form method="POST" action="/settings/add-savings-rule">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
       <div class="mb-2">
         <input class="form-control" name="name" placeholder="Rule name" required>
       </div>
@@ -395,7 +395,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <tr id="event-{{ e.id }}" style="display:none; background:#f8f9fa;">
             <td colspan="4">
               <form method="POST" action="/settings/edit-future-event" class="p-2">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
                 <input type="hidden" name="id" value="{{ e.id }}">
                 <div class="row g-2">
                   <div class="col-6">
@@ -432,7 +432,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 
     <div class="small fw-bold mb-2">Add Future Event</div>
     <form method="POST" action="/settings/add-future-event">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
       <div class="mb-2">
         <input class="form-control" name="name" placeholder="Event name" required>
       </div>
@@ -484,7 +484,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                 <form method="POST" action="/settings/delete-income"
                   onsubmit="return confirm('Delete {{ i.name }}?')">
                   <input type="hidden" name="id" value="{{ i.id }}">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
                   <button class="btn btn-sm btn-outline-danger">Delete</button>
                 </form>
               </div>
@@ -494,7 +494,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             <td colspan="4">
               <form method="POST" action="/settings/edit-income" class="p-2">
                 <input type="hidden" name="id" value="{{ i.id }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
                 <div class="row g-2">
                   <div class="col-6">
                     <input class="form-control form-control-sm" name="name" value="{{ i.name }}" placeholder="Name" required>
@@ -532,7 +532,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     <hr>
     <div class="small fw-bold mb-2">Add New Income Source</div>
     <form method="POST" action="/settings/add-income">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
       <div class="mb-2">
         <input class="form-control" name="name" placeholder="e.g. Salary, Freelance" required>
       </div>
@@ -588,7 +588,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
               <form method="POST" action="/settings/delete-investment"
                 onsubmit="return confirm('Delete {{ i.name }}?')">
                 <input type="hidden" name="id" value="{{ i.id }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
                 <button class="btn btn-sm btn-outline-danger">Delete</button>
               </form>
             </td>
@@ -602,7 +602,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 
     <div class="small fw-bold mb-2">Add New Investment</div>
     <form method="POST" action="/settings/add-investment">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
       <div class="mb-2">
         <input class="form-control" name="name" placeholder="e.g. Apple Stocks, Bitcoin, Flat" required>
       </div>
@@ -638,7 +638,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     <!-- Reset Balances -->
     <form method="POST" action="/settings/reset-balances"
       onsubmit="return confirm('Zero out ALL account balances? This cannot be undone.')">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
       <button class="btn btn-outline-warning w-100 text-start px-3">
         <strong>Reset Account Balances</strong>
         <div class="small text-muted">Sets all account balances to £0. Keeps accounts, bills and history.</div>
@@ -648,7 +648,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     <!-- Reset Transactions -->
     <form method="POST" action="/settings/reset-transactions"
       onsubmit="return confirm('Delete ALL transaction history? This cannot be undone.')">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
       <button class="btn btn-outline-warning w-100 text-start px-3">
         <strong>Clear Transaction History</strong>
         <div class="small text-muted">Wipes all transactions. Keeps accounts, bills and balances intact.</div>
@@ -658,7 +658,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     <!-- Reset Bills -->
     <form method="POST" action="/settings/reset-bills"
       onsubmit="return confirm('Delete ALL scheduled bills? This cannot be undone.')">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
       <button class="btn btn-outline-danger w-100 text-start px-3">
         <strong>Delete All Scheduled Bills</strong>
         <div class="small text-muted">Removes all recurring bills. Does not affect transactions or balances.</div>
@@ -668,7 +668,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     <!-- Reset Income -->
     <form method="POST" action="/settings/reset-income"
       onsubmit="return confirm('Delete ALL income sources? This cannot be undone.')">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
       <button class="btn btn-outline-danger w-100 text-start px-3">
         <strong>Delete All Income Sources</strong>
         <div class="small text-muted">Removes all income sources. Does not affect transactions or balances.</div>
@@ -678,7 +678,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     <!-- Full Reset -->
     <form method="POST" action="/settings/reset-all"
       onsubmit="return confirm('⚠️ FULL RESET: This will wipe ALL transactions, bills, income, investments, savings rules, future events and zero all balances. Accounts are kept. Are you absolutely sure?')">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
       <button class="btn btn-danger w-100 text-start px-3">
         <strong>🔴 Full Reset</strong>
         <div class="small" style="color:rgba(255,255,255,0.8)">Wipes everything except accounts. Cannot be undone.</div>

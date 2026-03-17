@@ -88,8 +88,21 @@ class PostgresSessionInterface(SessionInterface):
 
 app = Flask(__name__)
 
-from flask_wtf.csrf import CSRFProtect
-csrf = CSRFProtect(app)
+import secrets
+
+@app.before_request
+def set_csrf_token():
+    if 'csrf_token' not in session:
+        session['csrf_token'] = secrets.token_hex(32)
+
+@app.before_request
+def check_csrf():
+    if request.method == 'POST':
+        exempt = ['/login', '/register']
+        if request.path not in exempt:
+            token = request.form.get('csrf_token')
+            if not token or token != session.get('csrf_token'):
+                return 'CSRF token invalid', 403
 
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -1565,7 +1578,6 @@ def register():
 
 @app.post("/register")
 @limiter.limit("5 per minute")
-@csrf.exempt
 def register_post():
     email = (request.form.get("email") or "").strip().lower()
     password = (request.form.get("password") or "").strip()
@@ -1622,7 +1634,6 @@ def login():
 
 @app.post("/login")
 @limiter.limit("10 per minute")
-@csrf.exempt
 def login_post():
     email = (request.form.get("email") or "").strip().lower()
     password = (request.form.get("password") or "").strip()

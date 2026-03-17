@@ -107,7 +107,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
             <tr class="expand-row d-none" id="expand-b{{ b.id }}">
               <td colspan="5" class="py-2 px-3">
                 <form method="POST" action="/flow/pay-bill">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
                   <input type="hidden" name="bill_id" value="{{ b.id }}">
                   <button type="submit" class="btn btn-dark btn-sm rounded-3 px-4">
                     ✓ Mark as Paid
@@ -166,7 +166,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
             <tr class="expand-row d-none" id="expand-i{{ i.id }}">
               <td colspan="5" class="py-2 px-3">
                 <form method="POST" action="/flow/pay-income">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
                   <input type="hidden" name="income_id" value="{{ i.id }}">
                   <button type="submit" class="btn btn-success btn-sm rounded-3 px-4">
                     ✓ Mark as Received
