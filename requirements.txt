@@ -4,3 +4,4 @@ python-dotenv
 flask-login
 gunicorn
 flask-limiter
+flask-wtf

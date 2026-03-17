@@ -288,6 +288,7 @@ input, select {
   </div>
 
   <form method="POST" action="{{ url_for('afford') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="mb-3">
       <label class="form-label">Item (optional)</label>
       <input class="form-control" name="desc" placeholder="e.g., Trainers" />
@@ -359,6 +360,7 @@ input, select {
             </td>
             <td class="text-end">
               <form method="POST" action="/toggle-account-overview" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="account_id" value="{{ row.id }}">
                 <button type="submit" class="btn btn-sm rounded-3 px-2
                   {% if row.include_in_overview %}btn-dark{% else %}btn-outline-secondary{% endif %}">

@@ -70,10 +70,11 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   <div class="card p-3 mb-4" id="expense">
     <h5 class="mb-3">Add Expense</h5>
     <form method="POST" action="{{ url_for('add_expense') }}">
-      <div class="mb-3">
-        <label class="form-label">Description</label>
-        <input class="form-control" name="description" placeholder="e.g. Tesco meal deal" required>
-      </div>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="mb-3">
+            <label class="form-label">Description</label>
+            <input class="form-control" name="description" placeholder="e.g. Tesco meal deal" required>
+          </div>
       <div class="mb-3">
         <label class="form-label">Amount (£)</label>
         <input class="form-control" name="amount" inputmode="decimal" placeholder="4.50" required>
@@ -94,10 +95,11 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   <div class="card p-3 mb-4" id="income">
     <h5 class="mb-3">Add Income</h5>
     <form method="POST" action="{{ url_for('add_income') }}">
-      <div class="mb-3">
-        <label class="form-label">Description</label>
-        <input class="form-control" name="description" placeholder="e.g. Salary / Refund" required>
-      </div>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="mb-3">
+          <label class="form-label">Description</label>
+          <input class="form-control" name="description" placeholder="e.g. Salary / Refund" required>
+        </div>
       <div class="mb-3">
         <label class="form-label">Amount (£)</label>
         <input class="form-control" name="amount" inputmode="decimal" placeholder="e.g. 394.30" required>
@@ -118,14 +120,15 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   <div class="card p-3 mb-4" id="transfer">
     <h5 class="mb-3">Transfer Between Accounts</h5>
     <form method="POST" action="{{ url_for('transfer') }}">
-      <div class="mb-3">
-        <label class="form-label">From account</label>
-        <select class="form-select" name="from_account" required>
-          {% for a in accounts %}
-            <option value="{{ a }}">{{ a }}</option>
-          {% endfor %}
-        </select>
-      </div>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="mb-3">
+          <label class="form-label">From account</label>
+          <select class="form-select" name="from_account" required>
+            {% for a in accounts %}
+              <option value="{{ a }}">{{ a }}</option>
+            {% endfor %}
+          </select>
+        </div>
       <div class="mb-3">
         <label class="form-label">To account</label>
         <select class="form-select" name="to_account" required>
@@ -147,14 +150,15 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   <div class="card p-3 mb-4" id="investment">
     <h5 class="mb-3">Update Investment Value</h5>
     <form method="POST" action="/actions/update-investment">
-      <div class="mb-3">
-        <label class="form-label">Investment</label>
-        <select class="form-select" name="investment_id" required>
-          {% for i in investments %}
-            <option value="{{ i.id }}">{{ i.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="mb-3">
+          <label class="form-label">Investment</label>
+          <select class="form-select" name="investment_id" required>
+            {% for i in investments %}
+              <option value="{{ i.id }}">{{ i.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
       <div class="mb-3">
         <label class="form-label">Current Value (£)</label>
         <input class="form-control" name="value" inputmode="decimal" placeholder="e.g. 1250.00" required>
