@@ -46,8 +46,12 @@ class PostgresSession(CallbackDict, SessionMixin):
 
 class PostgresSessionInterface(SessionInterface):
     def _get_db(self):
-        import psycopg2
-        return psycopg2.connect(os.environ.get("DATABASE_URL"))
+        from database import connection_pool
+        return connection_pool.getconn()
+
+    def _release_db(self, conn):
+        from database import connection_pool
+        connection_pool.putconn(conn)
 
     def open_session(self, app, request):
         sid = request.cookies.get("session")
@@ -58,7 +62,7 @@ class PostgresSessionInterface(SessionInterface):
                 cur.execute("SELECT data FROM flask_sessions WHERE sid = %s", (sid,))
                 row = cur.fetchone()
                 cur.close()
-                release_db(db)
+                self._release_db(db)
                 if row:
                     data = json.loads(row[0])
                     return PostgresSession(data, sid=sid)
@@ -81,7 +85,7 @@ class PostgresSessionInterface(SessionInterface):
             """, (sid, data))
             db.commit()
             cur.close()
-            release_db(db)
+            self._release_db(db)
         except Exception as e:
             print(f">>> Session save error: {e}", flush=True)
         response.set_cookie("session", sid, httponly=True, secure=True, samesite="Lax")
