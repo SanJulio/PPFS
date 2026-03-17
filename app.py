@@ -31,7 +31,7 @@ from models import (
     get_recent_transactions
 )
 
-from database import get_db
+from database import get_db, release_db
 
 from database import USE_POSTGRES
 
@@ -58,7 +58,7 @@ class PostgresSessionInterface(SessionInterface):
                 cur.execute("SELECT data FROM flask_sessions WHERE sid = %s", (sid,))
                 row = cur.fetchone()
                 cur.close()
-                db.close()
+                release_db(db)
                 if row:
                     data = json.loads(row[0])
                     return PostgresSession(data, sid=sid)
@@ -81,7 +81,7 @@ class PostgresSessionInterface(SessionInterface):
             """, (sid, data))
             db.commit()
             cur.close()
-            db.close()
+            release_db(db)
         except Exception as e:
             print(f">>> Session save error: {e}", flush=True)
         response.set_cookie("session", sid, httponly=True, secure=True, samesite="Lax")
@@ -129,7 +129,7 @@ def load_user(user_id):
     cols = [d[0] for d in cursor.description]
     row = cursor.fetchone()
     cursor.close()
-    db.close()
+    release_db(db)
     if row:
         row = dict(zip(cols, row))
         return User(row["id"], row["email"])
@@ -166,7 +166,7 @@ def load_scheduled_expenses_web():
     cols = [d[0] for d in cursor.description]
     rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
     cursor.close()
-    db.close()
+    release_db(db)
     return rows
 
 def get_all_scheduled_expenses():
@@ -181,7 +181,7 @@ def get_all_scheduled_expenses():
     cols = [d[0] for d in cursor.description]
     rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
     cursor.close()
-    db.close()
+    release_db(db)
     return rows
 
 def calculate_financial_overview(accounts):
@@ -278,7 +278,7 @@ def calculate_monthly_spending():
 
     rows = cursor.fetchall()
     cursor.close()
-    db.close()
+    release_db(db)
 
     normal = 0.0
     scheduled = 0.0
@@ -381,7 +381,7 @@ def actions():
     cols = [d[0] for d in cursor.description]
     investments = [dict(zip(cols, row)) for row in cursor.fetchall()]
     cursor.close()
-    db.close()
+    release_db(db)
 
     return render_template("actions.html", accounts=accounts, investments=investments, message=request.args.get("msg", ""))
 
@@ -442,7 +442,7 @@ def flow():
     income_received_this_month = [dict(zip(cols, row)) for row in cursor.fetchall()]
 
     cursor.close()
-    db.close()
+    release_db(db)
 
     bills = get_all_scheduled_expenses()
     accounts_rows = get_active_accounts(current_user.id)
@@ -556,7 +556,7 @@ def bills_pay():
     cols = [d[0] for d in cursor.description]
     row = cursor.fetchone()
     cursor.close()
-    db.close()
+    release_db(db)
 
     if not row:
         return redirect(url_for("bills", msg="Bill not found."))
@@ -583,7 +583,7 @@ def income_pay():
     cols = [d[0] for d in cursor.description]
     row = cursor.fetchone()
     cursor.close()
-    db.close()
+    release_db(db)
 
     if not row:
         return redirect(url_for("flow", msg="Income not found."))
@@ -697,7 +697,7 @@ def transaction_undo():
     cols = [d[0] for d in cursor.description]
     row = cursor.fetchone()
     cursor.close()
-    db.close()
+    release_db(db)
 
     if not row:
         return redirect(url_for("transactions", msg="Transaction not found."))
@@ -714,7 +714,7 @@ def transaction_undo():
         cursor.execute("DELETE FROM transactions WHERE id = ? AND user_id = ?", (tx_id, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
 
     return redirect(url_for("transactions", msg="Transaction reversed."))
 
@@ -744,7 +744,7 @@ def transaction_edit():
     cols = [d[0] for d in cursor.description]
     row = cursor.fetchone()
     cursor.close()
-    db.close()
+    release_db(db)
 
     if not row:
         return redirect(url_for("transactions", msg="Transaction not found."))
@@ -764,7 +764,7 @@ def transaction_edit():
                        (description, new_amount, account, tx_id, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
 
     return redirect(url_for("transactions", msg="Transaction updated."))
 
@@ -788,7 +788,7 @@ def toggle_account_overview():
             cursor.execute("UPDATE accounts SET include_in_overview = ? WHERE id = ? AND user_id = ?", (new_val, account_id, current_user.id))
         db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("home"))
 
 @app.post("/afford")
@@ -832,7 +832,7 @@ def afford():
     cols = [d[0] for d in cursor.description]
     future_events_raw = [dict(zip(cols, row)) for row in cursor.fetchall()]
     cursor.close()
-    db.close()
+    release_db(db)
 
     from datetime import date as date_type
     future_events = []
@@ -921,7 +921,7 @@ def settings():
     investments = fetch_filtered("SELECT * FROM investments WHERE user_id = %s ORDER BY date DESC" if USE_POSTGRES else "SELECT * FROM investments WHERE user_id = ? ORDER BY date DESC", (uid,))
 
     cursor.close()
-    db.close()
+    release_db(db)
     return render_template("settings.html",
         accounts=accounts,
         bills=bills,
@@ -954,7 +954,7 @@ def settings_add_account():
         cursor.execute("INSERT INTO accounts (name, balance, type, active, user_id) VALUES (?, ?, ?, 1, ?)", (name, balance, acc_type, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg=f"Account '{name}' created."))
 
 @app.post("/settings/deactivate-account")
@@ -969,7 +969,7 @@ def settings_deactivate_account():
         cursor.execute("UPDATE accounts SET active = 0 WHERE name = ? AND user_id = ?", (name, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg=f"Account '{name}' deactivated."))
 
 @app.post("/settings/edit-account")
@@ -995,7 +995,7 @@ def settings_edit_account():
         cursor.execute("UPDATE accounts SET name=?, type=?, balance=? WHERE id=? AND user_id=?", (name, acc_type, balance, account_id, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg="Account updated."))
 
 @app.post("/settings/add-bill")
@@ -1022,7 +1022,7 @@ def settings_add_bill():
         cursor.execute("INSERT INTO scheduled_expenses (name, amount, day, account, user_id) VALUES (?, ?, ?, ?, ?)", (name, amount, day, account, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg=f"Bill '{name}' added."))
 
 @app.post("/settings/edit-bill")
@@ -1050,7 +1050,7 @@ def settings_edit_bill():
         cursor.execute("UPDATE scheduled_expenses SET name=?, amount=?, day=?, account=? WHERE id=? AND user_id=?", (name, amount, day, account, bill_id, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg="Bill updated."))
 
 @app.post("/settings/delete-bill")
@@ -1065,7 +1065,7 @@ def settings_delete_bill():
         cursor.execute("DELETE FROM scheduled_expenses WHERE id = ? AND user_id = ?", (bill_id, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg="Bill deleted."))
 
 @app.post("/settings/add-savings-rule")
@@ -1094,7 +1094,7 @@ def settings_add_savings_rule():
         cursor.execute("INSERT INTO savings_rules (name, amount, day, frequency, from_account, to_account, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)", (name, amount, day, frequency, from_account, to_account, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg=f"Savings rule '{name}' added."))
 
 @app.post("/settings/edit-savings-rule")
@@ -1124,7 +1124,7 @@ def settings_edit_savings_rule():
         cursor.execute("UPDATE savings_rules SET name=?, amount=?, day=?, frequency=?, from_account=?, to_account=? WHERE id=? AND user_id=?", (name, amount, day, frequency, from_account, to_account, rule_id, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg="Savings rule updated."))
 
 @app.post("/settings/delete-savings-rule")
@@ -1139,7 +1139,7 @@ def settings_delete_savings_rule():
         cursor.execute("DELETE FROM savings_rules WHERE id = ? AND user_id = ?", (rule_id, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg="Savings rule deleted."))
 
 @app.post("/settings/add-future-event")
@@ -1165,7 +1165,7 @@ def settings_add_future_event():
         cursor.execute("INSERT INTO future_events (name, amount, date, account, user_id) VALUES (?, ?, ?, ?, ?)", (name, amount, date_input, account, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg=f"Future event '{name}' added."))
 
 @app.post("/settings/edit-future-event")
@@ -1192,7 +1192,7 @@ def settings_edit_future_event():
         cursor.execute("UPDATE future_events SET name=?, amount=?, date=?, account=? WHERE id=? AND user_id=?", (name, amount, date_input, account, event_id, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg="Future event updated."))
 
 @app.post("/settings/add-income")
@@ -1218,7 +1218,7 @@ def settings_add_income():
         cursor.execute("INSERT INTO income (name, amount, frequency, account, user_id) VALUES (?, ?, ?, ?, ?)", (name, amount, frequency, account, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg=f"Income source '{name}' added."))
 
 @app.post("/settings/edit-income")
@@ -1247,7 +1247,7 @@ def settings_edit_income():
                        (name, amount, frequency, account, income_id, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg="Income updated."))
 
 @app.post("/settings/delete-income")
@@ -1262,7 +1262,7 @@ def settings_delete_income():
         cursor.execute("DELETE FROM income WHERE id = ? AND user_id = ?", (income_id, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg="Income source deleted."))
 
 @app.post("/settings/add-investment")
@@ -1290,7 +1290,7 @@ def settings_add_investment():
                        (current_user.id, name, inv_type, initial_amount, inv_date))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg=f"Investment '{name}' added."))
 
 
@@ -1308,7 +1308,7 @@ def settings_delete_investment():
         cursor.execute("DELETE FROM investment_updates WHERE investment_id = ? AND user_id = ?", (inv_id, current_user.id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg="Investment deleted."))
 
 
@@ -1336,7 +1336,7 @@ def actions_update_investment():
                        (inv_id, current_user.id, value, inv_date))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("actions", msg="Investment updated."))
 
 @app.post("/settings/reset-transactions")
@@ -1350,7 +1350,7 @@ def reset_transactions():
         cursor.execute("DELETE FROM transactions WHERE user_id = ?", (current_user.id,))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg="All transactions cleared."))
 
 
@@ -1365,7 +1365,7 @@ def reset_balances():
         cursor.execute("UPDATE accounts SET balance = 0 WHERE user_id = ?", (current_user.id,))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg="All account balances reset to £0."))
 
 
@@ -1380,7 +1380,7 @@ def reset_bills():
         cursor.execute("DELETE FROM scheduled_expenses WHERE user_id = ?", (current_user.id,))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg="All scheduled bills deleted."))
 
 
@@ -1395,7 +1395,7 @@ def reset_income():
         cursor.execute("DELETE FROM income WHERE user_id = ?", (current_user.id,))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg="All income sources deleted."))
 
 
@@ -1426,7 +1426,7 @@ def reset_all():
         cursor.execute("UPDATE accounts SET balance = 0 WHERE user_id = ?", (uid,))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
     return redirect(url_for("settings", msg="Account fully reset. Fresh start! 🌱"))
 
 @app.get("/forecast")
@@ -1477,7 +1477,7 @@ def forecast():
     savings_rules = [dict(zip(cols, row)) for row in cursor.fetchall()]
 
     cursor.close()
-    db.close()
+    release_db(db)
 
     future_events = []
     for e in future_events_raw:
@@ -1588,7 +1588,7 @@ def register_post():
 
     if existing:
         cursor.close()
-        db.close()
+        release_db(db)
         return render_template("register.html", error="An account with that email already exists.")
 
     hashed = generate_password_hash(password)
@@ -1605,7 +1605,7 @@ def register_post():
 
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
 
     user = User(user_id, email)
     login_user(user, remember=True)
@@ -1636,7 +1636,7 @@ def login_post():
     cols = [d[0] for d in cursor.description]
     row = cursor.fetchone()
     cursor.close()
-    db.close()
+    release_db(db)
 
     if not row:
         return render_template("login.html", error="Invalid email or password.")

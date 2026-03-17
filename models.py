@@ -1,4 +1,4 @@
-from database import get_db, USE_POSTGRES
+from database import get_db, release_db, USE_POSTGRES
 
 
 def _rows_as_dicts(cursor, rows):
@@ -18,7 +18,7 @@ def get_all_accounts(user_id):
         cursor.execute("SELECT * FROM accounts WHERE user_id = ?", (user_id,))
     rows = _rows_as_dicts(cursor, cursor.fetchall())
     cursor.close()
-    db.close()
+    release_db(db)
     return rows
 
 
@@ -31,7 +31,7 @@ def get_active_accounts(user_id):
         cursor.execute("SELECT * FROM accounts WHERE active = 1 AND user_id = ? ORDER BY LOWER(name)", (user_id,))
     rows = _rows_as_dicts(cursor, cursor.fetchall())
     cursor.close()
-    db.close()
+    release_db(db)
     return rows
 
 
@@ -44,7 +44,7 @@ def get_account_by_name(name: str, user_id: int):
         cursor.execute("SELECT * FROM accounts WHERE name = ? AND user_id = ?", (name, user_id))
     rows = _rows_as_dicts(cursor, cursor.fetchall())
     cursor.close()
-    db.close()
+    release_db(db)
     return rows[0] if rows else None
 
 
@@ -57,7 +57,7 @@ def update_account_balance(name: str, delta: float, user_id: int):
         cursor.execute("UPDATE accounts SET balance = balance + ? WHERE name = ? AND user_id = ?", (delta, name, user_id))
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
 
 
 def add_transaction(date: str, description: str, amount: float, account: str, user_id: int, type: str = "manual"):
@@ -75,7 +75,7 @@ def add_transaction(date: str, description: str, amount: float, account: str, us
         )
     db.commit()
     cursor.close()
-    db.close()
+    release_db(db)
 
 
 def get_recent_transactions(user_id: int):
@@ -93,5 +93,5 @@ def get_recent_transactions(user_id: int):
         )
     rows = _rows_as_dicts(cursor, cursor.fetchall())
     cursor.close()
-    db.close()
+    release_db(db)
     return rows

@@ -12,6 +12,13 @@ USE_POSTGRES = DATABASE_URL is not None
 if USE_POSTGRES:
     import psycopg2
     import psycopg2.extras
+    from psycopg2 import pool
+
+    connection_pool = pool.ThreadedConnectionPool(
+        minconn=1,
+        maxconn=5,
+        dsn=DATABASE_URL
+    )
 
 BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "ppfs.db"
@@ -19,13 +26,20 @@ DB_PATH = BASE_DIR / "ppfs.db"
 
 def get_db():
     if USE_POSTGRES:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = connection_pool.getconn()
         conn.autocommit = False
         return conn
     else:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         return conn
+
+
+def release_db(conn):
+    if USE_POSTGRES:
+        connection_pool.putconn(conn)
+    else:
+        conn.close()
 
 
 def init_db():
@@ -44,7 +58,7 @@ def init_db():
         """
         CREATE TABLE IF NOT EXISTS accounts (
             id SERIAL PRIMARY KEY,
-            name TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
             balance REAL NOT NULL,
             type TEXT NOT NULL,
             active INTEGER NOT NULL DEFAULT 1
@@ -136,7 +150,6 @@ def init_db():
             except:
                 pass
 
-    # Add include_in_overview column if it doesn't exist yet
     try:
         if USE_POSTGRES:
             cursor.execute("""
@@ -157,4 +170,4 @@ def init_db():
             pass
 
     cursor.close()
-    db.close()
+    release_db(db)
