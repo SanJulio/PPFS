@@ -46,12 +46,14 @@ class PostgresSession(CallbackDict, SessionMixin):
 
 class PostgresSessionInterface(SessionInterface):
     def _get_db(self):
-        from database import connection_pool
-        return connection_pool.getconn()
+        import psycopg2
+        return psycopg2.connect(os.environ.get("DATABASE_URL"))
 
     def _release_db(self, conn):
-        from database import connection_pool
-        connection_pool.putconn(conn)
+        try:
+            conn.close()
+        except:
+            pass
 
     def open_session(self, app, request):
         sid = request.cookies.get("session")

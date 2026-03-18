@@ -133,3 +133,12 @@ Bulletproofing
 ✅ 404 and 500 error pages
 ✅ Rate limiting on login and register
 ✅ Database indexes on user_id across all 8 tables
+
+17/03/26
+Fixes
+- Fixed session interface clashing with connection pool — updated PostgresSessionInterface to use connection pool properly
+
+Bulletproofing
+✅ CSRF protection on all forms — manual implementation due to custom session interface
+✅ Connection pooling — ThreadedConnectionPool with min 1, max 5 connections
+

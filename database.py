@@ -6,19 +6,11 @@ from dotenv import load_dotenv
 load_dotenv(override=False)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
-
 USE_POSTGRES = DATABASE_URL is not None
 
 if USE_POSTGRES:
     import psycopg2
     import psycopg2.extras
-    from psycopg2 import pool
-
-    connection_pool = pool.ThreadedConnectionPool(
-        minconn=1,
-        maxconn=5,
-        dsn=DATABASE_URL
-    )
 
 BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "ppfs.db"
@@ -26,7 +18,7 @@ DB_PATH = BASE_DIR / "ppfs.db"
 
 def get_db():
     if USE_POSTGRES:
-        conn = connection_pool.getconn()
+        conn = psycopg2.connect(DATABASE_URL)
         conn.autocommit = False
         return conn
     else:
@@ -36,10 +28,10 @@ def get_db():
 
 
 def release_db(conn):
-    if USE_POSTGRES:
-        connection_pool.putconn(conn)
-    else:
+    try:
         conn.close()
+    except:
+        pass
 
 
 def init_db():
