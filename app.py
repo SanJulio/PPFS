@@ -208,6 +208,24 @@ def get_all_scheduled_expenses():
     release_db(db)
     return rows
 
+def validate_amount(amount_raw):
+    try:
+        amount = float(amount_raw)
+        if amount <= 0:
+            return None, "Amount must be a positive number."
+        return amount, None
+    except (ValueError, TypeError):
+        return None, "Amount must be a valid number."
+
+def validate_day(day_raw):
+    try:
+        day = int(day_raw)
+        if day < 1 or day > 31:
+            return None, "Day must be between 1 and 31."
+        return day, None
+    except (ValueError, TypeError):
+        return None, "Day must be a valid number."
+
 def calculate_financial_overview(accounts):
     today = datetime.today()
     current_day = today.day
@@ -631,10 +649,9 @@ def add_expense():
     if not description or not amount_raw or not account:
         return redirect(url_for("home", msg="Missing fields. Try again."))
 
-    try:
-        amount = float(amount_raw)
-    except ValueError:
-        return redirect(url_for("home", msg="Amount must be a number."))
+    amount, err = validate_amount(amount_raw)
+    if err:
+        return redirect(url_for("actions", msg=err))
 
     amount = -abs(amount)
 
@@ -659,10 +676,9 @@ def add_income():
     if not description or not amount_raw or not account:
         return redirect(url_for("home", msg="Missing fields. Try again."))
 
-    try:
-        amount = float(amount_raw)
-    except ValueError:
-        return redirect(url_for("home", msg="Amount must be a number."))
+    amount, err = validate_amount(amount_raw)
+    if err:
+        return redirect(url_for("actions", msg=err))
 
     amount = abs(amount)
 
@@ -689,12 +705,9 @@ def transfer():
     if from_account == to_account:
         return redirect(url_for("home", msg="Cannot transfer to same account."))
 
-    try:
-        amount = float(amount_raw)
-        if amount <= 0:
-            raise ValueError
-    except ValueError:
-        return redirect(url_for("home", msg="Enter a valid positive amount."))
+    amount, err = validate_amount(amount_raw)
+    if err:
+        return redirect(url_for("actions", msg=err))
 
     today_str = date.today().isoformat()
 
@@ -1032,11 +1045,12 @@ def settings_add_bill():
 
     if not name or not amount or not day or not account:
         return redirect(url_for("settings", msg="Missing fields."))
-    try:
-        amount = float(amount)
-        day = int(day)
-    except ValueError:
-        return redirect(url_for("settings", msg="Invalid amount or day."))
+    amount, err = validate_amount(amount)
+    if err:
+        return redirect(url_for("settings", msg=err))
+    day, err = validate_day(day)
+    if err:
+        return redirect(url_for("settings", msg=err))
 
     db = get_db()
     cursor = db.cursor()
@@ -1060,11 +1074,12 @@ def settings_edit_bill():
 
     if not name or not amount or not day or not account:
         return redirect(url_for("settings", msg="Missing fields."))
-    try:
-        amount = float(amount)
-        day = int(day)
-    except ValueError:
-        return redirect(url_for("settings", msg="Invalid amount or day."))
+    amount, err = validate_amount(amount)
+    if err:
+        return redirect(url_for("settings", msg=err))
+    day, err = validate_day(day)
+    if err:
+        return redirect(url_for("settings", msg=err))
 
     db = get_db()
     cursor = db.cursor()
@@ -1104,11 +1119,12 @@ def settings_add_savings_rule():
 
     if not name or not amount or not from_account or not to_account:
         return redirect(url_for("settings", msg="Missing fields."))
-    try:
-        amount = float(amount)
-        day = int(day)
-    except ValueError:
-        return redirect(url_for("settings", msg="Invalid amount or day."))
+    amount, err = validate_amount(amount)
+    if err:
+        return redirect(url_for("settings", msg=err))
+    day, err = validate_day(day)
+    if err:
+        return redirect(url_for("settings", msg=err))
 
     db = get_db()
     cursor = db.cursor()
@@ -1134,11 +1150,12 @@ def settings_edit_savings_rule():
 
     if not name or not amount or not from_account or not to_account:
         return redirect(url_for("settings", msg="Missing fields."))
-    try:
-        amount = float(amount)
-        day = int(day)
-    except ValueError:
-        return redirect(url_for("settings", msg="Invalid amount or day."))
+    amount, err = validate_amount(amount)
+    if err:
+        return redirect(url_for("settings", msg=err))
+    day, err = validate_day(day)
+    if err:
+        return redirect(url_for("settings", msg=err))
 
     db = get_db()
     cursor = db.cursor()
