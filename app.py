@@ -125,6 +125,8 @@ app.secret_key = os.environ.get("SECRET_KEY", "waheguruji")
 app.config["SESSION_COOKIE_SECURE"] = True
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=24)
+app.config["SESSION_REFRESH_EACH_REQUEST"] = True
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
@@ -1637,6 +1639,7 @@ def register_post():
 
     user = User(user_id, email)
     login_user(user, remember=True)
+    session.permanent = True
     return redirect(url_for("home"))
 
 
@@ -1677,6 +1680,7 @@ def login_post():
 
     user = User(row["id"], row["email"])
     login_user(user, remember=True)
+    session.permanent = True
     return redirect(url_for("home"))
 
 @app.get("/logout")
