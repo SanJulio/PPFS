@@ -35,6 +35,11 @@ from database import get_db, release_db
 
 from database import USE_POSTGRES
 
+from functools import lru_cache
+import hashlib
+forecast_cache = {}
+FORECAST_CACHE_TTL = 300  # 5 minutes in seconds
+
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "Data"
 
@@ -1475,8 +1480,21 @@ def reset_all():
 def forecast():
     from datetime import date as date_type, timedelta
     import json
+    import time
 
     today = date_type.today()
+    cache_key = f"forecast_{current_user.id}_{today.isoformat()}"
+
+    # return cached result if still fresh
+    if cache_key in forecast_cache:
+        cached_at, cached_data = forecast_cache[cache_key]
+        if time.time() - cached_at < FORECAST_CACHE_TTL:
+            return render_template(
+                "forecast.html",
+                snapshots=cached_data["snapshots"],
+                account_names=cached_data["account_names"],
+                today=today.isoformat()
+            )
 
     accounts_rows = get_active_accounts(current_user.id)
     accounts = {}
@@ -1532,7 +1550,6 @@ def forecast():
         except:
             continue
 
-    # single pass simulation over 90 days
     simulated = {}
     for name, info in accounts.items():
         simulated[name] = info["balance"]
@@ -1543,29 +1560,24 @@ def forecast():
     for day_offset in range(1, 91):
         sim_day = today + timedelta(days=day_offset)
 
-        # weekly income on Fridays
         if sim_day.weekday() == 4:
             for inc in income_rows:
                 if inc["frequency"] == "weekly" and inc["account"] in simulated:
                     simulated[inc["account"]] += float(inc["amount"])
 
-        # monthly income on correct day
         for inc in income_rows:
             if inc["frequency"] == "monthly" and inc["account"] in simulated:
                 if sim_day.day == 1:
                     simulated[inc["account"]] += float(inc["amount"])
 
-        # scheduled bills
         for expense in scheduled:
             if expense["day"] == sim_day.day and expense["account"] in simulated:
                 simulated[expense["account"]] -= float(expense["amount"])
 
-        # future events
         for event in future_events:
             if event["date"] == sim_day and event["account"] in simulated:
                 simulated[event["account"]] -= float(event["amount"])
 
-        # savings rules
         for rule in savings_rules:
             freq = rule.get("frequency", "monthly")
             apply_rule = False
@@ -1590,10 +1602,19 @@ def forecast():
             snapshot[acc] = round(simulated[acc], 2)
         snapshots.append(snapshot)
 
+    snapshots_json = json.dumps(snapshots)
+    account_names_json = json.dumps(account_names)
+
+    # store in cache
+    forecast_cache[cache_key] = (time.time(), {
+        "snapshots": snapshots_json,
+        "account_names": account_names_json
+    })
+
     return render_template(
         "forecast.html",
-        snapshots=json.dumps(snapshots),
-        account_names=json.dumps(account_names),
+        snapshots=snapshots_json,
+        account_names=account_names_json,
         today=today.isoformat()
     )
 
