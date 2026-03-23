@@ -213,6 +213,60 @@ def get_all_scheduled_expenses():
     release_db(db)
     return rows
 
+def send_verification_email(to_email, token):
+    import sib_api_v3_sdk
+    from sib_api_v3_sdk.rest import ApiException
+
+    configuration = sib_api_v3_sdk.Configuration()
+    configuration.api_key['api-key'] = os.environ.get('BREVO_API_KEY')
+
+    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
+
+    verify_url = f"https://spendara.co.uk/verify-email/{token}"
+
+    send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
+        to=[{"email": to_email}],
+        sender={"email": "noreply@spendara.co.uk", "name": "Spendara"},
+        subject="Verify your Spendara account",
+        html_content=f"""
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto;">
+            <h2 style="color: #111;">Welcome to Spendara! 👋</h2>
+            <p>Thanks for signing up. Please verify your email address to get started.</p>
+            <a href="{verify_url}" style="display:inline-block; background:#111; color:#fff; padding:12px 24px; border-radius:12px; text-decoration:none; font-weight:bold;">
+                Verify Email
+            </a>
+            <p style="color:#999; font-size:12px; margin-top:24px;">If you didn't sign up for Spendara, you can ignore this email.</p>
+        </div>
+        """
+    )
+
+    try:
+        api_instance.send_transac_email(send_smtp_email)
+        return True
+    except ApiException as e:
+        print(f">>> Email error: {e}", flush=True)
+        return False
+
+@app.get("/add-verified-column")
+@login_required
+def add_verified_column():
+    db = get_db()
+    cursor = db.cursor()
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
+        db.commit()
+    except Exception as e:
+        print(f"verified column: {e}")
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN verify_token TEXT")
+        db.commit()
+        msg = "✅ Columns added!"
+    except Exception as e:
+        msg = f"Error: {e}"
+    cursor.close()
+    release_db(db)
+    return msg
+
 def validate_amount(amount_raw):
     try:
         amount = float(amount_raw)
@@ -1618,6 +1672,45 @@ def forecast():
         today=today.isoformat()
     )
 
+@app.get("/verify-email/<token>")
+def verify_email(token):
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT id FROM users WHERE verify_token = %s", (token,))
+    else:
+        cursor.execute("SELECT id FROM users WHERE verify_token = ?", (token,))
+    row = cursor.fetchone()
+    if row:
+        user_id = row[0] if USE_POSTGRES else row["id"]
+        if USE_POSTGRES:
+            cursor.execute("UPDATE users SET verified = 1, verify_token = NULL WHERE id = %s", (user_id,))
+        else:
+            cursor.execute("UPDATE users SET verified = 1, verify_token = NULL WHERE id = ?", (user_id,))
+        db.commit()
+        cursor.close()
+        release_db(db)
+        return redirect(url_for("home", msg="✅ Email verified! Welcome to Spendara."))
+    cursor.close()
+    release_db(db)
+    return redirect(url_for("login", msg="Invalid or expired verification link."))
+
+@app.context_processor
+def inject_user_verified():
+    if current_user.is_authenticated:
+        db = get_db()
+        cursor = db.cursor()
+        if USE_POSTGRES:
+            cursor.execute("SELECT verified FROM users WHERE id = %s", (current_user.id,))
+        else:
+            cursor.execute("SELECT verified FROM users WHERE id = ?", (current_user.id,))
+        row = cursor.fetchone()
+        cursor.close()
+        release_db(db)
+        verified = bool(row[0] if USE_POSTGRES else row["verified"]) if row else False
+        return {"user_verified": verified}
+    return {"user_verified": True}
+
 @app.get("/register")
 def register():
     return render_template("register.html")
@@ -1675,10 +1768,22 @@ def register_post():
     cursor.close()
     release_db(db)
 
+    token = secrets.token_urlsafe(32)
+
+    if USE_POSTGRES:
+        cursor.execute("UPDATE users SET verify_token = %s WHERE id = %s", (token, user_id))
+    else:
+        cursor.execute("UPDATE users SET verify_token = ? WHERE id = ?", (token, user_id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+
+    send_verification_email(email, token)
+
     user = User(user_id, email)
-    login_user(user, remember=True)
     session.permanent = True
-    return redirect(url_for("home"))
+    login_user(user, remember=True)
+    return redirect(url_for("home", msg="Welcome! Please check your email to verify your account."))
 
 
 @app.get("/login")
