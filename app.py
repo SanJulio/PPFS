@@ -1595,8 +1595,14 @@ def register_post():
     if password != confirm:
         return render_template("register.html", error="Passwords do not match.")
 
-    if len(password) < 6:
-        return render_template("register.html", error="Password must be at least 6 characters.")
+    if len(password) < 8:
+        return render_template("register.html", error="Password must be at least 8 characters.")
+
+    if not any(c.isupper() for c in password):
+        return render_template("register.html", error="Password must contain at least one uppercase letter.")
+
+    if not any(c.isdigit() for c in password):
+        return render_template("register.html", error="Password must contain at least one number.")
 
     db = get_db()
     cursor = db.cursor()

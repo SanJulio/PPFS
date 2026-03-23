@@ -20,8 +20,7 @@ input { border-radius: 12px !important; padding: 12px !important; font-size: 16p
 
       <div class="text-center mb-4">
         <img src="{{ url_for('static', filename='6000-logo.png') }}" alt="PPFS Logo" style="height:50px; object-fit:contain;" class="mb-2 d-block">
-        <h1 class="fw-bold">PPFS</h1>
-        <div class="text-muted">Personal Finance System</div>
+        <div class="text-muted">Your Pocket Personal Finance System</div>
       </div>
 
       <div class="card p-4">
@@ -38,7 +37,8 @@ input { border-radius: 12px !important; padding: 12px !important; font-size: 16p
           </div>
           <div class="mb-3">
             <label class="form-label">Password</label>
-            <input class="form-control" name="password" type="password" placeholder="At least 6 characters" required>
+            <input class="form-control" name="password" type="password" placeholder="At least 8 characters" required>
+            <div class="form-text text-muted small mt-1">Min 8 characters, one uppercase letter and one number</div>
           </div>
           <div class="mb-4">
             <label class="form-label">Confirm Password</label>
