@@ -1769,34 +1769,24 @@ def register_post():
 
     hashed = generate_password_hash(password)
     today_str = date.today().isoformat()
-
-    if USE_POSTGRES:
-        cursor.execute("INSERT INTO users (email, password, created_at) VALUES (%s, %s, %s) RETURNING id",
-                       (email, hashed, today_str))
-        user_id = cursor.fetchone()[0]
-    else:
-        cursor.execute("INSERT INTO users (email, password, created_at) VALUES (?, ?, ?)",
-                       (email, hashed, today_str))
-        user_id = cursor.lastrowid
-
     token = secrets.token_urlsafe(32)
 
-    db2 = get_db()
-    cursor2 = db2.cursor()
     if USE_POSTGRES:
-        cursor2.execute("UPDATE users SET verify_token = %s WHERE id = %s", (token, user_id))
+        cursor.execute(
+            "INSERT INTO users (email, password, created_at, verify_token) VALUES (%s, %s, %s, %s) RETURNING id",
+            (email, hashed, today_str, token)
+        )
+        user_id = cursor.fetchone()[0]
     else:
-        cursor2.execute("UPDATE users SET verify_token = ? WHERE id = ?", (token, user_id))
-    db2.commit()
-    cursor2.close()
-    release_db(db2)
+        cursor.execute(
+            "INSERT INTO users (email, password, created_at, verify_token) VALUES (?, ?, ?, ?)",
+            (email, hashed, today_str, token)
+        )
+        user_id = cursor.lastrowid
 
-    send_verification_email(email, token)
-
-    user = User(user_id, email)
-    session.permanent = True
-    login_user(user, remember=True)
-    return redirect(url_for("home", msg="Welcome! Please check your email to verify your account."))
+    db.commit()
+    cursor.close()
+    release_db(db)
 
     send_verification_email(email, token)
 
