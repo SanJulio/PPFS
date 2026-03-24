@@ -89,6 +89,16 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
           </tr>
         </thead>
         <tbody id="txBody">
+          {% if not transactions %}
+          <tr id="emptyRow">
+            <td colspan="5" class="text-center py-5">
+              <div class="text-muted mb-2" style="font-size:32px">📭</div>
+              <div class="fw-semibold mb-1">No transactions yet</div>
+              <div class="small text-muted mb-3">Add your first expense or income in the Actions tab</div>
+              <a href="/actions" class="btn btn-dark btn-sm rounded-3 px-4">Go to Actions</a>
+            </td>
+          </tr>
+          {% endif %}
           {% for t in transactions %}
           <tr class="tx-row" data-id="{{ t.id }}" data-description="{{ t.description|lower }}"
             data-account="{{ t.account|lower }}" data-date="{{ t.date }}"

@@ -96,6 +96,16 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
             </tr>
           </thead>
           <tbody>
+            {% if not bills %}
+            <tr>
+              <td colspan="5" class="text-center py-5">
+                <div class="text-muted mb-2" style="font-size:32px">💸</div>
+                <div class="fw-semibold mb-1">No expenses set up</div>
+                <div class="small text-muted mb-3">Add your regular bills so Spendara can track and forecast them</div>
+                <a href="/settings" class="btn btn-dark btn-sm rounded-3 px-4">Go to Settings</a>
+              </td>
+            </tr>
+            {% endif %}
             {% for b in bills %}
             <tr class="flow-row" data-id="b{{ b.id }}" onclick="toggleFlow('b{{ b.id }}')">
               <td><span id="arrow-b{{ b.id }}" class="fw-bold" style="font-size:13px;color:#111">+</span></td>
@@ -155,6 +165,16 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
             </tr>
           </thead>
           <tbody>
+            {% if not income %}
+            <tr>
+              <td colspan="5" class="text-center py-5">
+                <div class="text-muted mb-2" style="font-size:32px">💰</div>
+                <div class="fw-semibold mb-1">No income set up</div>
+                <div class="small text-muted mb-3">Add your salary or other income so Spendara can include it in your forecast</div>
+                <a href="/settings" class="btn btn-dark btn-sm rounded-3 px-4">Go to Settings</a>
+              </td>
+            </tr>
+            {% endif %}
             {% for i in income %}
             <tr class="flow-row" data-id="i{{ i.id }}" onclick="toggleFlow('i{{ i.id }}')">
               <td><span id="arrow-i{{ i.id }}" class="fw-bold" style="font-size:13px;color:#111">+</span></td>
@@ -194,6 +214,14 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
 
   <!-- ACCOUNTS SECTION -->
   <div id="sectionAccounts" class="d-none">
+    {% if not account_data %}
+    <div class="card p-4 text-center text-muted">
+      <div class="fs-2 mb-2">🏦</div>
+      <div class="fw-bold mb-1">No accounts yet</div>
+      <div class="small mb-3">Add an account in Settings to start tracking your money</div>
+      <a href="/settings" class="btn btn-dark btn-sm rounded-3 px-4">Go to Settings</a>
+    </div>
+    {% endif %}
     <div class="vstack gap-3">
       {% for acc in account_data %}
       <div class="card p-3">

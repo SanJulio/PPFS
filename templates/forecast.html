@@ -55,7 +55,14 @@ body { background: #f2f4f7; padding-bottom: 110px; }
 
   <div id="warnings"></div>
 
-  <div class="card p-3 mb-4">
+  <div id="forecastEmpty" class="card p-5 text-center text-muted mb-4 d-none">
+    <div class="fs-2 mb-2">📈</div>
+    <div class="fw-bold mb-1">Nothing to forecast yet</div>
+    <div class="small mb-3">Add an account and some bills or income so Spendara can predict your future balances</div>
+    <a href="/settings" class="btn btn-dark btn-sm rounded-3 px-4">Go to Settings</a>
+  </div>
+
+  <div class="card p-3 mb-4" id="forecastChartCard">
     <canvas id="forecastChart" height="260"></canvas>
   </div>
 
@@ -103,6 +110,12 @@ var COLORS = [
 ];
 
 var chart = null;
+
+if (accountNames.length === 0) {
+  document.getElementById('forecastEmpty').classList.remove('d-none');
+  document.getElementById('forecastChartCard').classList.add('d-none');
+  document.querySelectorAll('.btn-period').forEach(function(b) { b.disabled = true; });
+}
 
 function setPeriod(days, btn) {
   document.querySelectorAll('.btn-period').forEach(function(b) { b.classList.remove('active'); });
@@ -221,7 +234,7 @@ function renderSummary(data) {
   box.innerHTML = cards.join('');
 }
 
-renderChart(30);
+if (accountNames.length > 0) { renderChart(30); }
 
 if (window.location.search.includes('msg=')) {
   const url = new URL(window.location);
