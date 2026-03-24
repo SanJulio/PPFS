@@ -1698,17 +1698,20 @@ def verify_email(token):
 @app.context_processor
 def inject_user_verified():
     if current_user.is_authenticated:
-        db = get_db()
-        cursor = db.cursor()
-        if USE_POSTGRES:
-            cursor.execute("SELECT verified FROM users WHERE id = %s", (current_user.id,))
-        else:
-            cursor.execute("SELECT verified FROM users WHERE id = ?", (current_user.id,))
-        row = cursor.fetchone()
-        cursor.close()
-        release_db(db)
-        verified = bool(row[0] if USE_POSTGRES else row["verified"]) if row else False
-        return {"user_verified": verified}
+        try:
+            db = get_db()
+            cursor = db.cursor()
+            if USE_POSTGRES:
+                cursor.execute("SELECT verified FROM users WHERE id = %s", (current_user.id,))
+            else:
+                cursor.execute("SELECT verified FROM users WHERE id = ?", (current_user.id,))
+            row = cursor.fetchone()
+            cursor.close()
+            release_db(db)
+            verified = bool(row[0] if USE_POSTGRES else row["verified"]) if row else False
+            return {"user_verified": verified}
+        except:
+            return {"user_verified": True}
     return {"user_verified": True}
 
 @app.get("/register")
@@ -1764,19 +1767,24 @@ def register_post():
                        (email, hashed, today_str))
         user_id = cursor.lastrowid
 
-    db.commit()
-    cursor.close()
-    release_db(db)
-
     token = secrets.token_urlsafe(32)
 
+    db2 = get_db()
+    cursor2 = db2.cursor()
     if USE_POSTGRES:
-        cursor.execute("UPDATE users SET verify_token = %s WHERE id = %s", (token, user_id))
+        cursor2.execute("UPDATE users SET verify_token = %s WHERE id = %s", (token, user_id))
     else:
-        cursor.execute("UPDATE users SET verify_token = ? WHERE id = ?", (token, user_id))
-    db.commit()
-    cursor.close()
-    release_db(db)
+        cursor2.execute("UPDATE users SET verify_token = ? WHERE id = ?", (token, user_id))
+    db2.commit()
+    cursor2.close()
+    release_db(db2)
+
+    send_verification_email(email, token)
+
+    user = User(user_id, email)
+    session.permanent = True
+    login_user(user, remember=True)
+    return redirect(url_for("home", msg="Welcome! Please check your email to verify your account."))
 
     send_verification_email(email, token)
 

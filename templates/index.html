@@ -112,7 +112,8 @@ input, select {
 </div>
 
   {% if message %}
-    <div class="msg">{{ message }}</div>
+  <div class="msg">{{ message }}</div>
+  {% endif %}
   {% if not user_verified %}
   <div class="alert rounded-4 mb-3" style="background:#fff3cd; border:none;">
     <div class="fw-bold">📧 Please verify your email</div>
