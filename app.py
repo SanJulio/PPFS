@@ -148,6 +148,13 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
+@login_manager.unauthorized_handler
+def unauthorized():
+    """Handle unauthorized requests - show landing page for root path, login for others"""
+    if request.path == "/":
+        return render_template("landing.html"), 200
+    return redirect(url_for("login"))
+
 class User(UserMixin):
     def __init__(self, id, email):
         self.id = id
@@ -443,11 +450,8 @@ def calculate_monthly_spending():
     }
 
 @app.get("/")
+@login_required
 def home():
-    # Show landing page for unauthenticated visitors
-    if not current_user.is_authenticated:
-        return render_template("landing.html")
-
     # Dashboard for authenticated users
     # Check email verification
     db = get_db()
