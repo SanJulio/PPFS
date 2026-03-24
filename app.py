@@ -1694,20 +1694,6 @@ def inject_user_verified():
             return {"user_verified": True}
     return {"user_verified": True}
 
-@app.get("/verify-existing-users")
-@login_required
-def verify_existing_users():
-    db = get_db()
-    cursor = db.cursor()
-    if USE_POSTGRES:
-        cursor.execute("UPDATE users SET verified = 1 WHERE verified = 0")
-    else:
-        cursor.execute("UPDATE users SET verified = 0 WHERE verified = 0")
-    db.commit()
-    cursor.close()
-    release_db(db)
-    return "✅ All existing users marked as verified!"
-
 @app.get("/register")
 def register():
     return render_template("register.html")
