@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask import session
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -57,8 +61,8 @@ class PostgresSessionInterface(SessionInterface):
     def _release_db(self, conn):
         try:
             conn.close()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Error closing session DB connection: {e}")
 
     def open_session(self, app, request):
         sid = request.cookies.get("session")
@@ -126,7 +130,11 @@ limiter = Limiter(
 )
 
 app.session_interface = PostgresSessionInterface()
-app.secret_key = os.environ.get("SECRET_KEY", "waheguruji")
+
+secret_key = os.environ.get("SECRET_KEY")
+if not secret_key:
+    raise ValueError("SECRET_KEY environment variable must be set for production security")
+app.secret_key = secret_key
 app.config["SESSION_COOKIE_SECURE"] = True
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "None"
@@ -178,6 +186,13 @@ def add_no_cache_headers(response):
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
+    # Security headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.plot.ly; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
 
 import calendar
@@ -430,6 +445,17 @@ def calculate_monthly_spending():
 @app.get("/")
 @login_required
 def home():
+    # Check email verification
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT verified FROM users WHERE id = %s", (current_user.id,))
+    else:
+        cursor.execute("SELECT verified FROM users WHERE id = ?", (current_user.id,))
+    row = cursor.fetchone()
+    cursor.close()
+    release_db(db)
+    verified = bool(row[0] if USE_POSTGRES else row["verified"]) if row else False
 
     accounts_rows = get_active_accounts(current_user.id)
     accounts = {}
@@ -952,7 +978,8 @@ def afford():
                 "amount": e["amount"],
                 "account": e["account"]
             })
-        except:
+        except (ValueError, KeyError) as ex:
+            logger.debug(f"Invalid future event data: {e}, error: {ex}")
             continue
 
     # end of next month horizon
@@ -1613,7 +1640,8 @@ def forecast():
                 "amount": e["amount"],
                 "account": e["account"]
             })
-        except:
+        except (ValueError, KeyError) as ex:
+            logger.debug(f"Invalid future event data in forecast: {e}, error: {ex}")
             continue
 
     simulated = {}
@@ -1685,27 +1713,44 @@ def forecast():
     )
 
 @app.get("/verify-email/<token>")
+@limiter.limit("10 per minute")
 def verify_email(token):
+    from datetime import datetime
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("SELECT id FROM users WHERE verify_token = %s", (token,))
+        cursor.execute("SELECT id, verify_token_expires_at FROM users WHERE verify_token = %s", (token,))
     else:
-        cursor.execute("SELECT id FROM users WHERE verify_token = ?", (token,))
+        cursor.execute("SELECT id, verify_token_expires_at FROM users WHERE verify_token = ?", (token,))
     row = cursor.fetchone()
+
+    invalid_msg = "Invalid or expired verification link. Please sign up again."
+
     if row:
         user_id = row[0] if USE_POSTGRES else row["id"]
+        expires_at_str = row[1] if USE_POSTGRES else row["verify_token_expires_at"]
+
+        # Check if token is expired
+        if expires_at_str:
+            expires_at = datetime.fromisoformat(expires_at_str)
+            if datetime.now() > expires_at:
+                cursor.close()
+                release_db(db)
+                # Use generic message for token expiration too
+                return redirect(url_for("login", msg=invalid_msg))
+
         if USE_POSTGRES:
-            cursor.execute("UPDATE users SET verified = 1, verify_token = NULL WHERE id = %s", (user_id,))
+            cursor.execute("UPDATE users SET verified = 1, verify_token = NULL, verify_token_expires_at = NULL WHERE id = %s", (user_id,))
         else:
-            cursor.execute("UPDATE users SET verified = 1, verify_token = NULL WHERE id = ?", (user_id,))
+            cursor.execute("UPDATE users SET verified = 1, verify_token = NULL, verify_token_expires_at = NULL WHERE id = ?", (user_id,))
         db.commit()
         cursor.close()
         release_db(db)
+        logger.info(f"Email verified for user ID: {user_id}")
         return redirect(url_for("home", msg="✅ Email verified! Welcome to Spendara."))
     cursor.close()
     release_db(db)
-    return redirect(url_for("login", msg="Invalid or expired verification link."))
+    return redirect(url_for("login", msg=invalid_msg))
 
 @app.context_processor
 def inject_user_verified():
@@ -1722,7 +1767,8 @@ def inject_user_verified():
             release_db(db)
             verified = bool(row[0] if USE_POSTGRES else row["verified"]) if row else False
             return {"user_verified": verified}
-        except:
+        except Exception as e:
+            logger.error(f"Error checking user verification status: {e}")
             return {"user_verified": True}
     return {"user_verified": True}
 
@@ -1771,16 +1817,19 @@ def register_post():
     today_str = date.today().isoformat()
     token = secrets.token_urlsafe(32)
 
+    from datetime import datetime, timedelta
+    expires_at = (datetime.now() + timedelta(days=7)).isoformat()
+
     if USE_POSTGRES:
         cursor.execute(
-            "INSERT INTO users (email, password, created_at, verify_token) VALUES (%s, %s, %s, %s) RETURNING id",
-            (email, hashed, today_str, token)
+            "INSERT INTO users (email, password, created_at, verify_token, verify_token_expires_at) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+            (email, hashed, today_str, token, expires_at)
         )
         user_id = cursor.fetchone()[0]
     else:
         cursor.execute(
-            "INSERT INTO users (email, password, created_at, verify_token) VALUES (?, ?, ?, ?)",
-            (email, hashed, today_str, token)
+            "INSERT INTO users (email, password, created_at, verify_token, verify_token_expires_at) VALUES (?, ?, ?, ?, ?)",
+            (email, hashed, today_str, token, expires_at)
         )
         user_id = cursor.lastrowid
 
@@ -1788,6 +1837,7 @@ def register_post():
     cursor.close()
     release_db(db)
 
+    logger.info(f"New user registered: {email}")
     send_verification_email(email, token)
 
     user = User(user_id, email)
@@ -1828,8 +1878,10 @@ def login_post():
     row = dict(zip(cols, row))
 
     if not check_password_hash(row["password"], password):
+        logger.warning(f"Failed login attempt for email: {email}")
         return render_template("login.html", error="Invalid email or password.")
-    
+
+    logger.info(f"Successful login for user: {email}")
 
     user = User(row["id"], row["email"])
     login_user(user, remember=True)
@@ -1838,6 +1890,8 @@ def login_post():
 
 @app.get("/logout")
 def logout():
+    if current_user.is_authenticated:
+        logger.info(f"User logout: {current_user.email}")
     logout_user()
     return redirect(url_for("login"))
 
@@ -1867,12 +1921,15 @@ def forgot_password_post():
         user_id = row[0] if USE_POSTGRES else row["id"]
         token = secrets.token_urlsafe(32)
 
+        from datetime import datetime, timedelta
+        expires_at = (datetime.now() + timedelta(hours=24)).isoformat()
+
         db2 = get_db()
         cursor2 = db2.cursor()
         if USE_POSTGRES:
-            cursor2.execute("UPDATE users SET verify_token = %s WHERE id = %s", (token, user_id))
+            cursor2.execute("UPDATE users SET verify_token = %s, verify_token_expires_at = %s WHERE id = %s", (token, expires_at, user_id))
         else:
-            cursor2.execute("UPDATE users SET verify_token = ? WHERE id = ?", (token, user_id))
+            cursor2.execute("UPDATE users SET verify_token = ?, verify_token_expires_at = ? WHERE id = ?", (token, expires_at, user_id))
         db2.commit()
         cursor2.close()
         release_db(db2)
@@ -1884,10 +1941,12 @@ def forgot_password_post():
 
 
 @app.get("/reset-password/<token>")
+@limiter.limit("10 per minute")
 def reset_password(token):
     return render_template("reset_password.html", token=token, message="")
 
 @app.post("/reset-password/<token>")
+@limiter.limit("10 per minute")
 def reset_password_post(token):
     password = (request.form.get("password") or "").strip()
     confirm = (request.form.get("confirm") or "").strip()
@@ -1910,32 +1969,46 @@ def reset_password_post(token):
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("SELECT id FROM users WHERE verify_token = %s", (token,))
+        cursor.execute("SELECT id, verify_token_expires_at FROM users WHERE verify_token = %s", (token,))
     else:
-        cursor.execute("SELECT id FROM users WHERE verify_token = ?", (token,))
+        cursor.execute("SELECT id, verify_token_expires_at FROM users WHERE verify_token = ?", (token,))
     row = cursor.fetchone()
     cursor.close()
     release_db(db)
 
+    invalid_msg = "Invalid or expired reset link. Please request a new one."
+
     if not row:
-        return render_template("reset_password.html", token=token, message="Invalid or expired reset link.")
+        return render_template("reset_password.html", token=token, message=invalid_msg)
 
     user_id = row[0] if USE_POSTGRES else row["id"]
+    expires_at_str = row[1] if USE_POSTGRES else row["verify_token_expires_at"]
+
+    # Check if token is expired
+    if expires_at_str:
+        from datetime import datetime
+        expires_at = datetime.fromisoformat(expires_at_str)
+        if datetime.now() > expires_at:
+            # Use generic message for token expiration too
+            return render_template("reset_password.html", token=token, message=invalid_msg)
+
     hashed = generate_password_hash(password)
 
     db2 = get_db()
     cursor2 = db2.cursor()
     if USE_POSTGRES:
-        cursor2.execute("UPDATE users SET password = %s, verify_token = NULL WHERE id = %s", (hashed, user_id))
+        cursor2.execute("UPDATE users SET password = %s, verify_token = NULL, verify_token_expires_at = NULL WHERE id = %s", (hashed, user_id))
     else:
-        cursor2.execute("UPDATE users SET password = ?, verify_token = NULL WHERE id = ?", (hashed, user_id))
+        cursor2.execute("UPDATE users SET password = ?, verify_token = NULL, verify_token_expires_at = NULL WHERE id = ?", (hashed, user_id))
     db2.commit()
     cursor2.close()
     release_db(db2)
 
+    logger.info(f"Password reset successful for user ID: {user_id}")
     return redirect(url_for("login", msg="Password reset successfully! Please log in."))
 
 @app.get("/resend-verification")
+@limiter.limit("5 per minute")
 @login_required
 def resend_verification():
     db = get_db()
@@ -1959,12 +2032,15 @@ def resend_verification():
 
     token = secrets.token_urlsafe(32)
 
+    from datetime import datetime, timedelta
+    expires_at = (datetime.now() + timedelta(days=7)).isoformat()
+
     db2 = get_db()
     cursor2 = db2.cursor()
     if USE_POSTGRES:
-        cursor2.execute("UPDATE users SET verify_token = %s WHERE id = %s", (token, current_user.id))
+        cursor2.execute("UPDATE users SET verify_token = %s, verify_token_expires_at = %s WHERE id = %s", (token, expires_at, current_user.id))
     else:
-        cursor2.execute("UPDATE users SET verify_token = ? WHERE id = ?", (token, current_user.id))
+        cursor2.execute("UPDATE users SET verify_token = ?, verify_token_expires_at = ? WHERE id = ?", (token, expires_at, current_user.id))
     db2.commit()
     cursor2.close()
     release_db(db2)

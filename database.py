@@ -1,7 +1,11 @@
 import os
 import sqlite3
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv(override=False)
 
@@ -30,8 +34,8 @@ def get_db():
 def release_db(conn):
     try:
         conn.close()
-    except:
-        pass
+    except Exception as e:
+        logger.debug(f"Error closing database connection: {e}")
 
 
 def init_db():
@@ -136,16 +140,16 @@ def init_db():
             cursor.execute(table)
             db.commit()
         except Exception as e:
-            print(f">>> Table creation error: {e}", flush=True)
+            logger.error(f"Table creation error: {e}")
             try:
                 db.rollback()
-            except:
-                pass
+            except Exception as rb_error:
+                logger.debug(f"Rollback error: {rb_error}")
 
     try:
         if USE_POSTGRES:
             cursor.execute("""
-                SELECT column_name FROM information_schema.columns 
+                SELECT column_name FROM information_schema.columns
                 WHERE table_name='accounts' AND column_name='include_in_overview'
             """)
             if not cursor.fetchone():
@@ -155,11 +159,30 @@ def init_db():
             cursor.execute("ALTER TABLE accounts ADD COLUMN include_in_overview INTEGER NOT NULL DEFAULT 1")
             db.commit()
     except Exception as e:
-        print(f">>> Column migration error: {e}", flush=True)
+        logger.error(f"Column migration error (include_in_overview): {e}")
         try:
             db.rollback()
-        except:
-            pass
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='verify_token_expires_at'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN verify_token_expires_at TEXT")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN verify_token_expires_at TEXT")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Token expiration migration error: {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
 
     cursor.close()
     release_db(db)
