@@ -222,6 +222,12 @@ function renderSummary(data) {
 }
 
 renderChart(30);
+
+if (window.location.search.includes('msg=')) {
+  const url = new URL(window.location);
+  url.searchParams.delete('msg');
+  window.history.replaceState({}, '', url);
+}
 </script>
 </body>
 </html>

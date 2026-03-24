@@ -722,6 +722,12 @@ function toggleEdit(id) {
   const row = document.getElementById(id);
   row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
 }
+
+if (window.location.search.includes('msg=')) {
+  const url = new URL(window.location);
+  url.searchParams.delete('msg');
+  window.history.replaceState({}, '', url);
+}
 </script>
 </body>
 </html>

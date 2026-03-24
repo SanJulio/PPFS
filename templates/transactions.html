@@ -227,6 +227,12 @@ function clearFilters() {
 document.getElementById('searchInput').addEventListener('input', filterTransactions);
 document.getElementById('dateFrom').addEventListener('change', filterTransactions);
 document.getElementById('dateTo').addEventListener('change', filterTransactions);
+
+if (window.location.search.includes('msg=')) {
+  const url = new URL(window.location);
+  url.searchParams.delete('msg');
+  window.history.replaceState({}, '', url);
+}
 </script>
 
 </body>

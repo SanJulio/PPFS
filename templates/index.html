@@ -418,6 +418,12 @@ function toggleTile(id) {
   tile.classList.toggle('d-none');
   arrow.textContent = tile.classList.contains('d-none') ? '+' : '−';
 }
+
+if (window.location.search.includes('msg=')) {
+  const url = new URL(window.location);
+  url.searchParams.delete('msg');
+  window.history.replaceState({}, '', url);
+}
 </script>
 </body>
 </html>
