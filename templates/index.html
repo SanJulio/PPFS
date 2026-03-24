@@ -105,6 +105,114 @@ input, select {
 </style>
 </head>
 <body>
+
+<!-- ONBOARDING MODAL -->
+{% if show_onboarding %}
+<div id="onboardingOverlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;">
+  <div class="card" style="width: 100%; max-width: 500px; margin: 20px;">
+    <div class="card-body p-4">
+      <!-- Step 1: Welcome -->
+      <div id="step-1" class="onboarding-step">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="font-size: 48px; margin-bottom: 12px;">👋</div>
+          <h3 class="fw-bold">Welcome to Spendara</h3>
+          <p class="text-muted">Let's get you set up in 2 minutes</p>
+        </div>
+        <p class="mb-3">Here's what you can do:</p>
+        <div class="mb-4">
+          <div class="d-flex gap-2 mb-2">
+            <div style="font-size: 20px;">💰</div>
+            <div>
+              <div class="fw-semibold">See your finances at a glance</div>
+              <div class="small text-muted">Track balance, bills & savings</div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mb-2">
+            <div style="font-size: 20px;">📈</div>
+            <div>
+              <div class="fw-semibold">Forecast your future</div>
+              <div class="small text-muted">See 90 days ahead</div>
+            </div>
+          </div>
+          <div class="d-flex gap-2">
+            <div style="font-size: 20px;">🚀</div>
+            <div>
+              <div class="fw-semibold">Make smart decisions</div>
+              <div class="small text-muted">Know if you can afford things</div>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-dark w-100 py-3" onclick="onboardingStep(2)">Let's go →</button>
+      </div>
+
+      <!-- Step 2: Create Account -->
+      <div id="step-2" class="onboarding-step" style="display: none;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="font-size: 48px; margin-bottom: 12px;">🏦</div>
+          <h3 class="fw-bold">Create your first account</h3>
+          <p class="text-muted">e.g. Current Account, Savings, or Cash wallet</p>
+        </div>
+        <form id="onboardingForm">
+          <div class="mb-3">
+            <label class="form-label">Account name</label>
+            <input class="form-control" id="onboardingName" placeholder="e.g. Barclays Current" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Type</label>
+            <select class="form-select" id="onboardingType" required>
+              <option value="">Select type</option>
+              <option value="current">Current Account</option>
+              <option value="savings">Savings Account</option>
+              <option value="cash">Cash Wallet</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Starting balance (£)</label>
+            <input class="form-control" id="onboardingBalance" inputmode="decimal" placeholder="e.g. 1000" required>
+          </div>
+          <button type="button" class="btn btn-dark w-100 py-3" onclick="createOnboardingAccount(this)">Create account →</button>
+        </form>
+        <button type="button" class="btn btn-link text-muted w-100 mt-2" onclick="onboardingStep(1)">← Back</button>
+      </div>
+
+      <!-- Step 3: Success -->
+      <div id="step-3" class="onboarding-step" style="display: none;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="font-size: 48px; margin-bottom: 12px;">✨</div>
+          <h3 class="fw-bold">You're all set!</h3>
+          <p class="text-muted">Your account is ready</p>
+        </div>
+        <p class="mb-3">Next steps:</p>
+        <div class="mb-4">
+          <div class="d-flex gap-2 mb-2">
+            <div class="fw-semibold">1.</div>
+            <div>
+              <div class="fw-semibold">Add your first transaction</div>
+              <div class="small text-muted">Go to Actions tab</div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mb-2">
+            <div class="fw-semibold">2.</div>
+            <div>
+              <div class="fw-semibold">Set up your bills</div>
+              <div class="small text-muted">In Account settings</div>
+            </div>
+          </div>
+          <div class="d-flex gap-2">
+            <div class="fw-semibold">3.</div>
+            <div>
+              <div class="fw-semibold">Check your forecast</div>
+              <div class="small text-muted">See 90 days ahead</div>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-dark w-100 py-3" onclick="closeOnboarding()">Let me explore</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="container py-4">
 <div class="mb-4" id="home">
   <img src="{{ url_for('static', filename='6000-logo.png') }}" alt="PPFS Logo" style="height:50px; object-fit:contain;" class="mb-2">
@@ -423,6 +531,81 @@ if (window.location.search.includes('msg=')) {
   const url = new URL(window.location);
   url.searchParams.delete('msg');
   window.history.replaceState({}, '', url);
+}
+
+// ONBOARDING FUNCTIONS
+function onboardingStep(step) {
+  document.querySelectorAll('.onboarding-step').forEach(el => el.style.display = 'none');
+  const stepEl = document.getElementById('step-' + step);
+  if (stepEl) stepEl.style.display = 'block';
+}
+
+function createOnboardingAccount(btn) {
+  const name = document.getElementById('onboardingName').value.trim();
+  const type = document.getElementById('onboardingType').value;
+  const balance = document.getElementById('onboardingBalance').value.trim();
+
+  if (!name || !type || !balance) {
+    alert('Please fill in all fields');
+    return;
+  }
+
+  // Parse balance to validate
+  const balanceNum = parseFloat(balance);
+  if (isNaN(balanceNum)) {
+    alert('Balance must be a valid number');
+    return;
+  }
+
+  // Get CSRF token from any input on the page
+  const csrfToken = document.querySelector('input[name="csrf_token"]')?.value;
+  if (!csrfToken) {
+    alert('Security token missing. Please refresh and try again.');
+    return;
+  }
+
+  const formData = new URLSearchParams();
+  formData.append('csrf_token', csrfToken);
+  formData.append('name', name);
+  formData.append('type', type);
+  formData.append('balance', balance);
+
+  // Disable button during submission
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = 'Creating...';
+
+  fetch('/settings/add-account', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: formData.toString(),
+    redirect: 'follow'
+  })
+  .then(response => {
+    if (response.ok) {
+      // Success - show step 3
+      onboardingStep(3);
+    } else {
+      throw new Error('Failed to create account');
+    }
+  })
+  .catch(error => {
+    console.error('Error creating account:', error);
+    btn.disabled = false;
+    btn.textContent = originalText;
+    alert('Failed to create account. Please check your details and try again.');
+  });
+}
+
+function closeOnboarding() {
+  const overlay = document.getElementById('onboardingOverlay');
+  if (overlay) {
+    overlay.style.display = 'none';
+  }
+  // Reload page to show new account
+  location.reload();
 }
 </script>
 </body>

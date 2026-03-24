@@ -485,6 +485,9 @@ def home():
             "include_in_overview": accounts[n].get("include_in_overview", True)
         })
 
+    # Check if user has no accounts (show onboarding)
+    show_onboarding = len(active_accounts) == 0
+
     return render_template(
         "index.html",
         message=request.args.get("msg", ""),
@@ -492,6 +495,8 @@ def home():
         overview=overview,
         balances=balances,
         monthly=monthly,
+        show_onboarding=show_onboarding,
+        verified=verified,
     )
 
 @app.get("/transactions")
