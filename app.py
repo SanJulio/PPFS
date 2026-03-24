@@ -247,6 +247,38 @@ def send_verification_email(to_email, token):
         print(f">>> Email error: {e}", flush=True)
         return False
 
+def send_reset_email(to_email, reset_url):
+    import sib_api_v3_sdk
+    from sib_api_v3_sdk.rest import ApiException
+
+    configuration = sib_api_v3_sdk.Configuration()
+    configuration.api_key['api-key'] = os.environ.get('BREVO_API_KEY')
+
+    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
+
+    send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
+        to=[{"email": to_email}],
+        sender={"email": "noreply@spendara.co.uk", "name": "Spendara"},
+        subject="Reset your Spendara password",
+        html_content=f"""
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto;">
+            <h2 style="color: #111;">Reset your password 🔑</h2>
+            <p>We received a request to reset your Spendara password. Click below to choose a new one.</p>
+            <a href="{reset_url}" style="display:inline-block; background:#111; color:#fff; padding:12px 24px; border-radius:12px; text-decoration:none; font-weight:bold;">
+                Reset Password
+            </a>
+            <p style="color:#999; font-size:12px; margin-top:24px;">If you didn't request this, you can safely ignore this email.</p>
+        </div>
+        """
+    )
+
+    try:
+        api_instance.send_transac_email(send_smtp_email)
+        return True
+    except ApiException as e:
+        print(f">>> Reset email error: {e}", flush=True)
+        return False
+
 def validate_amount(amount_raw):
     try:
         amount = float(amount_raw)
@@ -1818,6 +1850,100 @@ def login_post():
 def logout():
     logout_user()
     return redirect(url_for("login"))
+
+@app.get("/forgot-password")
+def forgot_password():
+    return render_template("forgot_password.html", message="")
+
+@app.post("/forgot-password")
+@limiter.limit("5 per minute")
+def forgot_password_post():
+    email = (request.form.get("email") or "").strip().lower()
+
+    if not email:
+        return render_template("forgot_password.html", message="Please enter your email.")
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
+    else:
+        cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+    row = cursor.fetchone()
+    cursor.close()
+    release_db(db)
+
+    if row:
+        user_id = row[0] if USE_POSTGRES else row["id"]
+        token = secrets.token_urlsafe(32)
+
+        db2 = get_db()
+        cursor2 = db2.cursor()
+        if USE_POSTGRES:
+            cursor2.execute("UPDATE users SET verify_token = %s WHERE id = %s", (token, user_id))
+        else:
+            cursor2.execute("UPDATE users SET verify_token = ? WHERE id = ?", (token, user_id))
+        db2.commit()
+        cursor2.close()
+        release_db(db2)
+
+        reset_url = f"https://spendara.co.uk/reset-password/{token}"
+        send_reset_email(email, reset_url)
+
+    return render_template("forgot_password.html", message="If that email exists you'll receive a reset link shortly.")
+
+
+@app.get("/reset-password/<token>")
+def reset_password(token):
+    return render_template("reset_password.html", token=token, message="")
+
+@app.post("/reset-password/<token>")
+def reset_password_post(token):
+    password = (request.form.get("password") or "").strip()
+    confirm = (request.form.get("confirm") or "").strip()
+
+    if not password or not confirm:
+        return render_template("reset_password.html", token=token, message="All fields are required.")
+
+    if password != confirm:
+        return render_template("reset_password.html", token=token, message="Passwords do not match.")
+
+    if len(password) < 8:
+        return render_template("reset_password.html", token=token, message="Password must be at least 8 characters.")
+
+    if not any(c.isupper() for c in password):
+        return render_template("reset_password.html", token=token, message="Password must contain at least one uppercase letter.")
+
+    if not any(c.isdigit() for c in password):
+        return render_template("reset_password.html", token=token, message="Password must contain at least one number.")
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT id FROM users WHERE verify_token = %s", (token,))
+    else:
+        cursor.execute("SELECT id FROM users WHERE verify_token = ?", (token,))
+    row = cursor.fetchone()
+    cursor.close()
+    release_db(db)
+
+    if not row:
+        return render_template("reset_password.html", token=token, message="Invalid or expired reset link.")
+
+    user_id = row[0] if USE_POSTGRES else row["id"]
+    hashed = generate_password_hash(password)
+
+    db2 = get_db()
+    cursor2 = db2.cursor()
+    if USE_POSTGRES:
+        cursor2.execute("UPDATE users SET password = %s, verify_token = NULL WHERE id = %s", (hashed, user_id))
+    else:
+        cursor2.execute("UPDATE users SET password = ?, verify_token = NULL WHERE id = ?", (hashed, user_id))
+    db2.commit()
+    cursor2.close()
+    release_db(db2)
+
+    return redirect(url_for("login", msg="Password reset successfully! Please log in."))
 
 @app.errorhandler(404)
 def page_not_found(e):
