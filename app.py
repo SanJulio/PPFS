@@ -443,8 +443,12 @@ def calculate_monthly_spending():
     }
 
 @app.get("/")
-@login_required
 def home():
+    # Show landing page for unauthenticated visitors
+    if not current_user.is_authenticated:
+        return render_template("landing.html")
+
+    # Dashboard for authenticated users
     # Check email verification
     db = get_db()
     cursor = db.cursor()
