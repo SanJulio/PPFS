@@ -1,0 +1,21 @@
+{
+  "name": "Spendara",
+  "short_name": "Spendara",
+  "description": "Track your money. Forecast your future.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f2f4f7",
+  "theme_color": "#111111",
+  "icons": [
+    {
+      "src": "/static/6000-logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/6000-logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
