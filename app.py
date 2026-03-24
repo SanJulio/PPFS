@@ -247,26 +247,6 @@ def send_verification_email(to_email, token):
         print(f">>> Email error: {e}", flush=True)
         return False
 
-@app.get("/add-verified-column")
-@login_required
-def add_verified_column():
-    db = get_db()
-    cursor = db.cursor()
-    try:
-        cursor.execute("ALTER TABLE users ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
-        db.commit()
-    except Exception as e:
-        print(f"verified column: {e}")
-    try:
-        cursor.execute("ALTER TABLE users ADD COLUMN verify_token TEXT")
-        db.commit()
-        msg = "✅ Columns added!"
-    except Exception as e:
-        msg = f"Error: {e}"
-    cursor.close()
-    release_db(db)
-    return msg
-
 def validate_amount(amount_raw):
     try:
         amount = float(amount_raw)
