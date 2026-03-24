@@ -1935,6 +1935,44 @@ def reset_password_post(token):
 
     return redirect(url_for("login", msg="Password reset successfully! Please log in."))
 
+@app.get("/resend-verification")
+@login_required
+def resend_verification():
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT email, verified FROM users WHERE id = %s", (current_user.id,))
+    else:
+        cursor.execute("SELECT email, verified FROM users WHERE id = ?", (current_user.id,))
+    row = cursor.fetchone()
+    cursor.close()
+    release_db(db)
+
+    if not row:
+        return redirect(url_for("home"))
+
+    email = row[0] if USE_POSTGRES else row["email"]
+    verified = row[1] if USE_POSTGRES else row["verified"]
+
+    if verified:
+        return redirect(url_for("home", msg="Your email is already verified!"))
+
+    token = secrets.token_urlsafe(32)
+
+    db2 = get_db()
+    cursor2 = db2.cursor()
+    if USE_POSTGRES:
+        cursor2.execute("UPDATE users SET verify_token = %s WHERE id = %s", (token, current_user.id))
+    else:
+        cursor2.execute("UPDATE users SET verify_token = ? WHERE id = ?", (token, current_user.id))
+    db2.commit()
+    cursor2.close()
+    release_db(db2)
+
+    send_verification_email(email, token)
+
+    return redirect(url_for("home", msg="Verification email resent! Check your inbox."))
+
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template("404.html"), 404

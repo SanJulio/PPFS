@@ -117,7 +117,8 @@ input, select {
   {% if not user_verified %}
   <div class="alert rounded-4 mb-3" style="background:#fff3cd; border:none;">
     <div class="fw-bold">📧 Please verify your email</div>
-    <div class="small">Check your inbox for a verification email from Spendara.</div>
+    <div class="small mb-2">Check your inbox for a verification email from Spendara.</div>
+    <a href="/resend-verification" class="btn btn-sm btn-dark">Resend verification email</a>
   </div>
   {% endif %}
 
