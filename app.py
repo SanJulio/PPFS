@@ -2063,6 +2063,169 @@ def resend_verification():
 
     return redirect(url_for("home", msg="Verification email resent! Check your inbox."))
 
+def parse_bank_csv(content: str):
+    """
+    Parse a bank CSV and return (rows, error).
+    rows = list of {date, description, amount} dicts.
+    Handles Monzo, Barclays, HSBC, Nationwide, Starling, NatWest formats.
+    """
+    import io
+    from datetime import datetime as dt
+
+    try:
+        dialect = csv.Sniffer().sniff(content[:2000], delimiters=',;\t')
+    except Exception:
+        dialect = csv.excel
+
+    reader = csv.DictReader(io.StringIO(content), dialect=dialect)
+    try:
+        rows = list(reader)
+    except Exception:
+        return None, "Could not read CSV file."
+
+    if not rows:
+        return None, "CSV file is empty."
+
+    fieldnames = reader.fieldnames or []
+
+    # Detect date column
+    date_col = next((h for h in fieldnames if h and h.strip().lower() in
+        ['date', 'transaction date', 'posted date', 'value date']), None)
+
+    # Detect description column
+    desc_candidates = ['description', 'memo', 'name', 'narrative', 'details',
+                        'payee', 'counter party', 'counterparty', 'transactions',
+                        'transaction details', 'merchant name', 'reference']
+    desc_col = next((h for h in fieldnames if h and h.strip().lower() in desc_candidates), None)
+    if not desc_col:
+        desc_col = next((h for h in fieldnames if h and any(
+            c in h.strip().lower() for c in ['desc', 'memo', 'narr', 'detail', 'payee', 'merchant'])), None)
+
+    # Detect amount columns (single or split debit/credit)
+    amount_col = next((h for h in fieldnames if h and h.strip().lower() in
+        ['amount', 'value', 'transaction amount', 'amount (gbp)']), None)
+    debit_col = next((h for h in fieldnames if h and h.strip().lower() in
+        ['debit', 'debits', 'money out', 'paid out']), None)
+    credit_col = next((h for h in fieldnames if h and h.strip().lower() in
+        ['credit', 'credits', 'money in', 'paid in']), None)
+
+    if not date_col or not desc_col or (not amount_col and not (debit_col and credit_col)):
+        found = ', '.join(str(h) for h in fieldnames if h)
+        return None, f"Could not detect required columns. Columns found: {found}"
+
+    date_formats = ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%d %b %Y', '%d %B %Y', '%m/%d/%Y']
+    parsed = []
+
+    for row in rows:
+        try:
+            date_str = (row.get(date_col) or '').strip().strip('"')
+            desc = (row.get(desc_col) or '').strip().strip('"')
+            if not date_str or not desc:
+                continue
+
+            parsed_date = None
+            for fmt in date_formats:
+                try:
+                    parsed_date = dt.strptime(date_str, fmt).date().isoformat()
+                    break
+                except ValueError:
+                    continue
+            if not parsed_date:
+                continue
+
+            if amount_col:
+                raw = (row.get(amount_col) or '').strip().strip('"').replace(',', '').replace('£', '').replace('$', '')
+                if not raw:
+                    continue
+                amount = float(raw)
+            else:
+                debit_raw = (row.get(debit_col) or '').strip().strip('"').replace(',', '').replace('£', '')
+                credit_raw = (row.get(credit_col) or '').strip().strip('"').replace(',', '').replace('£', '')
+                debit = float(debit_raw) if debit_raw else 0.0
+                credit = float(credit_raw) if credit_raw else 0.0
+                amount = round(credit - debit, 2)
+
+            parsed.append({'date': parsed_date, 'description': desc, 'amount': round(amount, 2)})
+        except Exception:
+            continue
+
+    if not parsed:
+        return None, "No valid transactions found in the CSV."
+
+    return parsed[:500], None
+
+
+@app.route('/import', methods=['GET', 'POST'])
+@login_required
+def import_csv():
+    accounts_rows = get_active_accounts(current_user.id)
+    accounts = [r["name"] for r in accounts_rows]
+
+    if request.method == 'GET':
+        return render_template('import.html', accounts=accounts, preview=None, error=None, selected_account=None)
+
+    # Validate CSRF
+    if request.form.get('csrf_token') != session.get('csrf_token'):
+        return render_template('import.html', accounts=accounts, preview=None, error="Invalid request.", selected_account=None)
+
+    selected_account = (request.form.get('account') or '').strip()
+    file = request.files.get('csv_file')
+
+    if not file or not file.filename:
+        return render_template('import.html', accounts=accounts, preview=None, error="Please select a CSV file.", selected_account=selected_account)
+
+    try:
+        content = file.read().decode('utf-8-sig')
+    except UnicodeDecodeError:
+        try:
+            file.seek(0)
+            content = file.read().decode('latin-1')
+        except Exception:
+            return render_template('import.html', accounts=accounts, preview=None, error="Could not read the file.", selected_account=selected_account)
+
+    rows, err = parse_bank_csv(content)
+    if err:
+        return render_template('import.html', accounts=accounts, preview=None, error=err, selected_account=selected_account)
+
+    session['import_rows'] = rows
+    session['import_account'] = selected_account
+
+    return render_template('import.html', accounts=accounts, preview=rows, error=None, selected_account=selected_account)
+
+
+@app.post('/import/confirm')
+@login_required
+def import_confirm():
+    if request.form.get('csrf_token') != session.get('csrf_token'):
+        return redirect(url_for('import_csv'))
+
+    rows = session.pop('import_rows', None)
+    account = session.pop('import_account', None)
+
+    if not rows or not account:
+        return redirect(url_for('import_csv'))
+
+    total_delta = 0.0
+    for row in rows:
+        add_transaction(row['date'], row['description'], row['amount'], account, current_user.id, type='import')
+        total_delta += row['amount']
+
+    # Single balance update for all rows
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE accounts SET balance = balance + %s WHERE name = %s AND user_id = %s",
+                       (total_delta, account, current_user.id))
+    else:
+        cursor.execute("UPDATE accounts SET balance = balance + ? WHERE name = ? AND user_id = ?",
+                       (total_delta, account, current_user.id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+
+    return redirect(url_for('transactions', msg=f"Imported {len(rows)} transactions to {account}"))
+
+
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template("404.html"), 404

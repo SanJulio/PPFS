@@ -58,9 +58,10 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       <h1 class="display-6 fw-bold">Actions</h1>
       <div class="text-muted">Add expenses, income or transfer money</div>
     </div>
-    <button class="btn btn-dark rounded-3 px-3 py-2 mt-1" data-bs-toggle="modal" data-bs-target="#calcModal">
-      🧮
-    </button>
+    <div class="d-flex gap-2 mt-1">
+      <a href="/import" class="btn btn-outline-dark rounded-3 px-3 py-2">📥 Import</a>
+      <button class="btn btn-dark rounded-3 px-3 py-2" data-bs-toggle="modal" data-bs-target="#calcModal">🧮</button>
+    </div>
   </div>
 
   {% if message %}
