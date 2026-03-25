@@ -530,13 +530,29 @@ input, select {
   </div>
 </nav>
 <script>
-// Hold-to-reveal on overview and spending cards
+// Hold-to-reveal + triple-tap to lock/unlock on overview and spending cards
 const privateCards = [document.getElementById('overviewCard'), document.getElementById('spendingCard')];
+let persistVisible = false;
+let tapCount = 0;
+let tapTimer = null;
+
 function showAmounts() {
   privateCards.forEach(c => c && c.classList.add('amounts-visible'));
 }
 function hideAmounts() {
-  privateCards.forEach(c => c && c.classList.remove('amounts-visible'));
+  if (!persistVisible) {
+    privateCards.forEach(c => c && c.classList.remove('amounts-visible'));
+  }
+}
+function handleTap() {
+  tapCount++;
+  clearTimeout(tapTimer);
+  tapTimer = setTimeout(() => { tapCount = 0; }, 400);
+  if (tapCount >= 3) {
+    tapCount = 0;
+    persistVisible = !persistVisible;
+    persistVisible ? showAmounts() : privateCards.forEach(c => c && c.classList.remove('amounts-visible'));
+  }
 }
 privateCards.forEach(card => {
   if (!card) return;
@@ -546,6 +562,7 @@ privateCards.forEach(card => {
   card.addEventListener('mouseleave', hideAmounts);
   card.addEventListener('touchend', hideAmounts);
   card.addEventListener('touchcancel', hideAmounts);
+  card.addEventListener('click', handleTap);
 });
 
 function toggleTile(id) {
