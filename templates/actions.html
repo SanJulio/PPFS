@@ -69,7 +69,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   {% endif %}
 
   <!-- ADD EXPENSE -->
-  <div class="card p-3 mb-4" id="expense">
+  <div class="card p-3 mb-4" id="expense" style="border-left: 4px solid #dc3545 !important;">
     <h5 class="mb-3">Add Expense</h5>
     <form method="POST" action="{{ url_for('add_expense') }}">
       <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
@@ -106,7 +106,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   </div>
 
   <!-- ADD INCOME -->
-  <div class="card p-3 mb-4" id="income">
+  <div class="card p-3 mb-4" id="income" style="border-left: 4px solid #198754 !important;">
     <h5 class="mb-3">Add Income</h5>
     <form method="POST" action="{{ url_for('add_income') }}">
       <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
@@ -131,7 +131,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   </div>
 
   <!-- TRANSFER -->
-  <div class="card p-3 mb-4" id="transfer">
+  <div class="card p-3 mb-4" id="transfer" style="border-left: 4px solid #0d6efd !important;">
     <h5 class="mb-3">Transfer Between Accounts</h5>
     <form method="POST" action="{{ url_for('transfer') }}">
       <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
