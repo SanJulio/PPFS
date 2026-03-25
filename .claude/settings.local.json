@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sed -i 's/<title>PPFS — Actions<\\\\/title>/<title>Spendara — Actions<\\\\/title>/' templates/actions.html)",
+      "Bash(sed -i 's/<title>PPFS — Flow<\\\\/title>/<title>Spendara — Flow<\\\\/title>/' templates/flow.html)",
+      "Bash(sed -i 's/<title>PPFS — Register<\\\\/title>/<title>Spendara — Register<\\\\/title>/' templates/register.html)",
+      "Bash(sed -i 's/<title>PPFS — Account<\\\\/title>/<title>Spendara — Settings<\\\\/title>/' templates/settings.html)",
+      "Bash(sed -i 's/<title>PPFS<\\\\/title>/<title>Spendara — Home<\\\\/title>/' templates/index.html)"
+    ]
+  }
+}

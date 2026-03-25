@@ -1156,6 +1156,9 @@ def settings():
 
     cursor.close()
     release_db(db)
+
+    is_pro = user_is_pro()
+
     return render_template("settings.html",
         accounts=accounts,
         bills=bills,
@@ -1163,6 +1166,7 @@ def settings():
         future_events=future_events,
         income=income,
         investments=investments,
+        is_pro=is_pro,
         message=request.args.get("msg", "")
     )
 
@@ -1179,6 +1183,13 @@ def settings_add_account():
         balance = float(balance)
     except ValueError:
         return redirect(url_for("settings", msg="Invalid balance."))
+
+    # Free tier limit: max 3 accounts
+    # Check current account count before inserting
+    if not user_is_pro():
+        existing = get_active_accounts(current_user.id)
+        if len(existing) >= 3:
+            return redirect(url_for("settings", msg="FREE_LIMIT_ACCOUNTS"))
 
     db = get_db()
     cursor = db.cursor()
@@ -2334,6 +2345,146 @@ def import_confirm():
     release_db(db)
 
     return redirect(url_for('transactions', msg=f"Imported {len(rows)} transactions to {account}"))
+
+
+# =============================================================================
+# STRIPE / BILLING ROUTES
+# =============================================================================
+
+import stripe
+stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
+STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
+
+# --- UPGRADE TO PRO ---
+# Creates a Stripe Checkout session and redirects the user to Stripe's hosted payment page
+# On success, Stripe redirects back to /billing/success
+# On cancel, Stripe redirects back to /settings
+@app.get("/billing/upgrade")
+@login_required
+def billing_upgrade():
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            mode="subscription",
+            line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+            customer_email=current_user.email,
+            success_url="https://spendara.co.uk/billing/success?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url="https://spendara.co.uk/settings",
+            metadata={"user_id": current_user.id},
+        )
+        return redirect(checkout_session.url)
+    except Exception as e:
+        logger.error(f"Stripe checkout error: {e}")
+        return redirect(url_for("settings", msg="Could not start checkout. Please try again."))
+
+
+# --- BILLING SUCCESS ---
+# User lands here after successful Stripe payment
+# The webhook will have already (or will soon) set is_pro=1 — this just shows a nice message
+@app.get("/billing/success")
+@login_required
+def billing_success():
+    return redirect(url_for("settings", msg="You're now on Pro! Unlimited accounts unlocked."))
+
+
+# --- MANAGE SUBSCRIPTION (Stripe Customer Portal) ---
+# Opens Stripe's hosted billing portal so users can cancel, update card, etc.
+# Requires the user to have a stripe_customer_id saved from the webhook
+@app.get("/billing/portal")
+@login_required
+def billing_portal():
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT stripe_customer_id FROM users WHERE id = %s", (current_user.id,))
+    else:
+        cursor.execute("SELECT stripe_customer_id FROM users WHERE id = ?", (current_user.id,))
+    row = cursor.fetchone()
+    cursor.close()
+    release_db(db)
+
+    customer_id = (row[0] if USE_POSTGRES else row["stripe_customer_id"]) if row else None
+
+    if not customer_id:
+        return redirect(url_for("settings", msg="No billing account found."))
+
+    try:
+        portal_session = stripe.billing_portal.Session.create(
+            customer=customer_id,
+            return_url="https://spendara.co.uk/settings",
+        )
+        return redirect(portal_session.url)
+    except Exception as e:
+        logger.error(f"Stripe portal error: {e}")
+        return redirect(url_for("settings", msg="Could not open billing portal. Please try again."))
+
+
+# --- STRIPE WEBHOOK ---
+# Stripe calls this endpoint when subscription events happen
+# We verify the signature to make sure it's genuinely from Stripe (not a forged request)
+# checkout.session.completed → user paid → set is_pro=1, save stripe_customer_id
+# customer.subscription.deleted → user cancelled → set is_pro=0
+@app.post("/stripe/webhook")
+def stripe_webhook():
+    payload = request.get_data()
+    sig_header = request.headers.get("Stripe-Signature")
+
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    except (ValueError, stripe.error.SignatureVerificationError) as e:
+        logger.warning(f"Stripe webhook signature error: {e}")
+        return "Invalid signature", 400
+
+    # Payment completed — activate Pro
+    if event["type"] == "checkout.session.completed":
+        session_obj = event["data"]["object"]
+        user_id = session_obj.get("metadata", {}).get("user_id")
+        customer_id = session_obj.get("customer")
+
+        if user_id:
+            db = get_db()
+            cursor = db.cursor()
+            if USE_POSTGRES:
+                cursor.execute("UPDATE users SET is_pro = 1, stripe_customer_id = %s WHERE id = %s", (customer_id, user_id))
+            else:
+                cursor.execute("UPDATE users SET is_pro = 1, stripe_customer_id = ? WHERE id = ?", (customer_id, user_id))
+            db.commit()
+            cursor.close()
+            release_db(db)
+            logger.info(f"Pro activated for user_id={user_id}")
+
+    # Subscription cancelled — deactivate Pro
+    elif event["type"] == "customer.subscription.deleted":
+        customer_id = event["data"]["object"].get("customer")
+
+        if customer_id:
+            db = get_db()
+            cursor = db.cursor()
+            if USE_POSTGRES:
+                cursor.execute("UPDATE users SET is_pro = 0 WHERE stripe_customer_id = %s", (customer_id,))
+            else:
+                cursor.execute("UPDATE users SET is_pro = 0 WHERE stripe_customer_id = ?", (customer_id,))
+            db.commit()
+            cursor.close()
+            release_db(db)
+            logger.info(f"Pro deactivated for customer_id={customer_id}")
+
+    return "OK", 200
+
+
+# --- HELPER: check if current user is Pro ---
+def user_is_pro():
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT is_pro FROM users WHERE id = %s", (current_user.id,))
+    else:
+        cursor.execute("SELECT is_pro FROM users WHERE id = ?", (current_user.id,))
+    row = cursor.fetchone()
+    cursor.close()
+    release_db(db)
+    return bool(row[0] if USE_POSTGRES else row["is_pro"]) if row else False
 
 
 @app.errorhandler(404)

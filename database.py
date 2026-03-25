@@ -204,6 +204,48 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: users.is_pro ---
+    # Tracks whether a user has an active Pro subscription (set via Stripe webhook)
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='is_pro'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN is_pro INTEGER NOT NULL DEFAULT 0")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_pro INTEGER NOT NULL DEFAULT 0")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (is_pro): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: users.stripe_customer_id ---
+    # Stores the Stripe customer ID so we can manage subscriptions and open the billing portal
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='stripe_customer_id'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (stripe_customer_id): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     # --- MIGRATION: transactions.category ---
     # Adds spending category to transactions (e.g. Food, Transport, Bills)
     try:

@@ -6,3 +6,4 @@ gunicorn
 flask-limiter
 flask-wtf
 sib-api-v3-sdk
+stripe
