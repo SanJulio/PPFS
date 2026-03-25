@@ -1,3 +1,7 @@
+# Tracker.py — original CLI finance tool (now used as a library by app.py)
+# Most functions here are legacy CLI code. The only function actively used by the web app
+# is simulate_balances_until(), which powers the forecast and "can I afford it" features.
+
 import json
 import csv
 from pathlib import Path
@@ -5,8 +9,11 @@ from pathlib import Path
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "Data"
 
+# Detect whether this file is being imported as a module (by app.py) or run directly
 RUNNING_AS_LIBRARY = __name__ != "__main__"
 
+# --- DATABASE FETCH HELPER ---
+# Used by simulate_balances_until to load income, savings rules etc. from the database
 def _db_fetch(query, params=None):
     from database import get_db, USE_POSTGRES
     db = get_db()

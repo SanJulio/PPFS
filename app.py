@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+# --- IMPORTS ---
 import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ from flask.sessions import SessionInterface, SessionMixin
 from werkzeug.datastructures import CallbackDict
 import json, uuid
 
+# simulate_balances_until is used for forecast and "can I afford it" features
 from Tracker import simulate_balances_until, load_future_events, load_scheduled_expenses
 import calendar
 from datetime import timedelta
@@ -41,12 +43,17 @@ from database import USE_POSTGRES
 
 from functools import lru_cache
 import hashlib
+# In-memory cache for the 90-day forecast — expensive to compute so we cache for 5 minutes
 forecast_cache = {}
 FORECAST_CACHE_TTL = 300  # 5 minutes in seconds
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "Data"
 
+# --- CUSTOM SESSION BACKEND ---
+# Flask's default sessions use signed cookies. We use Postgres instead so sessions
+# survive server restarts and work correctly on Render's single-worker setup.
+# Each session is stored as a JSON row in the flask_sessions table, keyed by a UUID cookie.
 class PostgresSession(CallbackDict, SessionMixin):
     def __init__(self, initial=None, sid=None):
         super().__init__(initial or {})
@@ -101,15 +108,18 @@ class PostgresSessionInterface(SessionInterface):
             print(f">>> Session save error: {e}", flush=True)
         response.set_cookie("session", sid, httponly=True, secure=True, samesite="Lax")
 
+# --- FLASK APP SETUP ---
 app = Flask(__name__)
 
 import secrets
 
+# Generate a CSRF token for every new session — embedded as a hidden field in all forms
 @app.before_request
 def set_csrf_token():
     if 'csrf_token' not in session:
         session['csrf_token'] = secrets.token_hex(32)
 
+# Validate the CSRF token on every POST request (except login/register which don't have it yet)
 @app.before_request
 def check_csrf():
     if request.method == 'POST':
@@ -119,6 +129,8 @@ def check_csrf():
             if not token or token != session.get('csrf_token'):
                 return 'CSRF token invalid', 403
 
+# Rate limiter — limits are applied per-route (e.g. login, register, password reset)
+# Stored in memory (not Redis) which is fine for a single-worker deployment
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -129,8 +141,10 @@ limiter = Limiter(
     storage_uri="memory://"
 )
 
+# Use our custom Postgres session backend instead of signed cookies
 app.session_interface = PostgresSessionInterface()
 
+# SECRET_KEY must be set as an env var — used to sign cookies
 secret_key = os.environ.get("SECRET_KEY")
 if not secret_key:
     raise ValueError("SECRET_KEY environment variable must be set for production security")
@@ -141,9 +155,11 @@ app.config["SESSION_COOKIE_SAMESITE"] = "None"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=24)
 app.config["SESSION_REFRESH_EACH_REQUEST"] = True
 
+# Trust X-Forwarded-Proto and X-Forwarded-Host headers from Render's reverse proxy
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
+# Flask-Login setup — redirects unauthenticated users to /login by default
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
@@ -155,11 +171,14 @@ def unauthorized():
         return render_template("landing.html"), 200
     return redirect(url_for("login"))
 
+# --- USER MODEL ---
+# Minimal User class required by Flask-Login — just stores id and email
 class User(UserMixin):
     def __init__(self, id, email):
         self.id = id
         self.email = email
 
+# Tells Flask-Login how to reload a user from their ID stored in the session
 @login_manager.user_loader
 def load_user(user_id):
     if not user_id or user_id == "None":
@@ -179,6 +198,7 @@ def load_user(user_id):
         return User(row["id"], row["email"])
     return None
 
+# Run database migrations on startup — creates tables and adds any missing columns
 from database import init_db
 try:
     with app.app_context():
@@ -188,6 +208,9 @@ except Exception as e:
 
 import time
 
+# --- SECURITY HEADERS ---
+# Added to every response: disables caching (so logged-out users can't go back),
+# prevents clickjacking (DENY), and sets a strict Content-Security-Policy
 @app.after_request
 def add_no_cache_headers(response):
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -205,6 +228,9 @@ def add_no_cache_headers(response):
 import calendar
 from datetime import datetime
 
+# --- HELPER FUNCTIONS ---
+
+# Loads scheduled bills for the current logged-in user (used in financial overview calculation)
 def load_scheduled_expenses_web():
     from database import get_db, USE_POSTGRES
     from flask_login import current_user
@@ -220,6 +246,7 @@ def load_scheduled_expenses_web():
     release_db(db)
     return rows
 
+# Same as above but ordered by day — used on the Flow page to show upcoming bills
 def get_all_scheduled_expenses():
     from database import get_db, USE_POSTGRES
     from flask_login import current_user
@@ -235,6 +262,9 @@ def get_all_scheduled_expenses():
     release_db(db)
     return rows
 
+# --- EMAIL SENDING ---
+# Sends a verification email to a newly registered user via the Brevo API
+# Token is a random URL-safe string stored on the user row and cleared after use
 def send_verification_email(to_email, token):
     import sib_api_v3_sdk
     from sib_api_v3_sdk.rest import ApiException
@@ -269,6 +299,7 @@ def send_verification_email(to_email, token):
         print(f">>> Email error: {e}", flush=True)
         return False
 
+# Sends a password reset link via Brevo — link expires after 24 hours
 def send_reset_email(to_email, reset_url):
     import sib_api_v3_sdk
     from sib_api_v3_sdk.rest import ApiException
@@ -301,6 +332,10 @@ def send_reset_email(to_email, reset_url):
         print(f">>> Reset email error: {e}", flush=True)
         return False
 
+# --- INPUT VALIDATION HELPERS ---
+# Returns (value, None) on success or (None, error_message) on failure
+# Used before inserting amounts and days into the database
+
 def validate_amount(amount_raw):
     try:
         amount = float(amount_raw)
@@ -319,6 +354,13 @@ def validate_day(day_raw):
     except (ValueError, TypeError):
         return None, "Day must be a valid number."
 
+# --- FINANCIAL OVERVIEW CALCULATION ---
+# Splits accounts into spending (current/cash) and savings, then calculates:
+# - spending balance (total in spending accounts)
+# - future bills (bills still to leave this month)
+# - safe to spend (spending balance minus future bills)
+# - savings balance
+# - net worth (spending + savings)
 def calculate_financial_overview(accounts):
     today = datetime.today()
     current_day = today.day
@@ -378,6 +420,9 @@ def calculate_financial_overview(accounts):
         "future_bills_list": sorted(future_bills_list, key=lambda x: x["day"]),
     }
 
+# --- MONTHLY SPENDING CALCULATION ---
+# Queries all negative (outgoing) transactions this month for the current user
+# Splits them into normal spending vs bills (type='bill'), returns totals and line items
 def calculate_monthly_spending():
     today = date.today()
     year = today.year
@@ -449,6 +494,13 @@ def calculate_monthly_spending():
         "bills_list": bills_list,
     }
 
+# =============================================================================
+# ROUTES
+# =============================================================================
+
+# --- HOME / DASHBOARD ---
+# Shows the main dashboard: financial overview, account balances, monthly spending
+# If the user has no accounts yet, triggers the onboarding modal
 @app.get("/")
 @login_required
 def home():
@@ -507,6 +559,8 @@ def home():
         verified=verified,
     )
 
+# --- TRANSACTIONS PAGE ---
+# Lists all transactions for the current user, newest first
 @app.get("/transactions")
 @login_required
 def transactions():
@@ -518,6 +572,8 @@ def transactions():
         transactions=tx
     )
 
+# --- ACTIONS PAGE ---
+# Shows forms to add expenses, income, transfers, and investment updates
 @app.get("/actions")
 @login_required
 def actions():
@@ -537,6 +593,10 @@ def actions():
 
     return render_template("actions.html", accounts=accounts, investments=investments, message=request.args.get("msg", ""))
 
+# --- FLOW PAGE ---
+# Shows each account's monthly cash flow: bills paid, bills still to pay,
+# income received, income still to receive, and a projected end-of-month balance
+# Traffic light colour: green (safe), amber (<£100), red (goes negative)
 @app.get("/flow")
 @login_required
 def flow():
@@ -694,6 +754,8 @@ def flow():
         message=request.args.get("msg", ""),
     )
 
+# --- PAY BILL (manual) ---
+# Marks a scheduled bill as paid: logs a transaction and deducts from account balance
 @app.post("/flow/pay-bill")
 @login_required
 def bills_pay():
@@ -721,6 +783,8 @@ def bills_pay():
 
     return redirect(url_for("flow", msg=f"{bill['name']} — £{bill['amount']:.2f} paid."))
 
+# --- RECEIVE INCOME (manual) ---
+# Marks an income source as received: logs a transaction and adds to account balance
 @app.post("/flow/pay-income")
 @login_required
 def income_pay():
@@ -748,6 +812,8 @@ def income_pay():
 
     return redirect(url_for("flow", msg=f"{income['name']} — £{income['amount']:.2f} received."))
 
+# --- ADD EXPENSE ---
+# Records a manual expense: negative amount stored in transactions, balance deducted
 @app.post("/add-expense")
 @login_required
 def add_expense():
@@ -776,6 +842,8 @@ def add_expense():
         url_for("actions", msg=f"Added {description}: £{abs(amount):.2f} from {account}")
     )
 
+# --- ADD INCOME ---
+# Records a manual income entry: positive amount stored in transactions, balance increased
 @app.post("/add-income")
 @login_required
 def add_income():
@@ -803,6 +871,8 @@ def add_income():
         url_for("actions", msg=f"Added income {description}: £{amount:.2f} to {account}")
     )
 
+# --- TRANSFER BETWEEN ACCOUNTS ---
+# Moves money from one account to another: logs two transactions (out + in) and updates both balances
 @app.post("/transfer")
 @login_required
 def transfer():
@@ -832,6 +902,8 @@ def transfer():
         url_for("actions", msg=f"Transferred £{amount:.2f} from {from_account} → {to_account}")
     )
 
+# --- UNDO TRANSACTION ---
+# Reverses a transaction: re-adds the amount back to the account balance, then deletes the row
 @app.post("/transactions/undo")
 @login_required
 def transaction_undo():
@@ -867,6 +939,9 @@ def transaction_undo():
     return redirect(url_for("transactions", msg="Transaction reversed."))
 
 
+# --- EDIT TRANSACTION ---
+# Updates a transaction's description, amount, and account
+# Calculates the diff between old and new amount and adjusts the account balance accordingly
 @app.post("/transactions/edit")
 @login_required
 def transaction_edit():
@@ -916,6 +991,9 @@ def transaction_edit():
 
     return redirect(url_for("transactions", msg="Transaction updated."))
 
+# --- TOGGLE ACCOUNT IN OVERVIEW ---
+# Flips include_in_overview between 0 and 1 for an account
+# Lets users hide investment or secondary accounts from the main dashboard totals
 @app.post("/toggle-account-overview")
 @login_required
 def toggle_account_overview():
@@ -939,6 +1017,10 @@ def toggle_account_overview():
     release_db(db)
     return redirect(url_for("home"))
 
+# --- CAN I AFFORD IT ---
+# Simulates the impact of a purchase on each spending account over the next ~2 months
+# Uses simulate_balances_until to check if any account goes negative during that period
+# Returns a recommendation for the safest account to use
 @app.post("/afford")
 @login_required
 def afford():
@@ -1046,6 +1128,9 @@ def afford():
         monthly=calculate_monthly_spending(),
     )
 
+# --- SETTINGS PAGE ---
+# Loads all user data for the 5-tab settings page:
+# Accounts, Bills, Income, Savings Rules, Investments (+ Danger zone)
 @app.get("/settings")
 @login_required
 def settings():
@@ -1492,6 +1577,11 @@ def actions_update_investment():
     release_db(db)
     return redirect(url_for("actions", msg="Investment updated."))
 
+# --- DANGER ZONE: RESET ACTIONS ---
+# These wipe data for the current user only (never touch other users)
+# Accessible from the Danger tab in Settings
+
+# Clears all transaction history
 @app.post("/settings/reset-transactions")
 @login_required
 def reset_transactions():
@@ -1582,6 +1672,11 @@ def reset_all():
     release_db(db)
     return redirect(url_for("settings", msg="Account fully reset. Fresh start! 🌱"))
 
+# --- 90-DAY FORECAST ---
+# Simulates account balances day by day for the next 90 days
+# Applies weekly/monthly income, scheduled bills, future events, and savings rules each day
+# Results are cached for 5 minutes (per user per day) to avoid recomputing on every page load
+# Passes JSON snapshots to the frontend for Chart.js to render
 @app.get("/forecast")
 @login_required
 def forecast():
@@ -1786,6 +1881,9 @@ def inject_user_verified():
             return {"user_verified": True}
     return {"user_verified": True}
 
+# --- REGISTER ---
+# GET: shows the registration form
+# POST: validates email/password, creates user, sends verification email, logs them in
 @app.get("/register")
 def register():
     return render_template("register.html")
@@ -1860,6 +1958,9 @@ def register_post():
     return redirect(url_for("home", msg="Welcome! Please check your email to verify your account."))
 
 
+# --- LOGIN ---
+# GET: shows the login form
+# POST: checks email/password hash, creates session on success
 @app.get("/login")
 def login():
     return render_template("login.html")
@@ -1909,6 +2010,9 @@ def logout():
     logout_user()
     return redirect(url_for("login"))
 
+# --- FORGOT PASSWORD ---
+# Sends a reset link to the user's email (if it exists in the database)
+# Always shows the same success message whether the email exists or not (prevents email enumeration)
 @app.get("/forgot-password")
 def forgot_password():
     return render_template("forgot_password.html", message="")
@@ -1954,6 +2058,9 @@ def forgot_password_post():
     return render_template("forgot_password.html", message="If that email exists you'll receive a reset link shortly.")
 
 
+# --- RESET PASSWORD ---
+# GET: shows the new password form (token passed in URL)
+# POST: validates token, checks expiry, saves new hashed password, clears the token
 @app.get("/reset-password/<token>")
 @limiter.limit("10 per minute")
 def reset_password(token):
@@ -2063,6 +2170,9 @@ def resend_verification():
 
     return redirect(url_for("home", msg="Verification email resent! Check your inbox."))
 
+# --- CSV IMPORT ---
+# Parses a bank CSV file and returns a list of transaction dicts, plus an import route
+# Supports Monzo, Barclays, HSBC, Nationwide, Starling, NatWest (auto-detects column names)
 def parse_bank_csv(content: str):
     """
     Parse a bank CSV and return (rows, error).

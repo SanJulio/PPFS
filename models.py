@@ -1,6 +1,9 @@
 from database import get_db, release_db, USE_POSTGRES
 
 
+# --- ROW CONVERTER ---
+# Converts raw database rows into plain Python dicts so we can use row["column"] syntax everywhere
+# Postgres returns tuples, SQLite returns sqlite3.Row objects — this normalises both
 def _rows_as_dicts(cursor, rows):
     if USE_POSTGRES:
         cols = [desc[0] for desc in cursor.description]
@@ -9,6 +12,9 @@ def _rows_as_dicts(cursor, rows):
         return [dict(row) for row in rows]
 
 
+# --- GET ALL ACCOUNTS ---
+# Returns every account for a user (including inactive ones)
+# Used in places where we need the full account list, not just active ones
 def get_all_accounts(user_id):
     db = get_db()
     cursor = db.cursor()
@@ -22,6 +28,9 @@ def get_all_accounts(user_id):
     return rows
 
 
+# --- GET ACTIVE ACCOUNTS ---
+# Returns only accounts marked active=1, sorted alphabetically
+# Used in dropdowns and the dashboard — hidden/deactivated accounts are excluded
 def get_active_accounts(user_id):
     db = get_db()
     cursor = db.cursor()
@@ -35,6 +44,9 @@ def get_active_accounts(user_id):
     return rows
 
 
+# --- GET ACCOUNT BY NAME ---
+# Looks up a single account by its name for a given user
+# Returns the account dict, or None if it doesn't exist
 def get_account_by_name(name: str, user_id: int):
     db = get_db()
     cursor = db.cursor()
@@ -48,6 +60,9 @@ def get_account_by_name(name: str, user_id: int):
     return rows[0] if rows else None
 
 
+# --- UPDATE ACCOUNT BALANCE ---
+# Adds or subtracts an amount from an account's balance (delta can be positive or negative)
+# Used after every expense, income, transfer, or import to keep balances in sync
 def update_account_balance(name: str, delta: float, user_id: int):
     db = get_db()
     cursor = db.cursor()
@@ -60,6 +75,10 @@ def update_account_balance(name: str, delta: float, user_id: int):
     release_db(db)
 
 
+# --- ADD TRANSACTION ---
+# Inserts a new transaction row into the database
+# type can be: 'manual', 'bill', 'income', 'transfer', 'import'
+# category defaults to 'Other' if not provided
 def add_transaction(date: str, description: str, amount: float, account: str, user_id: int, type: str = "manual", category: str = "Other"):
     db = get_db()
     cursor = db.cursor()
@@ -78,6 +97,9 @@ def add_transaction(date: str, description: str, amount: float, account: str, us
     release_db(db)
 
 
+# --- GET RECENT TRANSACTIONS ---
+# Returns all transactions for a user, newest first
+# Includes category column so it can be displayed on the transactions page
 def get_recent_transactions(user_id: int):
     db = get_db()
     cursor = db.cursor()

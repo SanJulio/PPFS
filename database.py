@@ -4,22 +4,30 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
+# Set up logging so we can track database errors and info messages
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Load environment variables from .env file (won't override already-set env vars)
 load_dotenv(override=False)
 
+# Check if we're using Postgres (production) or SQLite (local dev)
 DATABASE_URL = os.environ.get("DATABASE_URL")
 USE_POSTGRES = DATABASE_URL is not None
 
+# Only import psycopg2 if we're on Postgres (not needed for local SQLite)
 if USE_POSTGRES:
     import psycopg2
     import psycopg2.extras
 
+# SQLite fallback paths (only used locally)
 BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "ppfs.db"
 
 
+# --- DATABASE CONNECTION ---
+# Opens a fresh database connection for each request
+# Postgres on production (Render), SQLite locally
 def get_db():
     if USE_POSTGRES:
         conn = psycopg2.connect(DATABASE_URL)
@@ -31,6 +39,9 @@ def get_db():
         return conn
 
 
+# --- DATABASE RELEASE ---
+# Closes the connection after each request
+# We use direct connections (no pooling) to avoid connection exhaustion on Render free tier
 def release_db(conn):
     try:
         conn.close()
@@ -38,10 +49,14 @@ def release_db(conn):
         logger.debug(f"Error closing database connection: {e}")
 
 
+# --- DATABASE INITIALISATION ---
+# Creates all tables on first run, and runs any column migrations needed
+# Safe to run on every startup — uses IF NOT EXISTS and checks before altering
 def init_db():
     db = get_db()
     cursor = db.cursor()
 
+    # All tables — created if they don't exist yet
     tables = [
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -135,6 +150,7 @@ def init_db():
         """,
     ]
 
+    # Run each table creation statement, rolling back on error so other tables still get created
     for table in tables:
         try:
             cursor.execute(table)
@@ -146,6 +162,8 @@ def init_db():
             except Exception as rb_error:
                 logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: accounts.include_in_overview ---
+    # Lets users hide accounts from the financial overview widget
     try:
         if USE_POSTGRES:
             cursor.execute("""
@@ -165,6 +183,8 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: users.verify_token_expires_at ---
+    # Stores expiry timestamp for email verification and password reset tokens
     try:
         if USE_POSTGRES:
             cursor.execute("""
@@ -184,6 +204,8 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: transactions.category ---
+    # Adds spending category to transactions (e.g. Food, Transport, Bills)
     try:
         if USE_POSTGRES:
             cursor.execute("""
