@@ -184,5 +184,24 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='transactions' AND column_name='category'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE transactions ADD COLUMN category TEXT NOT NULL DEFAULT 'Other'")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN category TEXT NOT NULL DEFAULT 'Other'")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (category): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

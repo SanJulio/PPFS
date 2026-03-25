@@ -87,12 +87,13 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
             <th>Description</th>
             <th class="text-end">Amount</th>
             <th>Account</th>
+            <th>Category</th>
           </tr>
         </thead>
         <tbody id="txBody">
           {% if not transactions %}
           <tr id="emptyRow">
-            <td colspan="5" class="text-center py-5">
+            <td colspan="6" class="text-center py-5">
               <div class="text-muted mb-2" style="font-size:32px">📭</div>
               <div class="fw-semibold mb-1">No transactions yet</div>
               <div class="small text-muted mb-3">Add your first expense or income in the Actions tab</div>
@@ -111,6 +112,7 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
               {% if t.amount < 0 %}-£{{ "%.2f"|format(t.amount|abs) }}{% else %}+£{{ "%.2f"|format(t.amount) }}{% endif %}
             </td>
             <td><span class="badge text-bg-light">{{ t.account }}</span></td>
+            <td><span class="badge text-bg-light">{{ t.category or 'Other' }}</span></td>
           </tr>
           <tr class="expand-row d-none" id="expand-{{ t.id }}">
             <td colspan="5" class="py-2 px-3">

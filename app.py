@@ -755,6 +755,7 @@ def add_expense():
     description = (request.form.get("description") or "").strip()
     amount_raw = (request.form.get("amount") or "").strip()
     account = (request.form.get("account") or "").strip()
+    category = (request.form.get("category") or "Other").strip()
 
     if not description or not amount_raw or not account:
         return redirect(url_for("home", msg="Missing fields. Try again."))
@@ -767,7 +768,7 @@ def add_expense():
 
     today_str = date.today().isoformat()
 
-    add_transaction(today_str, description, amount, account, current_user.id)
+    add_transaction(today_str, description, amount, account, current_user.id, category=category)
 
     update_account_balance(account, amount, current_user.id)
 

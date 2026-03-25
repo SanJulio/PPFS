@@ -60,18 +60,18 @@ def update_account_balance(name: str, delta: float, user_id: int):
     release_db(db)
 
 
-def add_transaction(date: str, description: str, amount: float, account: str, user_id: int, type: str = "manual"):
+def add_transaction(date: str, description: str, amount: float, account: str, user_id: int, type: str = "manual", category: str = "Other"):
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
         cursor.execute(
-            "INSERT INTO transactions (date, description, amount, account, user_id, type) VALUES (%s, %s, %s, %s, %s, %s)",
-            (date, description, amount, account, user_id, type)
+            "INSERT INTO transactions (date, description, amount, account, user_id, type, category) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (date, description, amount, account, user_id, type, category)
         )
     else:
         cursor.execute(
-            "INSERT INTO transactions (date, description, amount, account, user_id, type) VALUES (?, ?, ?, ?, ?, ?)",
-            (date, description, amount, account, user_id, type)
+            "INSERT INTO transactions (date, description, amount, account, user_id, type, category) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (date, description, amount, account, user_id, type, category)
         )
     db.commit()
     cursor.close()
@@ -83,12 +83,12 @@ def get_recent_transactions(user_id: int):
     cursor = db.cursor()
     if USE_POSTGRES:
         cursor.execute(
-            "SELECT id, date, description, amount, account FROM transactions WHERE user_id = %s ORDER BY date DESC",
+            "SELECT id, date, description, amount, account, category FROM transactions WHERE user_id = %s ORDER BY date DESC",
             (user_id,)
         )
     else:
         cursor.execute(
-            "SELECT id, date, description, amount, account FROM transactions WHERE user_id = ? ORDER BY date DESC",
+            "SELECT id, date, description, amount, account, category FROM transactions WHERE user_id = ? ORDER BY date DESC",
             (user_id,)
         )
     rows = _rows_as_dicts(cursor, cursor.fetchall())
