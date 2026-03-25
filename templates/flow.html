@@ -215,6 +215,13 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
 
   <!-- ACCOUNTS SECTION -->
   <div id="sectionAccounts" class="d-none">
+    {% if account_data %}
+    <div class="d-flex gap-3 mb-3 small text-muted">
+      <span><span style="color:#198754">●</span> On track</span>
+      <span><span style="color:#fd7e14">●</span> Getting low</span>
+      <span><span style="color:#dc3545">●</span> Goes negative</span>
+    </div>
+    {% endif %}
     {% if not account_data %}
     <div class="card p-4 text-center text-muted">
       <div class="fs-2 mb-2">🏦</div>
