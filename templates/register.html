@@ -37,8 +37,11 @@ input { border-radius: 12px !important; padding: 12px !important; font-size: 16p
           </div>
           <div class="mb-3">
             <label class="form-label">Password</label>
-            <input class="form-control" name="password" type="password" placeholder="At least 8 characters" required>
-            <div class="form-text text-muted small mt-1">Min 8 characters, one uppercase letter and one number</div>
+            <input class="form-control" id="passwordInput" name="password" type="password" placeholder="At least 8 characters" required>
+            <div style="height:4px; border-radius:4px; background:#e9ecef; margin-top:8px; overflow:hidden;">
+              <div id="strengthBar" style="height:100%; width:0%; border-radius:4px; transition:width 0.3s ease, background 0.3s ease;"></div>
+            </div>
+            <div id="strengthText" class="form-text small mt-1" style="min-height:18px;"></div>
           </div>
           <div class="mb-4">
             <label class="form-label">Confirm Password</label>
@@ -55,5 +58,36 @@ input { border-radius: 12px !important; padding: 12px !important; font-size: 16p
     </div>
   </div>
 </div>
+<script>
+document.getElementById('passwordInput').addEventListener('input', function() {
+  const val = this.value;
+  const bar = document.getElementById('strengthBar');
+  const text = document.getElementById('strengthText');
+
+  const hasLength = val.length >= 8;
+  const hasUpper = /[A-Z]/.test(val);
+  const hasNumber = /[0-9]/.test(val);
+  const score = [hasLength, hasUpper, hasNumber].filter(Boolean).length;
+
+  const levels = [
+    { width: '0%',   bg: '',        label: '' },
+    { width: '33%',  bg: '#dc3545', label: 'Weak' },
+    { width: '66%',  bg: '#fd7e14', label: 'Almost there' },
+    { width: '100%', bg: '#198754', label: 'Strong ✓' },
+  ];
+
+  if (val.length === 0) {
+    bar.style.width = '0%';
+    text.textContent = '';
+    text.style.color = '';
+  } else {
+    const level = levels[score];
+    bar.style.width = level.width;
+    bar.style.background = level.bg;
+    text.textContent = level.label;
+    text.style.color = level.bg;
+  }
+});
+</script>
 </body>
 </html>
