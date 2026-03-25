@@ -246,6 +246,13 @@ if (window.location.search.includes('msg=')) {
   url.searchParams.delete('msg');
   window.history.replaceState({}, '', url);
 }
+document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
+  setTimeout(function() {
+    el.style.transition = 'opacity 0.5s ease';
+    el.style.opacity = '0';
+    setTimeout(function() { el.remove(); }, 500);
+  }, 4000);
+});
 </script>
 
 <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>
