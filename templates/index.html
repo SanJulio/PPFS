@@ -121,6 +121,12 @@ input, select {
 <div id="onboardingOverlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;">
   <div class="card" style="width: 100%; max-width: 500px; margin: 20px;">
     <div class="card-body p-4">
+      <!-- Step indicator -->
+      <div style="display:flex; justify-content:center; gap:8px; margin-bottom:24px;">
+        <div id="dot-1" style="width:10px; height:10px; border-radius:50%; background:#111; transition:background 0.2s;"></div>
+        <div id="dot-2" style="width:10px; height:10px; border-radius:50%; background:#ddd; transition:background 0.2s;"></div>
+        <div id="dot-3" style="width:10px; height:10px; border-radius:50%; background:#ddd; transition:background 0.2s;"></div>
+      </div>
       <!-- Step 1: Welcome -->
       <div id="step-1" class="onboarding-step">
         <div style="text-align: center; margin-bottom: 24px;">
@@ -583,6 +589,9 @@ function onboardingStep(step) {
   document.querySelectorAll('.onboarding-step').forEach(el => el.style.display = 'none');
   const stepEl = document.getElementById('step-' + step);
   if (stepEl) stepEl.style.display = 'block';
+  [1, 2, 3].forEach(i => {
+    document.getElementById('dot-' + i).style.background = i === step ? '#111' : '#ddd';
+  });
 }
 
 function createOnboardingAccount(btn) {
