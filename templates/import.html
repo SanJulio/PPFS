@@ -167,6 +167,16 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   </div>
 </nav>
 
+<script>
+document.querySelectorAll('form:not([onsubmit])').forEach(function(form) {
+  var btn = form.querySelector('.btn-dark');
+  if (!btn) return;
+  form.addEventListener('submit', function() {
+    btn.disabled = true;
+    btn.textContent = 'Please wait...';
+  });
+});
+</script>
 <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>
 </body>
 </html>

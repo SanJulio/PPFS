@@ -745,6 +745,15 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 </nav>
 
 <script>
+document.querySelectorAll('form:not([onsubmit])').forEach(function(form) {
+  var btn = form.querySelector('.btn-dark');
+  if (!btn) return;
+  form.addEventListener('submit', function() {
+    btn.disabled = true;
+    btn.textContent = 'Please wait...';
+  });
+});
+
 function showTab(name) {
   document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));

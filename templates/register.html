@@ -59,6 +59,15 @@ input { border-radius: 12px !important; padding: 12px !important; font-size: 16p
   </div>
 </div>
 <script>
+document.querySelectorAll('form:not([onsubmit])').forEach(function(form) {
+  var btn = form.querySelector('.btn-dark');
+  if (!btn) return;
+  form.addEventListener('submit', function() {
+    btn.disabled = true;
+    btn.textContent = 'Please wait...';
+  });
+});
+
 document.getElementById('passwordInput').addEventListener('input', function() {
   const val = this.value;
   const bar = document.getElementById('strengthBar');

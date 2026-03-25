@@ -311,6 +311,15 @@ function calcEquals() {
   }
 }
 
+document.querySelectorAll('form:not([onsubmit])').forEach(function(form) {
+  var btn = form.querySelector('.btn-dark');
+  if (!btn) return;
+  form.addEventListener('submit', function() {
+    btn.disabled = true;
+    btn.textContent = 'Please wait...';
+  });
+});
+
 if (window.location.search.includes('msg=')) {
   const url = new URL(window.location);
   url.searchParams.delete('msg');
