@@ -108,7 +108,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             {% for a in accounts %}
             <tr>
               <td>{{ a.name }}</td>
-              <td><span class="badge text-bg-light">{{ a.type }}</span></td>
+              <td><span class="badge {% if a.type == 'current' %}text-bg-primary{% elif a.type == 'savings' %}text-bg-success{% elif a.type == 'cash' %}text-bg-warning{% else %}text-bg-light{% endif %}">{{ a.type }}</span></td>
               <td class="text-end money">£{{ "%.2f"|format(a.balance) }}</td>
               <td class="text-end">
                 <div class="d-flex gap-1 justify-content-end">

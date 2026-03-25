@@ -233,7 +233,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
           <div>
             <span id="acc-arrow-{{ acc.id }}" class="fw-bold me-2" style="font-size:13px;color:#111">+</span>
             <span class="fw-bold">{{ acc.name }}</span>
-            <span class="badge text-bg-light ms-2">{{ acc.type }}</span>
+            <span class="badge ms-2 {% if acc.type == 'current' %}text-bg-primary{% elif acc.type == 'savings' %}text-bg-success{% elif acc.type == 'cash' %}text-bg-warning{% else %}text-bg-light{% endif %}">{{ acc.type }}</span>
           </div>
           <div class="text-end">
             <div class="fw-bold money">£{{ "%.2f"|format(acc.balance) }}</div>

@@ -481,7 +481,7 @@ input, select {
             </td>
             <td class="text-end money">£{{ "%.2f"|format(row.balance) }}</td>
             <td class="text-end">
-              <span class="badge text-bg-light">{{ row.type }}</span>
+              <span class="badge {% if row.type == 'current' %}text-bg-primary{% elif row.type == 'savings' %}text-bg-success{% elif row.type == 'cash' %}text-bg-warning{% else %}text-bg-light{% endif %}">{{ row.type }}</span>
             </td>
             <td class="text-end">
               <form method="POST" action="/toggle-account-overview" class="d-inline">
