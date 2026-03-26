@@ -267,5 +267,47 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: scheduled_expenses.frequency ---
+    # Adds support for yearly bills (fires once per year on a specific day/month)
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='scheduled_expenses' AND column_name='frequency'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE scheduled_expenses ADD COLUMN frequency TEXT NOT NULL DEFAULT 'monthly'")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE scheduled_expenses ADD COLUMN frequency TEXT NOT NULL DEFAULT 'monthly'")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (scheduled_expenses.frequency): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: scheduled_expenses.month ---
+    # Stores the month for yearly bills (1-12); NULL means applies every month (monthly bills)
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='scheduled_expenses' AND column_name='month'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE scheduled_expenses ADD COLUMN month INTEGER")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE scheduled_expenses ADD COLUMN month INTEGER")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (scheduled_expenses.month): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

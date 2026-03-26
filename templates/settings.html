@@ -213,7 +213,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             <tr>
               <th>Name</th>
               <th class="text-end">Amount</th>
-              <th class="text-end">Day</th>
+              <th class="text-end">When</th>
               <th></th>
             </tr>
           </thead>
@@ -222,7 +222,14 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             <tr>
               <td>{{ b.name }}</td>
               <td class="text-end money">£{{ "%.2f"|format(b.amount) }}</td>
-              <td class="text-end">{{ b.day }}</td>
+              <td class="text-end text-muted small">
+                {% if b.get('frequency') == 'yearly' %}
+                  {% set month_names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
+                  {{ month_names[(b.month or 1) - 1] }} {{ b.day }}
+                {% else %}
+                  Day {{ b.day }}
+                {% endif %}
+              </td>
               <td class="text-end">
                 <div class="d-flex gap-1 justify-content-end">
                   <button class="btn btn-sm btn-outline-secondary" onclick="toggleEdit('bill-{{ b.id }}')">Edit</button>
@@ -247,7 +254,20 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                       <input class="form-control form-control-sm" name="amount" value="{{ '%.2f'|format(b.amount) }}" placeholder="Amount" required>
                     </div>
                     <div class="col-6">
-                      <input class="form-control form-control-sm" name="day" value="{{ b.day }}" placeholder="Day" required>
+                      <select class="form-select form-select-sm" name="frequency" onchange="toggleMonthField(this, 'edit-month-{{ b.id }}')">
+                        <option value="monthly" {% if b.get('frequency','monthly') == 'monthly' %}selected{% endif %}>Monthly</option>
+                        <option value="yearly" {% if b.get('frequency') == 'yearly' %}selected{% endif %}>Yearly</option>
+                      </select>
+                    </div>
+                    <div class="col-6">
+                      <input class="form-control form-control-sm" name="day" value="{{ b.day }}" placeholder="Day (1-31)" required>
+                    </div>
+                    <div class="col-6" id="edit-month-{{ b.id }}" {% if b.get('frequency') != 'yearly' %}style="display:none"{% endif %}>
+                      <select class="form-select form-select-sm" name="month">
+                        {% for mn, ml in [('1','January'),('2','February'),('3','March'),('4','April'),('5','May'),('6','June'),('7','July'),('8','August'),('9','September'),('10','October'),('11','November'),('12','December')] %}
+                          <option value="{{ mn }}" {% if b.get('month')|string == mn %}selected{% endif %}>{{ ml }}</option>
+                        {% endfor %}
+                      </select>
                     </div>
                     <div class="col-6">
                       <select class="form-select form-select-sm" name="account" required>
@@ -280,7 +300,29 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <input class="form-control" name="amount" inputmode="decimal" placeholder="Amount (£)" required>
         </div>
         <div class="mb-2">
+          <select class="form-select" name="frequency" onchange="toggleMonthField(this, 'add-bill-month')">
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly (once a year)</option>
+          </select>
+        </div>
+        <div class="mb-2">
           <input class="form-control" name="day" inputmode="numeric" placeholder="Day of month (1-31)" required>
+        </div>
+        <div class="mb-2" id="add-bill-month" style="display:none">
+          <select class="form-select" name="month">
+            <option value="1">January</option>
+            <option value="2">February</option>
+            <option value="3">March</option>
+            <option value="4">April</option>
+            <option value="5">May</option>
+            <option value="6">June</option>
+            <option value="7">July</option>
+            <option value="8">August</option>
+            <option value="9">September</option>
+            <option value="10">October</option>
+            <option value="11">November</option>
+            <option value="12">December</option>
+          </select>
         </div>
         <div class="mb-3">
           <select class="form-select" name="account" required>
@@ -817,6 +859,11 @@ function showTab(name) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   event.currentTarget.classList.add('active');
+}
+
+function toggleMonthField(select, targetId) {
+  var el = document.getElementById(targetId);
+  if (el) el.style.display = select.value === 'yearly' ? 'block' : 'none';
 }
 
 function toggleEdit(id) {

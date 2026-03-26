@@ -392,9 +392,15 @@ def calculate_financial_overview(accounts):
     spending_future_bills = 0.0
     future_bills_list = []
 
+    current_month = today.month
     for expense in scheduled_expenses:
         if expense["day"] is None:
             continue
+        freq = expense.get("frequency") or "monthly"
+        if freq == "yearly":
+            # Only show yearly bills that fall this month
+            if expense.get("month") != current_month:
+                continue
         if expense["day"] > current_day:
             acc = expense["account"]
             if acc in accounts and accounts[acc]["type"] in spending_types:
@@ -1250,22 +1256,27 @@ def settings_add_bill():
     amount = (request.form.get("amount") or "").strip()
     day = (request.form.get("day") or "").strip()
     account = (request.form.get("account") or "").strip()
+    frequency = (request.form.get("frequency") or "monthly").strip()
+    month_raw = (request.form.get("month") or "").strip()
 
     if not name or not amount or not day or not account:
         return redirect(url_for("settings", msg="Missing fields."))
+    if frequency == "yearly" and not month_raw:
+        return redirect(url_for("settings", msg="Please select a month for yearly bills."))
     amount, err = validate_amount(amount)
     if err:
         return redirect(url_for("settings", msg=err))
     day, err = validate_day(day)
     if err:
         return redirect(url_for("settings", msg=err))
+    bill_month = int(month_raw) if month_raw and frequency == "yearly" else None
 
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("INSERT INTO scheduled_expenses (name, amount, day, account, user_id) VALUES (%s, %s, %s, %s, %s)", (name, amount, day, account, current_user.id))
+        cursor.execute("INSERT INTO scheduled_expenses (name, amount, day, account, user_id, frequency, month) VALUES (%s, %s, %s, %s, %s, %s, %s)", (name, amount, day, account, current_user.id, frequency, bill_month))
     else:
-        cursor.execute("INSERT INTO scheduled_expenses (name, amount, day, account, user_id) VALUES (?, ?, ?, ?, ?)", (name, amount, day, account, current_user.id))
+        cursor.execute("INSERT INTO scheduled_expenses (name, amount, day, account, user_id, frequency, month) VALUES (?, ?, ?, ?, ?, ?, ?)", (name, amount, day, account, current_user.id, frequency, bill_month))
     db.commit()
     cursor.close()
     release_db(db)
@@ -1279,6 +1290,8 @@ def settings_edit_bill():
     amount = (request.form.get("amount") or "").strip()
     day = (request.form.get("day") or "").strip()
     account = (request.form.get("account") or "").strip()
+    frequency = (request.form.get("frequency") or "monthly").strip()
+    month_raw = (request.form.get("month") or "").strip()
 
     if not name or not amount or not day or not account:
         return redirect(url_for("settings", msg="Missing fields."))
@@ -1288,13 +1301,14 @@ def settings_edit_bill():
     day, err = validate_day(day)
     if err:
         return redirect(url_for("settings", msg=err))
+    bill_month = int(month_raw) if month_raw and frequency == "yearly" else None
 
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("UPDATE scheduled_expenses SET name=%s, amount=%s, day=%s, account=%s WHERE id=%s AND user_id=%s", (name, amount, day, account, bill_id, current_user.id))
+        cursor.execute("UPDATE scheduled_expenses SET name=%s, amount=%s, day=%s, account=%s, frequency=%s, month=%s WHERE id=%s AND user_id=%s", (name, amount, day, account, frequency, bill_month, bill_id, current_user.id))
     else:
-        cursor.execute("UPDATE scheduled_expenses SET name=?, amount=?, day=?, account=? WHERE id=? AND user_id=?", (name, amount, day, account, bill_id, current_user.id))
+        cursor.execute("UPDATE scheduled_expenses SET name=?, amount=?, day=?, account=?, frequency=?, month=? WHERE id=? AND user_id=?", (name, amount, day, account, frequency, bill_month, bill_id, current_user.id))
     db.commit()
     cursor.close()
     release_db(db)
@@ -1706,6 +1720,8 @@ def forecast():
                 "forecast.html",
                 snapshots=cached_data["snapshots"],
                 account_names=cached_data["account_names"],
+                account_types=cached_data.get("account_types", "{}"),
+                initial_balances=cached_data.get("initial_balances", "{}"),
                 today=today.isoformat()
             )
 
@@ -1769,6 +1785,7 @@ def forecast():
         simulated[name] = info["balance"]
 
     account_names = list(accounts.keys())
+    initial_balances = {name: round(simulated[name], 2) for name in account_names}
     snapshots = []
 
     for day_offset in range(1, 91):
@@ -1785,8 +1802,15 @@ def forecast():
                     simulated[inc["account"]] += float(inc["amount"])
 
         for expense in scheduled:
-            if expense["day"] == sim_day.day and expense["account"] in simulated:
-                simulated[expense["account"]] -= float(expense["amount"])
+            freq = expense.get("frequency") or "monthly"
+            if freq == "yearly":
+                # Fire once a year on the specific day+month
+                if expense["day"] == sim_day.day and expense.get("month") == sim_day.month and expense["account"] in simulated:
+                    simulated[expense["account"]] -= float(expense["amount"])
+            else:
+                # Monthly: fire on the given day every month
+                if expense["day"] == sim_day.day and expense["account"] in simulated:
+                    simulated[expense["account"]] -= float(expense["amount"])
 
         for event in future_events:
             if event["date"] == sim_day and event["account"] in simulated:
@@ -1818,17 +1842,25 @@ def forecast():
 
     snapshots_json = json.dumps(snapshots)
     account_names_json = json.dumps(account_names)
+    # Map of account name -> type so the frontend can filter by current/savings/cash
+    account_types = {name: accounts[name]["type"] for name in account_names}
+    account_types_json = json.dumps(account_types)
+    initial_balances_json = json.dumps(initial_balances)
 
     # store in cache
     forecast_cache[cache_key] = (time.time(), {
         "snapshots": snapshots_json,
-        "account_names": account_names_json
+        "account_names": account_names_json,
+        "account_types": account_types_json,
+        "initial_balances": initial_balances_json
     })
 
     return render_template(
         "forecast.html",
         snapshots=snapshots_json,
         account_names=account_names_json,
+        account_types=account_types_json,
+        initial_balances=initial_balances_json,
         today=today.isoformat()
     )
 
