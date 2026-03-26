@@ -309,5 +309,40 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- analytics_events table ---
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS analytics_events (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    event TEXT NOT NULL,
+                    ts TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_analytics_user_id ON analytics_events(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_analytics_ts ON analytics_events(ts)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_analytics_event ON analytics_events(event)")
+            db.commit()
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS analytics_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    event TEXT NOT NULL,
+                    ts TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_analytics_user_id ON analytics_events(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_analytics_ts ON analytics_events(ts)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_analytics_event ON analytics_events(event)")
+            db.commit()
+    except Exception as e:
+        logger.error(f"analytics_events table creation error: {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

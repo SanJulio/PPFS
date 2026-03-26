@@ -1,0 +1,170 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<title>Spendara — Analytics</title>
+<style>
+html, body { min-height: 100vh; background: #f2f4f7; }
+.card { border-radius: 18px; border: none; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
+.stat-val { font-size: 2.2rem; font-weight: 700; line-height: 1; }
+.stat-label { font-size: 12px; color: #888; margin-top: 4px; }
+.bar-wrap { background: #f0f0f0; border-radius: 4px; height: 14px; overflow: hidden; }
+.bar-fill { background: #111; height: 100%; border-radius: 4px; transition: width 0.3s; }
+.bar-fill.green { background: #10b981; }
+table th { font-size: 12px; color: #888; font-weight: 600; }
+table td { font-size: 13px; vertical-align: middle; }
+.badge-soft { background: rgba(0,0,0,0.06); color: #111; border-radius: 999px; padding: 4px 10px; font-weight: 600; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="container py-4" style="max-width:860px;">
+
+  <div class="mb-4 d-flex justify-content-between align-items-center">
+    <div>
+      <h1 class="display-6 fw-bold mb-0">Analytics</h1>
+      <div class="text-muted small">Admin only — self-hosted, no PII</div>
+    </div>
+    <a href="/" class="btn btn-outline-secondary btn-sm">← Back to app</a>
+  </div>
+
+  <!-- STAT CARDS -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card p-3 text-center">
+        <div class="stat-val">{{ total_users }}</div>
+        <div class="stat-label">Total users</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card p-3 text-center">
+        <div class="stat-val">{{ mau }}</div>
+        <div class="stat-label">MAU (30d)</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card p-3 text-center">
+        <div class="stat-val">{{ wau }}</div>
+        <div class="stat-label">WAU (7d)</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card p-3 text-center">
+        <div class="stat-val">{{ dau }}</div>
+        <div class="stat-label">DAU (today)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIGNUPS CHART -->
+  <div class="card p-4 mb-4">
+    <h6 class="fw-bold mb-3">New signups — last 30 days</h6>
+    {% if signups %}
+      <table class="w-100" style="border-collapse:collapse;">
+        {% for row in signups %}
+        <tr>
+          <td style="width:70px; font-size:12px; color:#888; padding:3px 8px 3px 0;">{{ row.day }}</td>
+          <td style="padding:3px 0;">
+            <div class="bar-wrap"><div class="bar-fill green" style="width:{{ [1, (row.n * 100 // signup_max)]|max }}%"></div></div>
+          </td>
+          <td style="width:30px; font-size:12px; font-weight:600; text-align:right; padding-left:8px;">{{ row.n }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    {% else %}
+      <div class="text-muted small">No signups in last 30 days</div>
+    {% endif %}
+  </div>
+
+  <!-- DAU CHART -->
+  <div class="card p-4 mb-4">
+    <h6 class="fw-bold mb-3">Daily active users — last 30 days</h6>
+    {% if dau_series %}
+      <table class="w-100" style="border-collapse:collapse;">
+        {% for row in dau_series %}
+        <tr>
+          <td style="width:70px; font-size:12px; color:#888; padding:3px 8px 3px 0;">{{ row.day }}</td>
+          <td style="padding:3px 0;">
+            <div class="bar-wrap"><div class="bar-fill" style="width:{{ [1, (row.n * 100 // dau_max)]|max }}%"></div></div>
+          </td>
+          <td style="width:30px; font-size:12px; font-weight:600; text-align:right; padding-left:8px;">{{ row.n }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    {% else %}
+      <div class="text-muted small">No activity data yet</div>
+    {% endif %}
+  </div>
+
+  <!-- FEATURE USAGE -->
+  <div class="card p-4 mb-4">
+    <h6 class="fw-bold mb-3">Feature usage</h6>
+    {% if feature_usage %}
+    <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead>
+          <tr>
+            <th>Event</th>
+            <th class="text-end">Total hits</th>
+            <th class="text-end">Unique users</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in feature_usage %}
+          <tr>
+            <td><span class="badge-soft">{{ row.event }}</span></td>
+            <td class="text-end fw-semibold">{{ row.hits }}</td>
+            <td class="text-end text-muted">{{ row.users }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <div class="text-muted small">No events tracked yet</div>
+    {% endif %}
+  </div>
+
+  <!-- RETENTION + FUNNEL -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-6">
+      <div class="card p-4 h-100">
+        <h6 class="fw-bold mb-1">Week-1 retention</h6>
+        <div class="text-muted small mb-3">Users registered 14+ days ago who came back after day 7</div>
+        <div class="stat-val mb-1">{{ retention_pct }}%</div>
+        <div class="small text-muted">{{ retention.returned }} of {{ retention.total }} users returned</div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card p-4 h-100">
+        <h6 class="fw-bold mb-1">Activation funnel</h6>
+        <div class="text-muted small mb-3">Registered users who took at least one action</div>
+        <div class="stat-val mb-1">{{ funnel_pct }}%</div>
+        <div class="small text-muted">{{ funnel.took_action }} of {{ funnel.registered }} users activated</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABLE HEALTH -->
+  <div class="card p-4 mb-4">
+    <h6 class="fw-bold mb-2">Events table health</h6>
+    <div class="row g-2 small">
+      <div class="col-6 col-md-4">
+        <div class="text-muted">Total events</div>
+        <div class="fw-semibold">{{ table_stats.total }}</div>
+      </div>
+      <div class="col-6 col-md-4">
+        <div class="text-muted">Oldest event</div>
+        <div class="fw-semibold">{{ table_stats.oldest or '—' }}</div>
+      </div>
+      <div class="col-12 col-md-4">
+        <div class="text-muted">Auto-prune</div>
+        <div class="fw-semibold">180 days (1% of requests)</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

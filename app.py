@@ -149,6 +149,8 @@ secret_key = os.environ.get("SECRET_KEY")
 if not secret_key:
     raise ValueError("SECRET_KEY environment variable must be set for production security")
 app.secret_key = secret_key
+ADMIN_USER_ID = int(os.environ.get("ADMIN_USER_ID", 0))
+ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
 app.config["SESSION_COOKIE_SECURE"] = True
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "None"
@@ -354,6 +356,68 @@ def validate_day(day_raw):
     except (ValueError, TypeError):
         return None, "Day must be a valid number."
 
+VALID_EVENTS = {
+    'auth.register', 'auth.login',
+    'page_view.dashboard', 'page_view.forecast', 'page_view.transactions',
+    'page_view.flow', 'page_view.actions', 'page_view.settings', 'page_view.import',
+    'action.add_expense', 'action.add_income', 'action.transfer', 'action.pay_bill',
+    'action.receive_income', 'action.import_csv', 'action.afford_check', 'action.investment_update',
+    'billing.upgrade_start', 'billing.upgrade_complete', 'billing.cancel',
+}
+
+def track(event: str):
+    """Fire-and-forget analytics. Silently swallows errors so tracking never breaks routes."""
+    if event not in VALID_EVENTS:
+        return
+    if not current_user.is_authenticated:
+        return
+    try:
+        import random as _random
+        db = get_db()
+        cursor = db.cursor()
+        if USE_POSTGRES:
+            cursor.execute(
+                "INSERT INTO analytics_events (user_id, event) VALUES (%s, %s)",
+                (current_user.id, event)
+            )
+            if _random.random() < 0.01:
+                cursor.execute("DELETE FROM analytics_events WHERE ts < NOW() - INTERVAL '180 days'")
+        else:
+            cursor.execute(
+                "INSERT INTO analytics_events (user_id, event) VALUES (?, ?)",
+                (current_user.id, event)
+            )
+            if _random.random() < 0.01:
+                cursor.execute("DELETE FROM analytics_events WHERE ts < datetime('now', '-180 days')")
+        db.commit()
+        cursor.close()
+        release_db(db)
+    except Exception as e:
+        logger.debug(f"Analytics track error: {e}")
+
+def track_for_user(user_id: int, event: str):
+    """Same as track() but with explicit user_id — used for auth events before current_user is set."""
+    if event not in VALID_EVENTS:
+        return
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        if USE_POSTGRES:
+            cursor.execute(
+                "INSERT INTO analytics_events (user_id, event) VALUES (%s, %s)",
+                (user_id, event)
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO analytics_events (user_id, event) VALUES (?, ?)",
+                (user_id, event)
+            )
+        db.commit()
+        cursor.close()
+        release_db(db)
+    except Exception as e:
+        logger.debug(f"Analytics track_for_user error: {e}")
+
 # --- FINANCIAL OVERVIEW CALCULATION ---
 # Splits accounts into spending (current/cash) and savings, then calculates:
 # - spending balance (total in spending accounts)
@@ -511,6 +575,7 @@ def calculate_monthly_spending():
 @login_required
 def home():
     # Dashboard for authenticated users
+    track('page_view.dashboard')
     # Check email verification
     db = get_db()
     cursor = db.cursor()
@@ -570,7 +635,7 @@ def home():
 @app.get("/transactions")
 @login_required
 def transactions():
-
+    track('page_view.transactions')
     tx = get_recent_transactions(current_user.id)
 
     return render_template(
@@ -583,6 +648,7 @@ def transactions():
 @app.get("/actions")
 @login_required
 def actions():
+    track('page_view.actions')
     accounts_rows = get_active_accounts(current_user.id)
     accounts = [r["name"] for r in accounts_rows]
 
@@ -606,6 +672,7 @@ def actions():
 @app.get("/flow")
 @login_required
 def flow():
+    track('page_view.flow')
     from datetime import date as date_type
     today = date_type.today()
     year = today.year
@@ -786,7 +853,7 @@ def bills_pay():
 
     add_transaction(today_str, bill["name"], -bill["amount"], bill["account"], current_user.id, type="bill")
     update_account_balance(bill["account"], -bill["amount"], current_user.id)
-
+    track('action.pay_bill')
     return redirect(url_for("flow", msg=f"{bill['name']} — £{bill['amount']:.2f} paid."))
 
 # --- RECEIVE INCOME (manual) ---
@@ -815,7 +882,7 @@ def income_pay():
 
     add_transaction(today_str, income["name"], income["amount"], income["account"], current_user.id, type="income")
     update_account_balance(income["account"], income["amount"], current_user.id)
-
+    track('action.receive_income')
     return redirect(url_for("flow", msg=f"{income['name']} — £{income['amount']:.2f} received."))
 
 # --- ADD EXPENSE ---
@@ -843,7 +910,7 @@ def add_expense():
     add_transaction(today_str, description, amount, account, current_user.id, category=category)
 
     update_account_balance(account, amount, current_user.id)
-
+    track('action.add_expense')
     return redirect(
         url_for("actions", msg=f"Added {description}: £{abs(amount):.2f} from {account}")
     )
@@ -872,7 +939,7 @@ def add_income():
     add_transaction(today_str, description, amount, account, current_user.id)
 
     update_account_balance(account, amount, current_user.id)
-
+    track('action.add_income')
     return redirect(
         url_for("actions", msg=f"Added income {description}: £{amount:.2f} to {account}")
     )
@@ -903,7 +970,7 @@ def transfer():
 
     update_account_balance(from_account, -amount, current_user.id)
     update_account_balance(to_account, amount, current_user.id)
-
+    track('action.transfer')
     return redirect(
         url_for("actions", msg=f"Transferred £{amount:.2f} from {from_account} → {to_account}")
     )
@@ -1123,6 +1190,7 @@ def afford():
         worst = sorted(results, key=lambda x: x["lowest"], reverse=True)[0]
         recommendation = f"No safe account — least bad: {worst['account']}"
 
+    track('action.afford_check')
     return render_template(
         "index.html",
         message="",
@@ -1140,6 +1208,7 @@ def afford():
 @app.get("/settings")
 @login_required
 def settings():
+    track('page_view.settings')
     from database import get_db, USE_POSTGRES
     db = get_db()
     cursor = db.cursor()
@@ -1600,6 +1669,7 @@ def actions_update_investment():
     db.commit()
     cursor.close()
     release_db(db)
+    track('action.investment_update')
     return redirect(url_for("actions", msg="Investment updated."))
 
 # --- DANGER ZONE: RESET ACTIONS ---
@@ -1709,6 +1779,7 @@ def forecast():
     import json
     import time
 
+    track('page_view.forecast')
     today = date_type.today()
     cache_key = f"forecast_{current_user.id}_{today.isoformat()}"
 
@@ -1998,6 +2069,7 @@ def register_post():
     user = User(user_id, email)
     session.permanent = True
     login_user(user, remember=True)
+    track_for_user(user_id, 'auth.register')
     return redirect(url_for("home", msg="Welcome! Please check your email to verify your account."))
 
 
@@ -2044,6 +2116,7 @@ def login_post():
     user = User(row["id"], row["email"])
     login_user(user, remember=True)
     session.permanent = True
+    track_for_user(row["id"], 'auth.login')
     return redirect(url_for("home"))
 
 @app.get("/logout")
@@ -2324,6 +2397,7 @@ def import_csv():
     accounts = [r["name"] for r in accounts_rows]
 
     if request.method == 'GET':
+        track('page_view.import')
         return render_template('import.html', accounts=accounts, preview=None, error=None, selected_account=None)
 
     # Validate CSRF
@@ -2391,6 +2465,7 @@ def import_confirm():
     cursor.close()
     release_db(db)
 
+    track('action.import_csv')
     return redirect(url_for('transactions', msg=f"Imported {len(selected_rows)} transactions to {account}"))
 
 
@@ -2420,6 +2495,7 @@ def billing_upgrade():
             cancel_url="https://spendara.co.uk/settings",
             metadata={"user_id": current_user.id},
         )
+        track('billing.upgrade_start')
         return redirect(checkout_session.url)
     except Exception as e:
         logger.error(f"Stripe checkout error: {e}")
@@ -2500,6 +2576,7 @@ def stripe_webhook():
             cursor.close()
             release_db(db)
             logger.info(f"Pro activated for user_id={user_id}")
+            track_for_user(int(user_id), 'billing.upgrade_complete')
 
     # Subscription cancelled — deactivate Pro
     elif event["type"] == "customer.subscription.deleted":
@@ -2509,6 +2586,11 @@ def stripe_webhook():
             db = get_db()
             cursor = db.cursor()
             if USE_POSTGRES:
+                cursor.execute("SELECT id FROM users WHERE stripe_customer_id = %s", (customer_id,))
+            else:
+                cursor.execute("SELECT id FROM users WHERE stripe_customer_id = ?", (customer_id,))
+            uid_row = cursor.fetchone()
+            if USE_POSTGRES:
                 cursor.execute("UPDATE users SET is_pro = 0 WHERE stripe_customer_id = %s", (customer_id,))
             else:
                 cursor.execute("UPDATE users SET is_pro = 0 WHERE stripe_customer_id = ?", (customer_id,))
@@ -2516,6 +2598,8 @@ def stripe_webhook():
             cursor.close()
             release_db(db)
             logger.info(f"Pro deactivated for customer_id={customer_id}")
+            if uid_row:
+                track_for_user(uid_row[0], 'billing.cancel')
 
     return "OK", 200
 
@@ -2532,6 +2616,77 @@ def user_is_pro():
     cursor.close()
     release_db(db)
     return bool(row[0] if USE_POSTGRES else row["is_pro"]) if row else False
+
+
+# --- ADMIN ANALYTICS ---
+
+@app.get("/admin/unlock")
+@login_required
+@limiter.limit("5 per hour")
+def admin_unlock():
+    secret = request.args.get("secret", "")
+    if current_user.id == ADMIN_USER_ID and secret == ADMIN_SECRET and ADMIN_SECRET:
+        session["admin_unlocked"] = ADMIN_SECRET
+        return redirect("/admin/analytics")
+    logger.warning(f"Failed admin unlock attempt — user_id={current_user.id} ip={request.remote_addr}")
+    return render_template("404.html"), 404
+
+@app.get("/admin/analytics")
+@login_required
+@limiter.limit("30 per hour")
+def admin_analytics():
+    if current_user.id != ADMIN_USER_ID or session.get("admin_unlocked") != ADMIN_SECRET or not ADMIN_SECRET:
+        logger.warning(f"Blocked admin access attempt — user_id={current_user.id} ip={request.remote_addr}")
+        return render_template("404.html"), 404
+
+    db = get_db()
+    cursor = db.cursor()
+
+    def q(sql):
+        cursor.execute(sql)
+        cols = [d[0] for d in cursor.description]
+        return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    if USE_POSTGRES:
+        mau    = q("SELECT COUNT(DISTINCT user_id) AS n FROM analytics_events WHERE ts >= NOW() - INTERVAL '30 days'")[0]["n"]
+        wau    = q("SELECT COUNT(DISTINCT user_id) AS n FROM analytics_events WHERE ts >= NOW() - INTERVAL '7 days'")[0]["n"]
+        dau    = q("SELECT COUNT(DISTINCT user_id) AS n FROM analytics_events WHERE ts >= NOW() - INTERVAL '1 day'")[0]["n"]
+        total_users = q("SELECT COUNT(*) AS n FROM users")[0]["n"]
+        signups = q("SELECT DATE(created_at::date) AS day, COUNT(*) AS n FROM users WHERE created_at::date >= NOW() - INTERVAL '30 days' GROUP BY day ORDER BY day")
+        dau_series = q("SELECT DATE(ts) AS day, COUNT(DISTINCT user_id) AS n FROM analytics_events WHERE ts >= NOW() - INTERVAL '30 days' GROUP BY day ORDER BY day")
+        feature_usage = q("SELECT event, COUNT(*) AS hits, COUNT(DISTINCT user_id) AS users FROM analytics_events GROUP BY event ORDER BY hits DESC")
+        retention = q("SELECT COUNT(DISTINCT u.id) AS total, COUNT(DISTINCT CASE WHEN a.ts >= u.created_at::date + INTERVAL '7 days' THEN a.user_id END) AS returned FROM users u LEFT JOIN analytics_events a ON a.user_id = u.id WHERE u.created_at::date <= NOW() - INTERVAL '14 days'")[0]
+        funnel = q("SELECT COUNT(DISTINCT u.id) AS registered, COUNT(DISTINCT a.user_id) AS took_action FROM users u LEFT JOIN analytics_events a ON a.user_id = u.id AND a.event LIKE 'action.%%'")[0]
+        table_stats = q("SELECT COUNT(*) AS total, MIN(ts) AS oldest FROM analytics_events")[0]
+    else:
+        mau    = q("SELECT COUNT(DISTINCT user_id) AS n FROM analytics_events WHERE ts >= datetime('now', '-30 days')")[0]["n"]
+        wau    = q("SELECT COUNT(DISTINCT user_id) AS n FROM analytics_events WHERE ts >= datetime('now', '-7 days')")[0]["n"]
+        dau    = q("SELECT COUNT(DISTINCT user_id) AS n FROM analytics_events WHERE ts >= datetime('now', '-1 day')")[0]["n"]
+        total_users = q("SELECT COUNT(*) AS n FROM users")[0]["n"]
+        signups = q("SELECT DATE(created_at) AS day, COUNT(*) AS n FROM users WHERE created_at >= datetime('now', '-30 days') GROUP BY day ORDER BY day")
+        dau_series = q("SELECT DATE(ts) AS day, COUNT(DISTINCT user_id) AS n FROM analytics_events WHERE ts >= datetime('now', '-30 days') GROUP BY day ORDER BY day")
+        feature_usage = q("SELECT event, COUNT(*) AS hits, COUNT(DISTINCT user_id) AS users FROM analytics_events GROUP BY event ORDER BY hits DESC")
+        retention = q("SELECT COUNT(DISTINCT u.id) AS total, COUNT(DISTINCT CASE WHEN a.ts >= datetime(u.created_at, '+7 days') THEN a.user_id END) AS returned FROM users u LEFT JOIN analytics_events a ON a.user_id = u.id WHERE u.created_at <= datetime('now', '-14 days')")[0]
+        funnel = q("SELECT COUNT(DISTINCT u.id) AS registered, COUNT(DISTINCT a.user_id) AS took_action FROM users u LEFT JOIN analytics_events a ON a.user_id = u.id AND a.event LIKE 'action.%'")[0]
+        table_stats = q("SELECT COUNT(*) AS total, MIN(ts) AS oldest FROM analytics_events")[0]
+
+    cursor.close()
+    release_db(db)
+
+    retention_pct = round(100 * retention["returned"] / retention["total"]) if retention["total"] else 0
+    funnel_pct    = round(100 * funnel["took_action"] / funnel["registered"]) if funnel["registered"] else 0
+    signup_max    = max((r["n"] for r in signups), default=1) or 1
+    dau_max       = max((r["n"] for r in dau_series), default=1) or 1
+
+    return render_template("admin_analytics.html",
+        mau=mau, wau=wau, dau=dau, total_users=total_users,
+        signups=signups, signup_max=signup_max,
+        dau_series=dau_series, dau_max=dau_max,
+        feature_usage=feature_usage,
+        retention=retention, retention_pct=retention_pct,
+        funnel=funnel, funnel_pct=funnel_pct,
+        table_stats=table_stats,
+    )
 
 
 @app.errorhandler(404)
