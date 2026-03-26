@@ -247,7 +247,10 @@ input, select {
   {% endif %}
 
   <div class="card p-3 mb-4" id="overviewCard">
-  <h5 class="mb-3">Financial Overview <span class="text-muted small fw-normal" style="font-size:12px">hold to reveal</span></h5>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">Financial Overview</h5>
+    <button id="toggleAmountsBtn" onclick="toggleAmounts()" class="btn btn-sm" style="border-radius:999px; padding:6px 14px; font-size:13px; font-weight:600; background:white; border:2px solid #dee2e6; color:#555;">Show</button>
+  </div>
   <div class="row g-3">
 
     <div class="col-6">
@@ -536,40 +539,26 @@ input, select {
   </div>
 </nav>
 <script>
-// Hold-to-reveal + triple-tap to lock/unlock on overview and spending cards
+// Toggle button to show/hide financial figures
 const privateCards = [document.getElementById('overviewCard'), document.getElementById('spendingCard')];
-let persistVisible = false;
-let tapCount = 0;
-let tapTimer = null;
+let amountsVisible = false;
 
-function showAmounts() {
-  privateCards.forEach(c => c && c.classList.add('amounts-visible'));
-}
-function hideAmounts() {
-  if (!persistVisible) {
-    privateCards.forEach(c => c && c.classList.remove('amounts-visible'));
+function toggleAmounts() {
+  amountsVisible = !amountsVisible;
+  const btn = document.getElementById('toggleAmountsBtn');
+  privateCards.forEach(c => c && c.classList.toggle('amounts-visible', amountsVisible));
+  if (amountsVisible) {
+    btn.textContent = 'Hide';
+    btn.style.background = '#198754';
+    btn.style.color = 'white';
+    btn.style.borderColor = '#198754';
+  } else {
+    btn.textContent = 'Show';
+    btn.style.background = 'white';
+    btn.style.color = '#555';
+    btn.style.borderColor = '#dee2e6';
   }
 }
-function handleTap() {
-  tapCount++;
-  clearTimeout(tapTimer);
-  tapTimer = setTimeout(() => { tapCount = 0; }, 400);
-  if (tapCount >= 3) {
-    tapCount = 0;
-    persistVisible = !persistVisible;
-    persistVisible ? showAmounts() : privateCards.forEach(c => c && c.classList.remove('amounts-visible'));
-  }
-}
-privateCards.forEach(card => {
-  if (!card) return;
-  card.addEventListener('mousedown', showAmounts);
-  card.addEventListener('touchstart', showAmounts, { passive: true });
-  card.addEventListener('mouseup', hideAmounts);
-  card.addEventListener('mouseleave', hideAmounts);
-  card.addEventListener('touchend', hideAmounts);
-  card.addEventListener('touchcancel', hideAmounts);
-  card.addEventListener('click', handleTap);
-});
 
 function toggleTile(id) {
   const tile = document.getElementById('tile-' + id);
