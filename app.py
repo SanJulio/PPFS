@@ -2266,7 +2266,16 @@ def parse_bank_csv(content: str):
                 credit = float(credit_raw) if credit_raw else 0.0
                 amount = round(credit - debit, 2)
 
-            parsed.append({'date': parsed_date, 'description': desc, 'amount': round(amount, 2)})
+            # Auto-detect internal transfers by common keywords in the description
+            transfer_keywords = [
+                'transfer', 'internal', 'from pot', 'to pot', 'pot transfer',
+                'savings pot', 'roundup', 'round up', 'moneybox', 'sweep',
+                'between accounts', 'own account', 'joint account'
+            ]
+            desc_lower = desc.lower()
+            is_transfer = any(kw in desc_lower for kw in transfer_keywords)
+
+            parsed.append({'date': parsed_date, 'description': desc, 'amount': round(amount, 2), 'is_transfer': is_transfer})
         except Exception:
             continue
 
@@ -2326,8 +2335,14 @@ def import_confirm():
     if not rows or not account:
         return redirect(url_for('import_csv'))
 
+    # Only import rows the user checked (sent as include_0, include_1, etc.)
+    selected_rows = [rows[i] for i in range(len(rows)) if request.form.get(f'include_{i}') == '1']
+
+    if not selected_rows:
+        return redirect(url_for('import_csv'))
+
     total_delta = 0.0
-    for row in rows:
+    for row in selected_rows:
         add_transaction(row['date'], row['description'], row['amount'], account, current_user.id, type='import')
         total_delta += row['amount']
 
@@ -2344,7 +2359,7 @@ def import_confirm():
     cursor.close()
     release_db(db)
 
-    return redirect(url_for('transactions', msg=f"Imported {len(rows)} transactions to {account}"))
+    return redirect(url_for('transactions', msg=f"Imported {len(selected_rows)} transactions to {account}"))
 
 
 # =============================================================================

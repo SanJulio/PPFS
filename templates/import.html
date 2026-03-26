@@ -98,37 +98,54 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       <h5 class="mb-0">Preview</h5>
       <span class="badge-soft">{{ preview|length }} transactions</span>
     </div>
-    <p class="text-muted small mb-3">Importing into <strong>{{ selected_account }}</strong>. Check the transactions below, then confirm.</p>
+    <p class="text-muted small mb-3">Importing into <strong>{{ selected_account }}</strong>. Uncheck any rows you don't want to import. Transfers are unchecked by default.</p>
 
-    <div class="table-responsive mb-4" style="max-height: 400px; overflow-y: auto;">
-      <table class="table table-sm align-middle mb-0">
-        <thead class="sticky-top bg-white">
-          <tr>
-            <th>Date</th>
-            <th>Description</th>
-            <th class="text-end">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in preview %}
-          <tr>
-            <td class="text-muted small">{{ row.date }}</td>
-            <td class="small">{{ row.description }}</td>
-            <td class="text-end small fw-semibold {% if row.amount < 0 %}text-danger{% else %}text-success{% endif %} money">
-              {% if row.amount < 0 %}-£{{ "%.2f"|format(row.amount|abs) }}{% else %}+£{{ "%.2f"|format(row.amount) }}{% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    {% set transfer_count = preview | selectattr('is_transfer') | list | length %}
+    {% if transfer_count > 0 %}
+    <div class="alert rounded-4 mb-3" style="background:#fff3cd; border:none; font-size:13px;">
+      <strong>{{ transfer_count }} transfer{{ 's' if transfer_count > 1 else '' }} detected</strong> and unchecked — these look like internal account movements, not real payments.
     </div>
+    {% endif %}
 
     <form method="POST" action="/import/confirm">
       <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+
+      <div class="table-responsive mb-4" style="max-height: 400px; overflow-y: auto;">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="sticky-top bg-white">
+            <tr>
+              <th style="width:36px;"></th>
+              <th>Date</th>
+              <th>Description</th>
+              <th class="text-end">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in preview %}
+            <tr {% if row.is_transfer %}style="opacity:0.45;"{% endif %}>
+              <td>
+                <input type="checkbox" name="include_{{ loop.index0 }}" value="1"
+                  class="form-check-input"
+                  {% if not row.is_transfer %}checked{% endif %}>
+              </td>
+              <td class="text-muted small">{{ row.date }}</td>
+              <td class="small">
+                {{ row.description }}
+                {% if row.is_transfer %}<span class="badge text-bg-secondary ms-1" style="font-size:10px;">transfer</span>{% endif %}
+              </td>
+              <td class="text-end small fw-semibold {% if row.amount < 0 %}text-danger{% else %}text-success{% endif %} money">
+                {% if row.amount < 0 %}-£{{ "%.2f"|format(row.amount|abs) }}{% else %}+£{{ "%.2f"|format(row.amount) }}{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
       <div class="d-flex gap-2">
         <a href="/import" class="btn btn-outline-secondary rounded-3 px-4 py-3 flex-fill">← Start over</a>
         <button type="submit" class="btn btn-dark rounded-3 px-4 py-3 flex-fill">
-          Import {{ preview|length }} transactions
+          Import selected
         </button>
       </div>
     </form>
