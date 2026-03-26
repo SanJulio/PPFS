@@ -5,7 +5,14 @@
       "Bash(sed -i 's/<title>PPFS — Flow<\\\\/title>/<title>Spendara — Flow<\\\\/title>/' templates/flow.html)",
       "Bash(sed -i 's/<title>PPFS — Register<\\\\/title>/<title>Spendara — Register<\\\\/title>/' templates/register.html)",
       "Bash(sed -i 's/<title>PPFS — Account<\\\\/title>/<title>Spendara — Settings<\\\\/title>/' templates/settings.html)",
-      "Bash(sed -i 's/<title>PPFS<\\\\/title>/<title>Spendara — Home<\\\\/title>/' templates/index.html)"
+      "Bash(sed -i 's/<title>PPFS<\\\\/title>/<title>Spendara — Home<\\\\/title>/' templates/index.html)",
+      "Bash(grep -l \"6000-logo.png\" templates/*.html)",
+      "Bash(grep -n \"6000-logo.png\" templates/*.html)",
+      "Bash(sed -i 's|<img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"PPFS Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-2 d-block\"\">|<a href=\"\"/\"\"><img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"PPFS Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-2 d-block\"\"></a>|g' templates/actions.html templates/flow.html templates/transactions.html)",
+      "Bash(sed -i 's|<img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"Spendara Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-2 d-block\"\">|<a href=\"\"/\"\"><img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"Spendara Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-2 d-block\"\"></a>|g' templates/forecast.html)",
+      "Bash(sed -i 's|<img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"PPFS Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-2\"\">|<a href=\"\"/\"\"><img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"PPFS Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-2\"\"></a>|g' templates/index.html)",
+      "Bash(sed -i 's|<img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"Spendara Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-4 d-block mx-auto\"\">|<a href=\"\"/\"\"><img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"Spendara Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-4 d-block mx-auto\"\"></a>|g' templates/404.html templates/500.html)",
+      "Bash(sed -i 's|<img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"PPFS Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-2 d-block mx-auto\"\">|<a href=\"\"/\"\"><img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"PPFS Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-2 d-block mx-auto\"\"></a>|g' templates/login.html)"
     ]
   }
 }
