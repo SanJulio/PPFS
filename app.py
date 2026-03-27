@@ -123,7 +123,7 @@ def set_csrf_token():
 @app.before_request
 def check_csrf():
     if request.method == 'POST':
-        exempt = ['/login', '/register']
+        exempt = ['/login', '/register', '/stripe/webhook']
         if request.path not in exempt:
             token = request.form.get('csrf_token')
             if not token or token != session.get('csrf_token'):
@@ -153,7 +153,7 @@ ADMIN_USER_ID = int(os.environ.get("ADMIN_USER_ID", 0))
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
 app.config["SESSION_COOKIE_SECURE"] = True
 app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=24)
 app.config["SESSION_REFRESH_EACH_REQUEST"] = True
 
