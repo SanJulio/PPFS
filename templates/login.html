@@ -26,6 +26,10 @@ input { border-radius: 12px !important; padding: 12px !important; font-size: 16p
       <div class="card p-4">
         <h5 class="mb-4 fw-bold">Log in</h5>
 
+        {% if request.args.get('msg') == 'account_deleted' %}
+          <div class="alert rounded-4" style="background:#d1e7dd; border:none;">Your account has been permanently deleted. Sorry to see you go.</div>
+        {% endif %}
+
         {% if error %}
           <div class="alert alert-danger rounded-4">{{ error }}</div>
         {% endif %}

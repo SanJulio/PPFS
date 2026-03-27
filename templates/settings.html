@@ -78,6 +78,8 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       <div class="fw-bold">Account limit reached</div>
       <div class="small mt-1">Free accounts are limited to 3 accounts. <a href="/billing/upgrade" class="fw-bold text-dark">Upgrade to Pro for £1.99/month</a> to add unlimited accounts.</div>
     </div>
+  {% elif message == 'DELETE_EMAIL_MISMATCH' %}
+    <div class="alert alert-danger rounded-4">The email you entered didn't match. Account not deleted.</div>
   {% elif message %}
     <div class="alert alert-info rounded-4 auto-dismiss">{{ message }}</div>
   {% endif %}
@@ -811,6 +813,33 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         </form>
       </div>
     </div>
+
+    <div class="card p-3 mb-4" style="border: 2px solid #dc3545;">
+      <h5 class="mb-1 text-danger">Delete Account</h5>
+      <p class="text-muted small mb-3">Permanently deletes your account and all data — transactions, bills, accounts, everything. This cannot be undone. If you're on Pro, your subscription will be cancelled automatically.</p>
+      <button class="btn btn-danger w-100" onclick="document.getElementById('deleteAccountModal').style.display='flex'">
+        Delete my account permanently
+      </button>
+    </div>
+  </div>
+
+  <!-- Delete Account Modal -->
+  <div id="deleteAccountModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:center; justify-content:center; padding:20px;">
+    <div class="card p-4" style="max-width:420px; width:100%;">
+      <h5 class="fw-bold text-danger mb-1">Delete account</h5>
+      <p class="text-muted small mb-3">This will permanently delete all your data and cannot be undone. Type your email address to confirm.</p>
+      <form method="POST" action="/settings/delete-account">
+        <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Your email address</label>
+          <input type="email" name="confirm_email" class="form-control" placeholder="{{ current_user.email }}" required autocomplete="off">
+        </div>
+        <div class="d-grid gap-2">
+          <button type="submit" class="btn btn-danger">Yes, permanently delete my account</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('deleteAccountModal').style.display='none'">Cancel</button>
+        </div>
+      </form>
+    </div>
   </div>
 
 </div>
@@ -854,12 +883,21 @@ document.querySelectorAll('form:not([onsubmit])').forEach(function(form) {
   });
 });
 
-function showTab(name) {
+function showTab(name, btn) {
   document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  event.currentTarget.classList.add('active');
+  (btn || event.currentTarget).classList.add('active');
 }
+
+// Auto-open tab from URL param (e.g. ?tab=danger after email mismatch redirect)
+(function() {
+  var tab = new URLSearchParams(window.location.search).get('tab');
+  if (tab) {
+    var btn = document.querySelector('.tab-btn[onclick*="' + tab + '"]');
+    if (btn) { document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); showTab(tab, btn); btn.classList.add('active'); }
+  }
+})();
 
 function toggleMonthField(select, targetId) {
   var el = document.getElementById(targetId);

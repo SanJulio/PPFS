@@ -2689,6 +2689,78 @@ def admin_analytics():
     )
 
 
+# --- DELETE ACCOUNT ---
+# Permanently deletes all user data and the account itself.
+# Requires the user to confirm by typing their email address.
+# Cancels any active Stripe subscription before deleting.
+@app.post("/settings/delete-account")
+@login_required
+@limiter.limit("5 per hour")
+def delete_account():
+    typed_email = (request.form.get("confirm_email") or "").strip().lower()
+    if typed_email != current_user.email.lower():
+        return redirect(url_for("settings", tab="danger", msg="DELETE_EMAIL_MISMATCH"))
+
+    user_id = current_user.id
+
+    # Cancel Stripe subscription if Pro
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        if USE_POSTGRES:
+            cursor.execute("SELECT stripe_customer_id FROM users WHERE id = %s", (user_id,))
+        else:
+            cursor.execute("SELECT stripe_customer_id FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        cursor.close()
+        release_db(db)
+        customer_id = (row[0] if USE_POSTGRES else row["stripe_customer_id"]) if row else None
+        if customer_id:
+            import stripe as _stripe
+            subscriptions = _stripe.Subscription.list(customer=customer_id, status="active")
+            for sub in subscriptions.auto_paging_iter():
+                _stripe.Subscription.cancel(sub["id"])
+    except Exception as e:
+        logger.warning(f"Could not cancel Stripe subscription for user_id={user_id}: {e}")
+
+    # Log out before deleting so Flask-Login doesn't hold a reference
+    logout_user()
+
+    # Delete all user data in dependency order
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        ph = "%s" if USE_POSTGRES else "?"
+        tables = [
+            "investment_updates",
+            "investments",
+            "analytics_events",
+            "flask_sessions",
+            "future_events",
+            "savings_rules",
+            "income",
+            "scheduled_expenses",
+            "transactions",
+            "accounts",
+        ]
+        for table in tables:
+            if table == "flask_sessions":
+                # flask_sessions uses sid not user_id — delete by matching session data
+                cursor.execute(f"DELETE FROM flask_sessions WHERE data::text LIKE {ph}", (f'%"_user_id": "{user_id}"%',)) if USE_POSTGRES else cursor.execute(f"DELETE FROM flask_sessions WHERE data LIKE {ph}", (f'%"_user_id": "{user_id}"%',))
+            else:
+                cursor.execute(f"DELETE FROM {table} WHERE user_id = {ph}", (user_id,))
+        cursor.execute(f"DELETE FROM users WHERE id = {ph}", (user_id,))
+        db.commit()
+        cursor.close()
+        release_db(db)
+        logger.info(f"Account deleted for user_id={user_id}")
+    except Exception as e:
+        logger.error(f"Error deleting account for user_id={user_id}: {e}")
+        return redirect(url_for("login"))
+
+    return redirect(url_for("login") + "?msg=account_deleted")
+
+
 @app.errorhandler(404)
 def page_not_found(e):
     return render_template("404.html"), 404
