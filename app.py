@@ -11,24 +11,22 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 import traceback
 import sys
-
 import os
-
 import csv
-from datetime import date
+import calendar
+import json
+import uuid
+import random
+
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Dict, List
 
 from flask import Flask, request, redirect, url_for, render_template
-
 from flask.sessions import SessionInterface, SessionMixin
 from werkzeug.datastructures import CallbackDict
-import json, uuid
 
 # simulate_balances_until is used for forecast and "can I afford it" features
-from Tracker import simulate_balances_until, load_future_events, load_scheduled_expenses
-import calendar
-from datetime import timedelta
+from Tracker import simulate_balances_until
 
 from models import (
     add_transaction,
@@ -41,8 +39,6 @@ from database import get_db, release_db
 
 from database import USE_POSTGRES
 
-from functools import lru_cache
-import hashlib
 # In-memory cache for the 90-day forecast — expensive to compute so we cache for 5 minutes
 forecast_cache = {}
 FORECAST_CACHE_TTL = 300  # 5 minutes in seconds
@@ -85,7 +81,7 @@ class PostgresSessionInterface(SessionInterface):
                     data = json.loads(row[0])
                     return PostgresSession(data, sid=sid)
             except Exception as e:
-                print(f">>> Session open error: {e}", flush=True)
+                logger.error(f"Session open error: {e}")
         sid = str(uuid.uuid4())
         return PostgresSession(sid=sid)
 
@@ -105,7 +101,7 @@ class PostgresSessionInterface(SessionInterface):
             cur.close()
             self._release_db(db)
         except Exception as e:
-            print(f">>> Session save error: {e}", flush=True)
+            logger.error(f"Session save error: {e}")
         response.set_cookie("session", sid, httponly=True, secure=True, samesite="Lax")
 
 # --- FLASK APP SETUP ---
@@ -206,7 +202,7 @@ try:
     with app.app_context():
         init_db()
 except Exception as e:
-    print(f">>> init_db FAILED: {e}", flush=True)
+    logger.error(f"init_db FAILED: {e}")
 
 import time
 
@@ -226,9 +222,6 @@ def add_no_cache_headers(response):
     response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.plot.ly; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
-
-import calendar
-from datetime import datetime
 
 # --- HELPER FUNCTIONS ---
 
@@ -298,7 +291,7 @@ def send_verification_email(to_email, token):
         api_instance.send_transac_email(send_smtp_email)
         return True
     except ApiException as e:
-        print(f">>> Email error: {e}", flush=True)
+        logger.error(f"Email send error: {e}")
         return False
 
 # Sends a password reset link via Brevo — link expires after 24 hours
@@ -331,7 +324,7 @@ def send_reset_email(to_email, reset_url):
         api_instance.send_transac_email(send_smtp_email)
         return True
     except ApiException as e:
-        print(f">>> Reset email error: {e}", flush=True)
+        logger.error(f"Reset email send error: {e}")
         return False
 
 # --- INPUT VALIDATION HELPERS ---
@@ -372,7 +365,6 @@ def track(event: str):
     if not current_user.is_authenticated:
         return
     try:
-        import random as _random
         db = get_db()
         cursor = db.cursor()
         if USE_POSTGRES:
@@ -380,14 +372,14 @@ def track(event: str):
                 "INSERT INTO analytics_events (user_id, event) VALUES (%s, %s)",
                 (current_user.id, event)
             )
-            if _random.random() < 0.01:
+            if random.random() < 0.01:
                 cursor.execute("DELETE FROM analytics_events WHERE ts < NOW() - INTERVAL '180 days'")
         else:
             cursor.execute(
                 "INSERT INTO analytics_events (user_id, event) VALUES (?, ?)",
                 (current_user.id, event)
             )
-            if _random.random() < 0.01:
+            if random.random() < 0.01:
                 cursor.execute("DELETE FROM analytics_events WHERE ts < datetime('now', '-180 days')")
         db.commit()
         cursor.close()
@@ -673,8 +665,7 @@ def actions():
 @login_required
 def flow():
     track('page_view.flow')
-    from datetime import date as date_type
-    today = date_type.today()
+    today = date.today()
     year = today.year
     month = today.month
     current_day = today.day
@@ -1097,7 +1088,6 @@ def toggle_account_overview():
 @app.post("/afford")
 @login_required
 def afford():
-    from datetime import date
 
     desc = (request.form.get("desc") or "").strip()
     amount_raw = (request.form.get("amount") or "").strip()
@@ -1137,12 +1127,11 @@ def afford():
     cursor.close()
     release_db(db)
 
-    from datetime import date as date_type
     future_events = []
     for e in future_events_raw:
         try:
             future_events.append({
-                "date": date_type.fromisoformat(e["date"]),
+                "date": date.fromisoformat(e["date"]),
                 "name": e["name"],
                 "amount": e["amount"],
                 "account": e["account"]
@@ -1775,12 +1764,11 @@ def reset_all():
 @app.get("/forecast")
 @login_required
 def forecast():
-    from datetime import date as date_type, timedelta
     import json
     import time
 
     track('page_view.forecast')
-    today = date_type.today()
+    today = date.today()
     cache_key = f"forecast_{current_user.id}_{today.isoformat()}"
 
     # return cached result if still fresh
@@ -1842,7 +1830,7 @@ def forecast():
     for e in future_events_raw:
         try:
             future_events.append({
-                "date": date_type.fromisoformat(str(e["date"])),
+                "date": date.fromisoformat(str(e["date"])),
                 "name": e["name"],
                 "amount": e["amount"],
                 "account": e["account"]
@@ -1938,7 +1926,6 @@ def forecast():
 @app.get("/verify-email/<token>")
 @limiter.limit("10 per minute")
 def verify_email(token):
-    from datetime import datetime
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
@@ -2046,7 +2033,6 @@ def register_post():
     today_str = date.today().isoformat()
     token = secrets.token_urlsafe(32)
 
-    from datetime import datetime, timedelta
     expires_at = (datetime.now() + timedelta(days=7)).isoformat()
 
     if USE_POSTGRES:
@@ -2158,7 +2144,6 @@ def forgot_password_post():
         user_id = row[0] if USE_POSTGRES else row["id"]
         token = secrets.token_urlsafe(32)
 
-        from datetime import datetime, timedelta
         expires_at = (datetime.now() + timedelta(hours=24)).isoformat()
 
         db2 = get_db()
@@ -2226,7 +2211,6 @@ def reset_password_post(token):
 
     # Check if token is expired
     if expires_at_str:
-        from datetime import datetime
         expires_at = datetime.fromisoformat(expires_at_str)
         if datetime.now() > expires_at:
             # Use generic message for token expiration too
@@ -2272,7 +2256,6 @@ def resend_verification():
 
     token = secrets.token_urlsafe(32)
 
-    from datetime import datetime, timedelta
     expires_at = (datetime.now() + timedelta(days=7)).isoformat()
 
     db2 = get_db()
@@ -2299,7 +2282,6 @@ def parse_bank_csv(content: str):
     Handles Monzo, Barclays, HSBC, Nationwide, Starling, NatWest formats.
     """
     import io
-    from datetime import datetime as dt
 
     try:
         dialect = csv.Sniffer().sniff(content[:2000], delimiters=',;\t')
@@ -2355,7 +2337,7 @@ def parse_bank_csv(content: str):
             parsed_date = None
             for fmt in date_formats:
                 try:
-                    parsed_date = dt.strptime(date_str, fmt).date().isoformat()
+                    parsed_date = datetime.strptime(date_str, fmt).date().isoformat()
                     break
                 except ValueError:
                     continue
