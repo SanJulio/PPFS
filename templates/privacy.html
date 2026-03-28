@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<title>Privacy Policy — Spendara</title>
+<style>
+html, body { min-height: 100vh; background: #f2f4f7; }
+.card { border-radius: 18px; border: none; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
+h2 { font-size: 1.2rem; font-weight: 700; margin-top: 2rem; }
+p, li { color: #444; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-12 col-md-8">
+
+      <div class="mb-4">
+        <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:44px; object-fit:contain;" class="mb-3 d-block"></a>
+        <h1 class="fw-bold">Privacy Policy</h1>
+        <p class="text-muted small">Last updated: March 2026</p>
+      </div>
+
+      <div class="card p-4">
+
+        <p>Spendara ("we", "us") is a personal finance tracking service available at <strong>spendara.co.uk</strong>. This policy explains what personal data we collect, why we collect it, and your rights under UK GDPR.</p>
+
+        <h2>1. Who we are</h2>
+        <p>Spendara is operated as a sole trader based in the United Kingdom. If you have any questions about this policy or your data, contact us at: <a href="mailto:hello@spendara.co.uk">hello@spendara.co.uk</a></p>
+        <p>We are registered with the Information Commissioner's Office (ICO). ICO registration number: <strong>[ADD YOUR ICO NUMBER HERE]</strong></p>
+
+        <h2>2. What data we collect</h2>
+        <ul>
+          <li><strong>Email address</strong> — provided when you register</li>
+          <li><strong>Password</strong> — stored as a one-way hash (we cannot read your password)</li>
+          <li><strong>Financial data you enter</strong> — account names and balances, transactions, scheduled bills, income sources, savings rules, investments, and future events</li>
+          <li><strong>Usage events</strong> — anonymous records of which features you use (e.g. "viewed forecast"), stored as your internal user ID and an event name. No names, emails, or IP addresses are stored in analytics.</li>
+          <li><strong>Session cookie</strong> — a single essential cookie used to keep you logged in</li>
+        </ul>
+        <p>We do not collect your IP address for tracking purposes, use advertising cookies, or sell your data to anyone.</p>
+
+        <h2>3. Why we collect it and our lawful basis</h2>
+        <ul>
+          <li><strong>Account and financial data</strong> — necessary to provide the service you signed up for (lawful basis: contract)</li>
+          <li><strong>Usage events</strong> — to understand how the app is used and improve it (lawful basis: legitimate interests)</li>
+          <li><strong>Session cookie</strong> — essential for the app to function; without it you cannot stay logged in (lawful basis: legitimate interests)</li>
+        </ul>
+
+        <h2>4. Who we share your data with</h2>
+        <p>We share data with the following third parties only as necessary to provide the service:</p>
+        <ul>
+          <li><strong>Stripe</strong> (<a href="https://stripe.com/gb/privacy" target="_blank">privacy policy</a>) — payment processing. If you upgrade to Pro, Stripe stores your payment card details. We only receive a customer ID and subscription status.</li>
+          <li><strong>Brevo</strong> (<a href="https://www.brevo.com/legal/privacypolicy/" target="_blank">privacy policy</a>) — email delivery for account verification and password reset emails. Your email address is passed to Brevo solely to send these emails.</li>
+          <li><strong>Render</strong> (<a href="https://render.com/privacy" target="_blank">privacy policy</a>) — cloud infrastructure. Your data is stored on Render's servers in their EU/US regions.</li>
+        </ul>
+        <p>We do not share your data with any other third parties.</p>
+
+        <h2>5. How long we keep your data</h2>
+        <p>We keep your data for as long as your account is active. If you delete your account, all your data is permanently deleted immediately — including transactions, accounts, bills, income sources, and usage events.</p>
+        <p>Anonymous usage events are automatically deleted after 180 days regardless of account status.</p>
+
+        <h2>6. Your rights</h2>
+        <p>Under UK GDPR you have the right to:</p>
+        <ul>
+          <li><strong>Access</strong> — request a copy of the personal data we hold about you</li>
+          <li><strong>Rectification</strong> — correct inaccurate data (you can do this directly in the app)</li>
+          <li><strong>Erasure</strong> — delete your account and all data via Settings → Danger → Delete Account</li>
+          <li><strong>Portability</strong> — download your transaction data as CSV via Settings → Danger → Export My Data</li>
+          <li><strong>Object</strong> — object to processing based on legitimate interests</li>
+          <li><strong>Restrict</strong> — request we restrict processing of your data</li>
+        </ul>
+        <p>To exercise any of these rights, contact us at <a href="mailto:hello@spendara.co.uk">hello@spendara.co.uk</a>. We will respond within 30 days.</p>
+        <p>You also have the right to lodge a complaint with the <a href="https://ico.org.uk/make-a-complaint/" target="_blank">ICO</a>.</p>
+
+        <h2>7. Cookies</h2>
+        <p>We use one essential cookie called <code>session</code>. It stores a random identifier that links your browser to your login session. It is not used for tracking or advertising. It expires after 24 hours of inactivity.</p>
+        <p>We do not use Google Analytics, Facebook Pixel, or any third-party tracking cookies.</p>
+
+        <h2>8. Children</h2>
+        <p>Spendara is not intended for use by anyone under the age of 16. We do not knowingly collect data from under-16s. If you believe a child has registered, please contact us and we will delete the account.</p>
+
+        <h2>9. Changes to this policy</h2>
+        <p>We may update this policy from time to time. The date at the top of this page shows when it was last updated. Significant changes will be communicated by email.</p>
+
+        <div class="mt-4 pt-3 border-top">
+          <p class="text-muted small mb-0">Questions? Email <a href="mailto:hello@spendara.co.uk">hello@spendara.co.uk</a></p>
+        </div>
+
+      </div>
+
+      <div class="text-center mt-4">
+        <a href="/" class="text-muted small">← Back to Spendara</a>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

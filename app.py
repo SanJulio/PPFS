@@ -2024,6 +2024,9 @@ def register_post():
     if not any(c.isdigit() for c in password):
         return render_template("register.html", error="Password must contain at least one number.")
 
+    if not request.form.get("age_confirm"):
+        return render_template("register.html", error="You must confirm you are 16 or over.")
+
     db = get_db()
     cursor = db.cursor()
 
@@ -2759,6 +2762,53 @@ def delete_account():
         return redirect(url_for("login"))
 
     return redirect(url_for("login") + "?msg=account_deleted")
+
+
+# --- DATA EXPORT ---
+# Returns all the user's transactions as a downloadable CSV file (right to portability)
+@app.get("/export-data")
+@login_required
+def export_data():
+    from flask import Response
+    import io
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("""
+            SELECT date, description, amount, type, account
+            FROM transactions WHERE user_id = %s ORDER BY date DESC
+        """, (current_user.id,))
+    else:
+        cursor.execute("""
+            SELECT date, description, amount, type, account
+            FROM transactions WHERE user_id = ? ORDER BY date DESC
+        """, (current_user.id,))
+    rows = cursor.fetchall()
+    cursor.close()
+    release_db(db)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Date", "Description", "Amount", "Type", "Account"])
+    for row in rows:
+        if USE_POSTGRES:
+            writer.writerow([row[0], row[1], row[2], row[3], row[4]])
+        else:
+            writer.writerow([row["date"], row["description"], row["amount"], row["type"], row["account"]])
+
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=spendara-transactions.csv"}
+    )
+
+
+# --- PRIVACY POLICY ---
+@app.get("/privacy")
+def privacy():
+    return render_template("privacy.html")
 
 
 @app.errorhandler(404)
