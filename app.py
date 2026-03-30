@@ -2275,6 +2275,26 @@ def resend_verification():
 # --- CSV IMPORT ---
 # Parses a bank CSV file and returns a list of transaction dicts, plus an import route
 # Supports Monzo, Barclays, HSBC, Nationwide, Starling, NatWest (auto-detects column names)
+CATEGORY_KEYWORDS = {
+    'Food & Drink': ['tesco', 'sainsbury', 'asda', 'waitrose', 'morrisons', 'aldi', 'lidl', 'co-op', 'coop', 'iceland', 'greggs', 'mcdonald', 'kfc', 'subway', 'pizza', 'burger', 'nando', 'deliveroo', 'uber eats', 'just eat', 'cafe', 'coffee', 'costa', 'starbucks', 'pret', 'restaurant', 'takeaway', 'pub', 'bar', 'supermarket', 'marks & spencer', 'waitrose'],
+    'Transport': ['tfl', 'uber', 'bolt', 'taxi', 'rail', 'train', 'national rail', 'southern', 'thameslink', 'great western', 'avanti', 'bus', 'oyster', 'petrol', 'fuel', 'parking', 'halfords', 'kwikfit'],
+    'Housing': ['rent', 'mortgage', 'council tax', 'letting', 'estate agent'],
+    'Bills & Utilities': ['electricity', 'gas', 'water', 'broadband', 'internet', 'bt ', 'sky', 'virgin media', 'ee ', 'o2 ', 'vodafone', 'three', 'talktalk', 'octopus', 'utility', 'phone', 'mobile', 'insurance', 'direct line', 'aviva', 'admiral'],
+    'Entertainment': ['netflix', 'spotify', 'amazon prime', 'disney+', 'now tv', 'cinema', 'odeon', 'vue', 'cineworld', 'ticketmaster', 'youtube premium', 'twitch', 'playstation', 'xbox', 'steam', 'nintendo'],
+    'Shopping': ['amazon', 'ebay', 'asos', 'next ', 'h&m', 'zara', 'primark', 'john lewis', 'argos', 'ikea', 'currys', 'apple store', 'app store', 'google play', 'etsy'],
+    'Health': ['pharmacy', 'boots', 'superdrug', 'nhs', 'dentist', 'doctor', 'hospital', 'gym', 'puregym', 'david lloyd', 'anytime fitness', 'nuffield', 'optician', 'specsavers'],
+    'Personal Care': ['haircut', 'hairdresser', 'barber', 'salon', 'spa', 'beauty', 'nail'],
+}
+
+def suggest_category(description: str) -> str:
+    """Suggest a category based on keywords in the transaction description."""
+    desc_lower = description.lower()
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        if any(kw in desc_lower for kw in keywords):
+            return category
+    return 'Other'
+
+
 def parse_bank_csv(content: str):
     """
     Parse a bank CSV and return (rows, error).
@@ -2364,8 +2384,9 @@ def parse_bank_csv(content: str):
             ]
             desc_lower = desc.lower()
             is_transfer = any(kw in desc_lower for kw in transfer_keywords)
+            category = suggest_category(desc)
 
-            parsed.append({'date': parsed_date, 'description': desc, 'amount': round(amount, 2), 'is_transfer': is_transfer})
+            parsed.append({'date': parsed_date, 'description': desc, 'amount': round(amount, 2), 'is_transfer': is_transfer, 'category': category})
         except Exception:
             continue
 
@@ -2426,15 +2447,20 @@ def import_confirm():
     if not rows or not account:
         return redirect(url_for('import_csv'))
 
-    # Only import rows the user checked (sent as include_0, include_1, etc.)
-    selected_rows = [rows[i] for i in range(len(rows)) if request.form.get(f'include_{i}') == '1']
+    # Only import rows the user checked — collect category per original index
+    selected_rows = []
+    for i in range(len(rows)):
+        if request.form.get(f'include_{i}') == '1':
+            row = rows[i]
+            row['category'] = request.form.get(f'category_{i}') or row.get('category', 'Other')
+            selected_rows.append(row)
 
     if not selected_rows:
         return redirect(url_for('import_csv'))
 
     total_delta = 0.0
     for row in selected_rows:
-        add_transaction(row['date'], row['description'], row['amount'], account, current_user.id, type='import')
+        add_transaction(row['date'], row['description'], row['amount'], account, current_user.id, type='import', category=row['category'])
         total_delta += row['amount']
 
     # Single balance update for all rows

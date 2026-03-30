@@ -117,10 +117,12 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
               <th style="width:36px;"></th>
               <th>Date</th>
               <th>Description</th>
+              <th>Category</th>
               <th class="text-end">Amount</th>
             </tr>
           </thead>
           <tbody>
+            {% set categories = ['Food & Drink', 'Transport', 'Housing', 'Bills & Utilities', 'Entertainment', 'Shopping', 'Health', 'Personal Care', 'Other'] %}
             {% for row in preview %}
             <tr {% if row.is_transfer %}style="opacity:0.45;"{% endif %}>
               <td>
@@ -132,6 +134,13 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
               <td class="small">
                 {{ row.description }}
                 {% if row.is_transfer %}<span class="badge text-bg-secondary ms-1" style="font-size:10px;">transfer</span>{% endif %}
+              </td>
+              <td>
+                <select name="category_{{ loop.index0 }}" class="form-select form-select-sm" style="min-width:130px; font-size:12px; padding:4px 8px; border-radius:8px;">
+                  {% for cat in categories %}
+                    <option value="{{ cat }}" {% if row.category == cat %}selected{% endif %}>{{ cat }}</option>
+                  {% endfor %}
+                </select>
               </td>
               <td class="text-end small fw-semibold {% if row.amount < 0 %}text-danger{% else %}text-success{% endif %} money">
                 {% if row.amount < 0 %}-£{{ "%.2f"|format(row.amount|abs) }}{% else %}+£{{ "%.2f"|format(row.amount) }}{% endif %}
