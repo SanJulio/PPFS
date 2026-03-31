@@ -1,0 +1,252 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#ffffff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/static/manifest.json">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<title>Spendara — Calendar</title>
+<style>
+html, body { min-height: 100vh; }
+html { scroll-behavior: smooth; scroll-padding-bottom: 110px; }
+.navbar { height: 70px; }
+.navbar small { font-size: 11px; }
+.navbar a { display:flex; flex-direction:column; align-items:center; }
+.fixed-bottom { position: fixed !important; bottom: 0; left: 0; right: 0; z-index: 9999; }
+body { background: #f2f4f7; padding-bottom: 110px; }
+.card { border-radius: 18px; border: none; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
+.money { font-variant-numeric: tabular-nums; }
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.cal-header-cell {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #888;
+  padding: 6px 0;
+  text-transform: uppercase;
+}
+.cal-cell {
+  background: white;
+  border-radius: 10px;
+  min-height: 58px;
+  padding: 5px 4px 4px;
+  cursor: pointer;
+  position: relative;
+  transition: box-shadow 0.1s;
+}
+.cal-cell:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+.cal-cell.empty { background: transparent; cursor: default; box-shadow: none; }
+.cal-cell.today { outline: 2px solid #111; outline-offset: -2px; }
+.cal-cell.active { background: #111; color: white; }
+.cal-cell.active .cal-day-num { color: white; }
+.cal-cell.active .cal-spent { color: #ff9999; }
+.cal-cell.active .cal-income { color: #99ffcc; }
+.cal-day-num { font-size: 12px; font-weight: 700; color: #333; line-height: 1; }
+.cal-spent { font-size: 10px; font-weight: 600; color: #ef4444; margin-top: 4px; line-height: 1.2; }
+.cal-income { font-size: 10px; font-weight: 600; color: #10b981; line-height: 1.2; }
+.cal-dot { width: 5px; height: 5px; border-radius: 50%; background: #ef4444; position: absolute; bottom: 5px; right: 5px; }
+
+#dayDetail { transition: opacity 0.15s; }
+.tx-row { display:flex; align-items:center; justify-content:space-between; padding: 9px 0; border-bottom: 1px solid #f0f0f0; gap:10px; }
+.tx-row:last-child { border-bottom: none; }
+</style>
+</head>
+<body>
+
+<div class="container py-4">
+
+  <div class="mb-4">
+    <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara Logo" style="height:50px; object-fit:contain;" class="mb-2 d-block"></a>
+    <h1 class="display-6 fw-bold">Calendar</h1>
+    <div class="text-muted">Your spending, day by day</div>
+  </div>
+
+  <!-- Month nav -->
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <a href="/calendar?month={{ prev_month }}" class="btn btn-outline-secondary rounded-3 px-3">‹</a>
+    <span class="fw-bold" style="font-size:17px;">{{ month_name }}</span>
+    <a href="/calendar?month={{ next_month }}" class="btn btn-outline-secondary rounded-3 px-3">›</a>
+  </div>
+
+  <!-- Month summary -->
+  <div id="monthSummary" class="card p-3 mb-3">
+    <div class="row g-2 text-center">
+      <div class="col-6">
+        <div class="small text-muted">Total spent</div>
+        <div class="fw-bold money" id="summarySpent" style="font-size:18px; color:#ef4444;">—</div>
+      </div>
+      <div class="col-6">
+        <div class="small text-muted">Total income</div>
+        <div class="fw-bold money" id="summaryIncome" style="font-size:18px; color:#10b981;">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Calendar grid -->
+  <div class="card p-3 mb-3">
+    <div class="cal-grid mb-1">
+      <div class="cal-header-cell">Mon</div>
+      <div class="cal-header-cell">Tue</div>
+      <div class="cal-header-cell">Wed</div>
+      <div class="cal-header-cell">Thu</div>
+      <div class="cal-header-cell">Fri</div>
+      <div class="cal-header-cell">Sat</div>
+      <div class="cal-header-cell">Sun</div>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+  </div>
+
+  <!-- Day detail panel -->
+  <div id="dayDetail" class="card p-3 mb-4" style="display:none;">
+    <div id="dayDetailContent"></div>
+  </div>
+
+</div>
+
+<nav class="navbar fixed-bottom bg-white border-top">
+  <div class="container-fluid d-flex justify-content-around text-center">
+    <a href="/" class="text-decoration-none text-dark">
+      <div style="font-size:20px">🏠</div>
+      <small>Home</small>
+    </a>
+    <a href="/actions" class="text-decoration-none text-dark">
+      <div style="font-size:20px">⚡</div>
+      <small>Actions</small>
+    </a>
+    <a href="/flow" class="text-decoration-none text-dark">
+      <div style="font-size:20px">💸</div>
+      <small>Flow</small>
+    </a>
+    <a href="/forecast" class="text-decoration-none text-dark">
+      <div style="font-size:20px">📈</div>
+      <small>Forecast</small>
+    </a>
+    <a href="/transactions" class="text-decoration-none text-dark">
+      <div style="font-size:20px">📜</div>
+      <small>Transactions</small>
+    </a>
+    <a href="/settings" class="text-decoration-none text-dark">
+      <div style="font-size:20px">⚙️</div>
+      <small>Settings</small>
+    </a>
+  </div>
+</nav>
+
+<script>
+var DAY_DATA = {{ day_data|safe }};
+var FIRST_WEEKDAY = {{ first_weekday }};  // 0=Mon
+var DAYS_IN_MONTH = {{ days_in_month }};
+var YEAR = {{ year }};
+var MONTH = {{ month }};
+var TODAY = "{{ today }}";
+var selectedDay = null;
+
+// Compute month totals
+var totalSpent = 0, totalIncome = 0;
+Object.values(DAY_DATA).forEach(function(d) {
+  totalSpent += d.spent;
+  totalIncome += d.income;
+});
+document.getElementById('summarySpent').textContent = '£' + totalSpent.toFixed(2);
+document.getElementById('summaryIncome').textContent = '£' + totalIncome.toFixed(2);
+
+// Build calendar grid
+var grid = document.getElementById('calGrid');
+
+// Empty cells before first day
+for (var e = 0; e < FIRST_WEEKDAY; e++) {
+  var empty = document.createElement('div');
+  empty.className = 'cal-cell empty';
+  grid.appendChild(empty);
+}
+
+for (var d = 1; d <= DAYS_IN_MONTH; d++) {
+  var isoDate = YEAR + '-' + String(MONTH).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+  var data = DAY_DATA[isoDate];
+  var cell = document.createElement('div');
+  cell.className = 'cal-cell' + (isoDate === TODAY ? ' today' : '');
+  cell.dataset.date = isoDate;
+
+  var html = '<div class="cal-day-num">' + d + '</div>';
+  if (data) {
+    if (data.spent > 0) html += '<div class="cal-spent">-£' + data.spent.toFixed(data.spent >= 10 ? 0 : 2) + '</div>';
+    if (data.income > 0) html += '<div class="cal-income">+£' + data.income.toFixed(data.income >= 10 ? 0 : 2) + '</div>';
+    html += '<div class="cal-dot"></div>';
+  }
+  cell.innerHTML = html;
+  cell.addEventListener('click', function() { selectDay(this.dataset.date); });
+  grid.appendChild(cell);
+}
+
+function selectDay(isoDate) {
+  // Deselect previous
+  if (selectedDay) {
+    var prev = grid.querySelector('[data-date="' + selectedDay + '"]');
+    if (prev) prev.classList.remove('active');
+  }
+  selectedDay = isoDate;
+  var cell = grid.querySelector('[data-date="' + isoDate + '"]');
+  if (cell) cell.classList.add('active');
+
+  var detail = document.getElementById('dayDetail');
+  var content = document.getElementById('dayDetailContent');
+  var d = new Date(isoDate);
+  var dateStr = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  content.innerHTML = '<div class="fw-bold mb-2" style="font-size:15px;">📅 ' + dateStr + '</div><div class="text-muted small">Loading...</div>';
+  detail.style.display = 'block';
+  detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  fetch('/calendar/day?date=' + isoDate)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var txs = data.transactions;
+      if (txs.length === 0) {
+        content.innerHTML = '<div class="fw-bold mb-2" style="font-size:15px;">📅 ' + dateStr + '</div><div class="text-muted small">No transactions on this day.</div>';
+        return;
+      }
+
+      var html = '<div class="fw-bold mb-3" style="font-size:15px;">📅 ' + dateStr + '</div>';
+      txs.forEach(function(tx) {
+        var isExpense = tx.amount < 0;
+        html += '<div class="tx-row">' +
+          '<div style="flex:1; min-width:0;">' +
+            '<div class="fw-semibold" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escHtml(tx.description) + '</div>' +
+            '<div class="small text-muted">' + escHtml(tx.account) + ' · ' + escHtml(tx.category) + '</div>' +
+          '</div>' +
+          '<div class="fw-bold money flex-shrink-0" style="color:' + (isExpense ? '#ef4444' : '#10b981') + ';">' +
+            (isExpense ? '-' : '+') + '£' + Math.abs(tx.amount).toFixed(2) +
+          '</div>' +
+        '</div>';
+      });
+
+      html += '<button onclick="document.getElementById(\'dayDetail\').style.display=\'none\'; ' +
+        'var c = document.querySelector(\'.cal-cell.active\'); if(c) c.classList.remove(\'active\');" ' +
+        'style="background:none;border:none;color:#aaa;font-size:12px;padding:8px 0 0 0;cursor:pointer;">✕ Close</button>';
+
+      content.innerHTML = html;
+    })
+    .catch(function() {
+      content.innerHTML = '<div class="fw-bold mb-2">📅 ' + dateStr + '</div><div class="text-danger small">Could not load transactions.</div>';
+    });
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+</script>
+<script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>
+</body>
+</html>

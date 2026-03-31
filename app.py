@@ -576,9 +576,24 @@ def home():
     else:
         cursor.execute("SELECT verified FROM users WHERE id = ?", (current_user.id,))
     row = cursor.fetchone()
+    verified = bool(row[0] if USE_POSTGRES else row["verified"]) if row else False
+
+    today_str = date.today().isoformat()
+    if USE_POSTGRES:
+        cursor.execute(
+            "SELECT COALESCE(SUM(ABS(amount)), 0), COUNT(*) FROM transactions WHERE user_id = %s AND date = %s AND amount < 0",
+            (current_user.id, today_str)
+        )
+    else:
+        cursor.execute(
+            "SELECT COALESCE(SUM(ABS(amount)), 0), COUNT(*) FROM transactions WHERE user_id = ? AND date = ? AND amount < 0",
+            (current_user.id, today_str)
+        )
+    r = cursor.fetchone()
+    today_spent = float(r[0] or 0)
+    today_count = int(r[1] or 0)
     cursor.close()
     release_db(db)
-    verified = bool(row[0] if USE_POSTGRES else row["verified"]) if row else False
 
     accounts_rows = get_active_accounts(current_user.id)
     accounts = {}
@@ -619,7 +634,9 @@ def home():
         balances=balances,
         monthly=monthly,
         show_onboarding=show_onboarding,
-        verified=verified,
+        user_verified=verified,
+        today_spent=today_spent,
+        today_count=today_count,
     )
 
 # --- TRANSACTIONS PAGE ---
@@ -840,12 +857,17 @@ def bills_pay():
         return redirect(url_for("bills", msg="Bill not found."))
 
     bill = dict(zip(cols, row))
-    today_str = date.today().isoformat()
+    paid_date_raw = (request.form.get("paid_date") or "").strip()
+    try:
+        paid_date_str = date.fromisoformat(paid_date_raw).isoformat()
+    except ValueError:
+        paid_date_str = date.today().isoformat()
 
-    add_transaction(today_str, bill["name"], -bill["amount"], bill["account"], current_user.id, type="bill")
+    add_transaction(paid_date_str, bill["name"], -bill["amount"], bill["account"], current_user.id, type="bill")
     update_account_balance(bill["account"], -bill["amount"], current_user.id)
     track('action.pay_bill')
-    return redirect(url_for("flow", msg=f"{bill['name']} — £{bill['amount']:.2f} paid."))
+    redirect_to = request.form.get("redirect_to") or url_for("flow")
+    return redirect(f"{redirect_to}?msg={bill['name']}+—+£{bill['amount']:.2f}+paid.")
 
 # --- RECEIVE INCOME (manual) ---
 # Marks an income source as received: logs a transaction and adds to account balance
@@ -869,12 +891,17 @@ def income_pay():
         return redirect(url_for("flow", msg="Income not found."))
 
     income = dict(zip(cols, row))
-    today_str = date.today().isoformat()
+    paid_date_raw = (request.form.get("paid_date") or "").strip()
+    try:
+        paid_date_str = date.fromisoformat(paid_date_raw).isoformat()
+    except ValueError:
+        paid_date_str = date.today().isoformat()
 
-    add_transaction(today_str, income["name"], income["amount"], income["account"], current_user.id, type="income")
+    add_transaction(paid_date_str, income["name"], income["amount"], income["account"], current_user.id, type="income")
     update_account_balance(income["account"], income["amount"], current_user.id)
     track('action.receive_income')
-    return redirect(url_for("flow", msg=f"{income['name']} — £{income['amount']:.2f} received."))
+    redirect_to = request.form.get("redirect_to") or url_for("flow")
+    return redirect(f"{redirect_to}?msg={income['name']}+—+£{income['amount']:.2f}+received.")
 
 # --- ADD EXPENSE ---
 # Records a manual expense: negative amount stored in transactions, balance deducted
@@ -934,6 +961,142 @@ def add_income():
     return redirect(
         url_for("actions", msg=f"Added income {description}: £{amount:.2f} to {account}")
     )
+
+# --- QUICK ADD (AJAX) ---
+# Minimal expense/income log from the home screen floating button — returns JSON
+@app.post("/quick-add")
+@login_required
+def quick_add():
+    amount_raw = (request.form.get("amount") or "").strip()
+    description = (request.form.get("description") or "").strip() or "Quick expense"
+    account = (request.form.get("account") or "").strip()
+    tx_type = (request.form.get("type") or "expense").strip()
+    category = (request.form.get("category") or "Other").strip()
+
+    if not amount_raw or not account:
+        return {"ok": False, "error": "Missing amount or account"}, 400
+
+    amount, err = validate_amount(amount_raw)
+    if err:
+        return {"ok": False, "error": err}, 400
+
+    today_str = date.today().isoformat()
+    if tx_type == "income":
+        amount = abs(amount)
+        add_transaction(today_str, description, amount, account, current_user.id, type="income")
+        update_account_balance(account, amount, current_user.id)
+        track('action.quick_add_income')
+    else:
+        amount = -abs(amount)
+        add_transaction(today_str, description, amount, account, current_user.id, category=category)
+        update_account_balance(account, amount, current_user.id)
+        track('action.quick_add_expense')
+
+    return {"ok": True, "amount": abs(amount), "account": account, "type": tx_type}
+
+
+# --- CALENDAR PAGE ---
+# Shows monthly transaction calendar — day totals rendered client-side, detail loaded via AJAX
+@app.get("/calendar")
+@login_required
+def calendar_view():
+    track('page_view.calendar')
+
+    month_str = request.args.get("month", date.today().strftime("%Y-%m"))
+    try:
+        year, month = int(month_str[:4]), int(month_str[5:7])
+        if not (1 <= month <= 12):
+            raise ValueError
+    except (ValueError, IndexError):
+        year, month = date.today().year, date.today().month
+
+    first_day = date(year, month, 1)
+    last_day = date(year, month, calendar.monthrange(year, month)[1])
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("""
+            SELECT date,
+                   COALESCE(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END), 0) AS spent,
+                   COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) AS income,
+                   COUNT(*) AS count
+            FROM transactions
+            WHERE user_id = %s AND date >= %s AND date <= %s
+            GROUP BY date ORDER BY date
+        """, (current_user.id, first_day.isoformat(), last_day.isoformat()))
+    else:
+        cursor.execute("""
+            SELECT date,
+                   COALESCE(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END), 0) AS spent,
+                   COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) AS income,
+                   COUNT(*) AS count
+            FROM transactions
+            WHERE user_id = ? AND date >= ? AND date <= ?
+            GROUP BY date ORDER BY date
+        """, (current_user.id, first_day.isoformat(), last_day.isoformat()))
+    cols = [d[0] for d in cursor.description]
+    day_rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+    cursor.close()
+    release_db(db)
+
+    day_data = {}
+    for row in day_rows:
+        day_data[str(row["date"])] = {
+            "spent": round(float(row["spent"]), 2),
+            "income": round(float(row["income"]), 2),
+            "count": int(row["count"])
+        }
+
+    prev_month = f"{year-1}-12" if month == 1 else f"{year}-{month-1:02d}"
+    next_month = f"{year+1}-01" if month == 12 else f"{year}-{month+1:02d}"
+
+    return render_template(
+        "calendar.html",
+        year=year,
+        month=month,
+        month_name=first_day.strftime("%B %Y"),
+        first_weekday=first_day.weekday(),
+        days_in_month=calendar.monthrange(year, month)[1],
+        day_data=json.dumps(day_data),
+        prev_month=prev_month,
+        next_month=next_month,
+        today=date.today().isoformat()
+    )
+
+
+# --- CALENDAR DAY DETAIL (AJAX) ---
+@app.get("/calendar/day")
+@login_required
+def calendar_day():
+    day_str = request.args.get("date", "")
+    try:
+        day = date.fromisoformat(day_str)
+    except ValueError:
+        return {"transactions": []}, 400
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute(
+            "SELECT description, amount, account, category FROM transactions WHERE user_id = %s AND date = %s ORDER BY id DESC",
+            (current_user.id, day.isoformat())
+        )
+    else:
+        cursor.execute(
+            "SELECT description, amount, account, category FROM transactions WHERE user_id = ? AND date = ? ORDER BY id DESC",
+            (current_user.id, day.isoformat())
+        )
+    cols = [d[0] for d in cursor.description]
+    rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+    cursor.close()
+    release_db(db)
+
+    return {"transactions": [
+        {"description": r["description"], "amount": float(r["amount"]), "account": r["account"], "category": r["category"] or "Other"}
+        for r in rows
+    ]}
+
 
 # --- TRANSFER BETWEEN ACCOUNTS ---
 # Moves money from one account to another: logs two transactions (out + in) and updates both balances
@@ -1770,9 +1933,10 @@ def forecast():
     track('page_view.forecast')
     today = date.today()
     cache_key = f"forecast_{current_user.id}_{today.isoformat()}"
+    force_refresh = request.args.get("refresh") == "1"
 
-    # return cached result if still fresh
-    if cache_key in forecast_cache:
+    # return cached result if still fresh (skip if ?refresh=1 after marking paid)
+    if not force_refresh and cache_key in forecast_cache:
         cached_at, cached_data = forecast_cache[cache_key]
         if time.time() - cached_at < FORECAST_CACHE_TTL:
             return render_template(
@@ -1781,6 +1945,8 @@ def forecast():
                 account_names=cached_data["account_names"],
                 account_types=cached_data.get("account_types", "{}"),
                 initial_balances=cached_data.get("initial_balances", "{}"),
+                upcoming=cached_data.get("upcoming", "[]"),
+                message=request.args.get("msg", ""),
                 today=today.isoformat()
             )
 
@@ -1906,12 +2072,72 @@ def forecast():
     account_types_json = json.dumps(account_types)
     initial_balances_json = json.dumps(initial_balances)
 
+    # Build upcoming bills/income for the next 90 days (for forecast pay buttons)
+    upcoming_items = []
+    end_date = today + timedelta(days=90)
+
+    for bill in scheduled:
+        if bill.get("day") is None:
+            continue
+        freq = bill.get("frequency") or "monthly"
+        if freq == "yearly":
+            ann_month = bill.get("month")
+            if ann_month:
+                for year in [today.year, today.year + 1]:
+                    try:
+                        d = date(year, ann_month, bill["day"])
+                        if today <= d <= end_date:
+                            upcoming_items.append({"date": d.isoformat(), "name": bill["name"], "amount": float(bill["amount"]), "account": bill["account"], "type": "bill", "id": bill["id"]})
+                    except ValueError:
+                        pass
+        else:
+            m_year, m_month = today.year, today.month
+            for _ in range(4):
+                max_day = calendar.monthrange(m_year, m_month)[1]
+                bill_day = min(bill["day"], max_day)
+                try:
+                    occurrence = date(m_year, m_month, bill_day)
+                    if today <= occurrence <= end_date:
+                        upcoming_items.append({"date": occurrence.isoformat(), "name": bill["name"], "amount": float(bill["amount"]), "account": bill["account"], "type": "bill", "id": bill["id"]})
+                except ValueError:
+                    pass
+                m_month += 1
+                if m_month > 12:
+                    m_month = 1
+                    m_year += 1
+
+    for inc in income_rows:
+        freq = inc.get("frequency") or "monthly"
+        if freq == "weekly":
+            d = today
+            while d <= end_date:
+                if d.weekday() == 4:  # Friday
+                    upcoming_items.append({"date": d.isoformat(), "name": inc["name"], "amount": float(inc["amount"]), "account": inc["account"], "type": "income", "id": inc["id"]})
+                d += timedelta(days=1)
+        else:  # monthly — day 1
+            m_year, m_month = today.year, today.month
+            for _ in range(4):
+                try:
+                    occurrence = date(m_year, m_month, 1)
+                    if today <= occurrence <= end_date:
+                        upcoming_items.append({"date": occurrence.isoformat(), "name": inc["name"], "amount": float(inc["amount"]), "account": inc["account"], "type": "income", "id": inc["id"]})
+                except ValueError:
+                    pass
+                m_month += 1
+                if m_month > 12:
+                    m_month = 1
+                    m_year += 1
+
+    upcoming_items.sort(key=lambda x: x["date"])
+    upcoming_json = json.dumps(upcoming_items)
+
     # store in cache
     forecast_cache[cache_key] = (time.time(), {
         "snapshots": snapshots_json,
         "account_names": account_names_json,
         "account_types": account_types_json,
-        "initial_balances": initial_balances_json
+        "initial_balances": initial_balances_json,
+        "upcoming": upcoming_json
     })
 
     return render_template(
@@ -1920,6 +2146,8 @@ def forecast():
         account_names=account_names_json,
         account_types=account_types_json,
         initial_balances=initial_balances_json,
+        upcoming=upcoming_json,
+        message=request.args.get("msg", ""),
         today=today.isoformat()
     )
 

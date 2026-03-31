@@ -229,6 +229,52 @@ input, select {
 </div>
 {% endif %}
 
+<script>var HOME_CSRF = "{{ session['csrf_token'] }}";</script>
+
+<!-- Quick-add modal -->
+<div id="quickAddModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:10001; align-items:flex-end; justify-content:center;">
+  <div class="card p-4" style="width:100%; max-width:480px; border-radius:24px 24px 0 0; margin:0;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <span class="fw-bold" style="font-size:16px;">Quick Add</span>
+      <button onclick="closeQuickAdd()" style="background:none;border:none;font-size:20px;color:#aaa;cursor:pointer;">✕</button>
+    </div>
+    <!-- Expense / Income toggle -->
+    <div class="d-flex gap-2 mb-3">
+      <button id="qa-expense-btn" onclick="setQaType('expense')" class="btn btn-dark btn-sm rounded-3 flex-fill" style="font-size:13px;">💸 Expense</button>
+      <button id="qa-income-btn" onclick="setQaType('income')" class="btn btn-outline-secondary btn-sm rounded-3 flex-fill" style="font-size:13px;">💰 Income</button>
+    </div>
+    <div class="mb-3">
+      <label class="form-label fw-semibold" style="font-size:13px;">Amount (£) *</label>
+      <input id="qa-amount" class="form-control" inputmode="decimal" placeholder="0.00" style="font-size:22px; font-weight:700; text-align:center;">
+    </div>
+    <div class="mb-3">
+      <label class="form-label fw-semibold" style="font-size:13px;">Description (optional)</label>
+      <input id="qa-description" class="form-control" placeholder="e.g. Coffee" style="font-size:15px;">
+    </div>
+    <div class="mb-3">
+      <label class="form-label fw-semibold" style="font-size:13px;">Account *</label>
+      <select id="qa-account" class="form-select" style="font-size:15px;">
+        {% for acc in accounts %}
+        <option value="{{ acc }}">{{ acc }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div id="qa-category-row" class="mb-3">
+      <label class="form-label fw-semibold" style="font-size:13px;">Category</label>
+      <select id="qa-category" class="form-select" style="font-size:15px;">
+        <option>Food & Drink</option><option>Transport</option><option>Housing</option>
+        <option>Bills & Utilities</option><option>Entertainment</option><option>Shopping</option>
+        <option>Health</option><option>Personal Care</option><option selected>Other</option>
+      </select>
+    </div>
+    <div id="qa-error" class="text-danger small mb-2" style="display:none;"></div>
+    <button id="qa-submit" onclick="submitQuickAdd()" class="btn btn-dark w-100 py-3 rounded-4" style="font-size:15px; font-weight:700;">Add</button>
+  </div>
+</div>
+
+<!-- Floating + button -->
+<button onclick="openQuickAdd()" style="position:fixed; bottom:85px; right:20px; z-index:9998; width:54px; height:54px; border-radius:50%; background:#111; color:#fff; border:none; font-size:26px; box-shadow:0 4px 14px rgba(0,0,0,0.25); cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1;">+</button>
+
 <div class="container py-4">
 <div class="mb-4" id="home">
   <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="PPFS Logo" style="height:50px; object-fit:contain;" class="mb-2"></a>
@@ -238,6 +284,30 @@ input, select {
   {% if message %}
   <div class="msg">{{ message }}</div>
   {% endif %}
+
+  <!-- Daily spending summary -->
+  {% if today_count > 0 %}
+  <a href="/calendar" class="text-decoration-none">
+    <div class="card p-3 mb-3 d-flex flex-row align-items-center justify-content-between" style="background:#111; color:#fff; border-radius:16px;">
+      <div>
+        <div class="fw-bold" style="font-size:15px;">You've spent £{{ "%.2f"|format(today_spent) }} today</div>
+        <div class="small" style="color:#aaa;">{{ today_count }} transaction{{ 's' if today_count != 1 else '' }} — tap to see calendar</div>
+      </div>
+      <div style="font-size:22px;">📅</div>
+    </div>
+  </a>
+  {% else %}
+  <a href="/calendar" class="text-decoration-none">
+    <div class="card p-3 mb-3 d-flex flex-row align-items-center justify-content-between" style="border-radius:16px;">
+      <div>
+        <div class="fw-bold" style="font-size:15px;">Nothing logged today yet</div>
+        <div class="small text-muted">Tap + to add an expense — or view calendar</div>
+      </div>
+      <div style="font-size:22px;">📅</div>
+    </div>
+  </a>
+  {% endif %}
+
   {% if not user_verified %}
   <div class="alert rounded-4 mb-3" style="background:#fff3cd; border:none;">
     <div class="fw-bold">📧 Please verify your email</div>
@@ -572,6 +642,89 @@ if (window.location.search.includes('msg=')) {
   url.searchParams.delete('msg');
   window.history.replaceState({}, '', url);
 }
+
+// Quick Add
+var qaType = 'expense';
+
+function openQuickAdd() {
+  var modal = document.getElementById('quickAddModal');
+  modal.style.display = 'flex';
+  document.getElementById('qa-amount').value = '';
+  document.getElementById('qa-description').value = '';
+  document.getElementById('qa-error').style.display = 'none';
+  document.getElementById('qa-amount').focus();
+}
+
+function closeQuickAdd() {
+  document.getElementById('quickAddModal').style.display = 'none';
+}
+
+function setQaType(type) {
+  qaType = type;
+  var expBtn = document.getElementById('qa-expense-btn');
+  var incBtn = document.getElementById('qa-income-btn');
+  var catRow = document.getElementById('qa-category-row');
+  if (type === 'expense') {
+    expBtn.className = 'btn btn-dark btn-sm rounded-3 flex-fill';
+    incBtn.className = 'btn btn-outline-secondary btn-sm rounded-3 flex-fill';
+    catRow.style.display = 'block';
+  } else {
+    incBtn.className = 'btn btn-success btn-sm rounded-3 flex-fill';
+    expBtn.className = 'btn btn-outline-secondary btn-sm rounded-3 flex-fill';
+    catRow.style.display = 'none';
+  }
+}
+
+function submitQuickAdd() {
+  var amount = document.getElementById('qa-amount').value.trim();
+  var description = document.getElementById('qa-description').value.trim();
+  var account = document.getElementById('qa-account').value;
+  var category = document.getElementById('qa-category').value;
+  var errEl = document.getElementById('qa-error');
+  var btn = document.getElementById('qa-submit');
+
+  if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+    errEl.textContent = 'Please enter a valid amount.';
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Adding...';
+
+  var body = new URLSearchParams();
+  body.append('csrf_token', HOME_CSRF);
+  body.append('amount', amount);
+  body.append('description', description || (qaType === 'expense' ? 'Quick expense' : 'Quick income'));
+  body.append('account', account);
+  body.append('type', qaType);
+  body.append('category', category);
+
+  fetch('/quick-add', { method: 'POST', body: body })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      btn.textContent = 'Add';
+      if (data.ok) {
+        closeQuickAdd();
+        location.reload();
+      } else {
+        errEl.textContent = data.error || 'Something went wrong.';
+        errEl.style.display = 'block';
+      }
+    })
+    .catch(function() {
+      btn.disabled = false;
+      btn.textContent = 'Add';
+      errEl.textContent = 'Network error. Try again.';
+      errEl.style.display = 'block';
+    });
+}
+
+// Close modal on backdrop tap
+document.getElementById('quickAddModal').addEventListener('click', function(e) {
+  if (e.target === this) closeQuickAdd();
+});
 
 // ONBOARDING FUNCTIONS
 function onboardingStep(step) {

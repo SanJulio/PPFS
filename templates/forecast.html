@@ -8,7 +8,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="/static/manifest.json">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
 <title>Spendara — Forecast</title>
 <style>
 html, body { min-height: 100vh; }
@@ -28,8 +31,12 @@ body { background: #f2f4f7; padding-bottom: 110px; }
   font-weight: 600;
   font-size: 12px;
 }
-.btn-period { border-radius: 999px; font-size: 13px; padding: 6px 16px; }
-.btn-period.active { background: #111; color: white; border-color: #111; }
+.btn-filter { border-radius: 999px; font-size: 13px; padding: 6px 16px; }
+.btn-filter.active { background: #111; color: white; border-color: #111; }
+#dayPanel { transition: opacity 0.15s; }
+.day-item { display:flex; align-items:center; justify-content:space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; gap: 12px; }
+.day-item:last-child { border-bottom: none; }
+.chart-hint { font-size: 11px; color: #aaa; text-align: center; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -39,28 +46,28 @@ body { background: #f2f4f7; padding-bottom: 110px; }
   data-accounts='{{ account_names }}'
   data-types='{{ account_types }}'
   data-initial='{{ initial_balances }}'
+  data-upcoming='{{ upcoming }}'
   style="display:none">
 </div>
+<script>var CSRF_TOKEN = "{{ session['csrf_token'] }}";</script>
 
 <div class="container py-4">
 
   <div class="mb-4">
     <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara Logo" style="height:50px; object-fit:contain;" class="mb-2 d-block"></a>
     <h1 class="display-6 fw-bold">Forecast</h1>
-    <div class="text-muted">Predicted account balances over time</div>
+    <div class="text-muted">Predicted account balances — scroll the chart to move through time</div>
   </div>
 
-  <div class="d-flex gap-2 mb-3 flex-wrap">
-    <button class="btn btn-outline-secondary btn-period active" onclick="setPeriod(30, this)">30 days</button>
-    <button class="btn btn-outline-secondary btn-period" onclick="setPeriod(60, this)">60 days</button>
-    <button class="btn btn-outline-secondary btn-period" onclick="setPeriod(90, this)">90 days</button>
-  </div>
+  {% if message %}
+  <div class="alert rounded-4 mb-3" style="background:#d1fae5; border:none;">{{ message }}</div>
+  {% endif %}
 
   <div class="d-flex gap-2 mb-4 flex-wrap">
-    <button class="btn btn-outline-secondary btn-period active" id="filterAll" onclick="setFilter('all', this)">All</button>
-    <button class="btn btn-outline-secondary btn-period" id="filterCurrent" onclick="setFilter('current', this)">Current</button>
-    <button class="btn btn-outline-secondary btn-period" id="filterSavings" onclick="setFilter('savings', this)">Savings</button>
-    <button class="btn btn-outline-secondary btn-period" id="filterCash" onclick="setFilter('cash', this)">Cash</button>
+    <button class="btn btn-outline-secondary btn-filter active" id="filterAll" onclick="setFilter('all', this)">All</button>
+    <button class="btn btn-outline-secondary btn-filter" id="filterCurrent" onclick="setFilter('current', this)">Current</button>
+    <button class="btn btn-outline-secondary btn-filter" id="filterSavings" onclick="setFilter('savings', this)">Savings</button>
+    <button class="btn btn-outline-secondary btn-filter" id="filterCash" onclick="setFilter('cash', this)">Cash</button>
   </div>
 
   <div id="warnings"></div>
@@ -72,8 +79,17 @@ body { background: #f2f4f7; padding-bottom: 110px; }
     <a href="/settings" class="btn btn-dark btn-sm rounded-3 px-4">Go to Settings</a>
   </div>
 
-  <div class="card p-3 mb-4" id="forecastChartCard">
+  <div class="card p-3 mb-3" id="forecastChartCard">
     <canvas id="forecastChart" height="260"></canvas>
+    <div class="chart-hint">Drag to scroll · Pinch or scroll wheel to zoom · Tap a day to see events</div>
+    <div class="d-flex justify-content-center gap-2 mt-2">
+      <button class="btn btn-outline-secondary btn-sm rounded-3" onclick="resetZoom()" style="font-size:12px;">Reset view</button>
+    </div>
+  </div>
+
+  <!-- Day detail panel -->
+  <div id="dayPanel" class="card p-3 mb-4" style="display:none;">
+    <div id="dayPanelContent"></div>
   </div>
 
   <div id="accountSummary"></div>
@@ -110,11 +126,12 @@ body { background: #f2f4f7; padding-bottom: 110px; }
 </nav>
 
 <script>
-var forecastEl = document.getElementById('forecast-data');
-var snapshots = JSON.parse(forecastEl.getAttribute('data-snapshots'));
-var accountNames = JSON.parse(forecastEl.getAttribute('data-accounts'));
-var accountTypes = JSON.parse(forecastEl.getAttribute('data-types'));
-var initialBalances = JSON.parse(forecastEl.getAttribute('data-initial') || '{}');
+var el = document.getElementById('forecast-data');
+var snapshots = JSON.parse(el.getAttribute('data-snapshots'));
+var accountNames = JSON.parse(el.getAttribute('data-accounts'));
+var accountTypes = JSON.parse(el.getAttribute('data-types'));
+var initialBalances = JSON.parse(el.getAttribute('data-initial') || '{}');
+var upcomingItems = JSON.parse(el.getAttribute('data-upcoming') || '[]');
 
 var COLORS = [
   '#111111', '#3b82f6', '#10b981', '#f59e0b',
@@ -122,53 +139,78 @@ var COLORS = [
 ];
 
 var chart = null;
-var currentPeriod = 30;
 var currentFilter = 'all';
+
+// Index upcoming items by date for fast lookup
+var upcomingByDate = {};
+upcomingItems.forEach(function(item) {
+  if (!upcomingByDate[item.date]) upcomingByDate[item.date] = [];
+  upcomingByDate[item.date].push(item);
+});
 
 if (accountNames.length === 0) {
   document.getElementById('forecastEmpty').classList.remove('d-none');
   document.getElementById('forecastChartCard').classList.add('d-none');
-  document.querySelectorAll('.btn-period').forEach(function(b) { b.disabled = true; });
 }
 
-// Returns account names filtered by the active type filter
 function filteredAccounts() {
   if (currentFilter === 'all') return accountNames;
   return accountNames.filter(function(name) { return accountTypes[name] === currentFilter; });
-}
-
-function setPeriod(days, btn) {
-  document.querySelectorAll('.btn-period').forEach(function(b) { b.classList.remove('active'); });
-  btn.classList.add('active');
-  currentPeriod = days;
-  renderChart(days);
 }
 
 function setFilter(type, btn) {
   document.querySelectorAll('#filterAll,#filterCurrent,#filterSavings,#filterCash').forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
   currentFilter = type;
-  renderChart(currentPeriod);
+  renderChart();
 }
 
-function renderChart(days) {
-  var data = snapshots.slice(0, days);
-  var labels = data.map(function(s) {
-    var d = new Date(s.date);
-    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+function buildAnnotations() {
+  var annotations = {};
+  // Build a set of unique event dates to avoid duplicate lines
+  var seen = {};
+  upcomingItems.forEach(function(item) {
+    if (seen[item.date + item.type]) return;
+    seen[item.date + item.type] = true;
+    var isBill = item.type === 'bill';
+    // Find the label index for this date
+    var idx = snapshots.findIndex(function(s) { return s.date === item.date; });
+    if (idx === -1) return;
+    var label = formatLabel(item.date);
+    annotations['evt_' + item.date + '_' + item.type] = {
+      type: 'line',
+      xMin: label,
+      xMax: label,
+      borderColor: isBill ? 'rgba(239,68,68,0.35)' : 'rgba(16,185,129,0.35)',
+      borderWidth: 2,
+      borderDash: [4, 3],
+      label: {
+        display: false
+      }
+    };
   });
+  return annotations;
+}
 
+function formatLabel(isoDate) {
+  var d = new Date(isoDate);
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+function renderChart() {
   var visible = filteredAccounts();
+  var labels = snapshots.map(function(s) { return formatLabel(s.date); });
+
   var datasets = visible.map(function(acc, i) {
     var colorIdx = accountNames.indexOf(acc);
     return {
       label: acc,
-      data: data.map(function(s) { return s[acc]; }),
+      data: snapshots.map(function(s) { return s[acc]; }),
       borderColor: COLORS[colorIdx % COLORS.length],
       backgroundColor: COLORS[colorIdx % COLORS.length] + '18',
       borderWidth: 2,
       pointRadius: 0,
-      pointHoverRadius: 4,
+      pointHoverRadius: 5,
       tension: 0.3,
       fill: false
     };
@@ -176,24 +218,57 @@ function renderChart(days) {
 
   if (chart) { chart.destroy(); }
 
+  var annotations = buildAnnotations();
   var ctx = document.getElementById('forecastChart').getContext('2d');
+
+  // Show ~14 days initially
+  var windowSize = 14;
+  var xMin = labels[0];
+  var xMax = labels[Math.min(windowSize - 1, labels.length - 1)];
+
   chart = new Chart(ctx, {
     type: 'line',
     data: { labels: labels, datasets: datasets },
     options: {
       responsive: true,
       interaction: { mode: 'index', intersect: false },
+      onClick: function(event, elements, chartRef) {
+        var pts = chartRef.getElementsAtEventForMode(event, 'index', { intersect: false }, true);
+        if (pts.length > 0) {
+          var idx = pts[0].index;
+          showDayPanel(snapshots[idx].date);
+        }
+      },
       plugins: {
         legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 12 } } },
         tooltip: {
           callbacks: {
             label: function(c) { return ' ' + c.dataset.label + ': £' + c.parsed.y.toFixed(2); }
           }
+        },
+        zoom: {
+          pan: {
+            enabled: true,
+            mode: 'x'
+          },
+          zoom: {
+            wheel: { enabled: true },
+            pinch: { enabled: true },
+            mode: 'x'
+          },
+          limits: {
+            x: { minRange: 7 }
+          }
+        },
+        annotation: {
+          annotations: annotations
         }
       },
       scales: {
         x: {
-          ticks: { maxTicksLimit: 8, font: { size: 11 } },
+          min: xMin,
+          max: xMax,
+          ticks: { maxTicksLimit: 7, font: { size: 11 } },
           grid: { display: false }
         },
         y: {
@@ -207,18 +282,81 @@ function renderChart(days) {
     }
   });
 
-  renderWarnings(data);
-  renderSummary(data);
+  renderWarnings();
+  renderSummary();
 }
 
-function renderWarnings(data) {
+function resetZoom() {
+  if (chart) {
+    chart.resetZoom();
+  }
+}
+
+function showDayPanel(isoDate) {
+  var panel = document.getElementById('dayPanel');
+  var content = document.getElementById('dayPanelContent');
+  var items = upcomingByDate[isoDate] || [];
+
+  var d = new Date(isoDate);
+  var dateStr = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  var html = '<div class="fw-bold mb-3" style="font-size:15px;">📅 ' + dateStr + '</div>';
+
+  if (items.length === 0) {
+    html += '<div class="text-muted small">No scheduled bills or income on this day.</div>';
+  } else {
+    items.forEach(function(item) {
+      var isBill = item.type === 'bill';
+      var icon = isBill ? '💸' : '💰';
+      var btnClass = isBill ? 'btn-danger' : 'btn-success';
+      var btnLabel = isBill ? 'Mark as Paid' : 'Mark as Received';
+      var action = isBill ? '/flow/pay-bill' : '/flow/pay-income';
+      var idField = isBill ? 'bill_id' : 'income_id';
+
+      html += '<div class="day-item">' +
+        '<div>' +
+          '<span style="font-size:16px; margin-right:6px;">' + icon + '</span>' +
+          '<span class="fw-semibold">' + escHtml(item.name) + '</span>' +
+          '<span class="text-muted small ms-2">' + escHtml(item.account) + '</span>' +
+        '</div>' +
+        '<div class="d-flex align-items-center gap-2 flex-shrink-0">' +
+          '<span class="fw-bold money" style="font-size:14px;">' + (isBill ? '-' : '+') + '£' + item.amount.toFixed(2) + '</span>' +
+          '<form method="POST" action="' + action + '" style="margin:0;">' +
+            '<input type="hidden" name="csrf_token" value="' + escHtml(CSRF_TOKEN) + '">' +
+            '<input type="hidden" name="' + idField + '" value="' + item.id + '">' +
+            '<input type="hidden" name="paid_date" value="' + item.date + '">' +
+            '<input type="hidden" name="redirect_to" value="/forecast?refresh=1">' +
+            '<button type="submit" class="btn ' + btnClass + ' btn-sm rounded-3" style="font-size:12px; white-space:nowrap;">' + btnLabel + '</button>' +
+          '</form>' +
+        '</div>' +
+      '</div>';
+    });
+  }
+
+  html += '<button onclick="document.getElementById(\'dayPanel\').style.display=\'none\'" ' +
+    'style="background:none;border:none;color:#aaa;font-size:12px;padding:8px 0 0 0;cursor:pointer;">✕ Close</button>';
+
+  content.innerHTML = html;
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderWarnings() {
   var box = document.getElementById('warnings');
   var issues = [];
 
   filteredAccounts().forEach(function(acc) {
-    var lowest = Math.min.apply(null, data.map(function(s) { return s[acc]; }));
+    var lowest = Math.min.apply(null, snapshots.map(function(s) { return s[acc]; }));
     if (lowest < 0) {
-      var firstNeg = data.find(function(s) { return s[acc] < 0; });
+      var firstNeg = snapshots.find(function(s) { return s[acc] < 0; });
       var d = new Date(firstNeg.date);
       var dateStr = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
       issues.push('<strong>' + acc + '</strong> goes negative on ' + dateStr + ' (lowest: £' + lowest.toFixed(2) + ')');
@@ -228,29 +366,28 @@ function renderWarnings(data) {
   if (issues.length > 0) {
     box.innerHTML = '<div class="alert rounded-4 mb-3" style="background:#fff3cd; border:none;"><div class="fw-bold mb-1">⚠️ Balance warnings</div>' + issues.map(function(i) { return '<div class="small">' + i + '</div>'; }).join('') + '</div>';
   } else {
-    box.innerHTML = '<div class="alert rounded-4 mb-3" style="background:#d1fae5; border:none;"><div class="fw-bold">✅ All accounts stay positive over this period</div></div>';
+    box.innerHTML = '<div class="alert rounded-4 mb-3" style="background:#d1fae5; border:none;"><div class="fw-bold">✅ All accounts stay positive over the next 90 days</div></div>';
   }
 }
 
-function renderSummary(data) {
+function renderSummary() {
   var box = document.getElementById('accountSummary');
-  var last = data[data.length - 1];
   var first = snapshots[0];
+  var last = snapshots[snapshots.length - 1];
 
   var cards = filteredAccounts().map(function(acc) {
     var i = accountNames.indexOf(acc);
     var endVal = last[acc];
     var startVal = first[acc];
     var change = endVal - startVal;
-    var lowest = Math.min.apply(null, data.map(function(s) { return s[acc]; }));
+    var lowest = Math.min.apply(null, snapshots.map(function(s) { return s[acc]; }));
     var color = COLORS[i % COLORS.length];
     var isNeg = lowest < 0;
     var uid = 'breakdown-' + i;
 
-    // Build day-by-day delta rows for events that change this account's balance
     var prevBal = initialBalances[acc] !== undefined ? initialBalances[acc] : startVal;
     var eventRows = '';
-    data.forEach(function(s) {
+    snapshots.forEach(function(s) {
       var delta = Math.round((s[acc] - prevBal) * 100) / 100;
       if (Math.abs(delta) >= 0.01) {
         var d = new Date(s.date);
@@ -305,10 +442,12 @@ function toggleBreakdown(uid, btn) {
   }
 }
 
-if (accountNames.length > 0) { renderChart(30); }
+if (accountNames.length > 0) { renderChart(); }
 
-if (window.location.search.includes('msg=')) {
-  const url = new URL(window.location);
+// Clean ?refresh=1 and ?msg= from URL bar without triggering a reload
+if (window.location.search) {
+  var url = new URL(window.location);
+  url.searchParams.delete('refresh');
   url.searchParams.delete('msg');
   window.history.replaceState({}, '', url);
 }
