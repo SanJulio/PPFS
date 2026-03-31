@@ -43,6 +43,12 @@ from database import USE_POSTGRES
 forecast_cache = {}
 FORECAST_CACHE_TTL = 300  # 5 minutes in seconds
 
+
+def bust_forecast_cache(user_id):
+    """Remove the forecast cache entry for a user so the next page load recomputes."""
+    key = f"forecast_{user_id}_{date.today().isoformat()}"
+    forecast_cache.pop(key, None)
+
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "Data"
 
@@ -865,6 +871,7 @@ def bills_pay():
 
     add_transaction(paid_date_str, bill["name"], -bill["amount"], bill["account"], current_user.id, type="bill")
     update_account_balance(bill["account"], -bill["amount"], current_user.id)
+    bust_forecast_cache(current_user.id)
     track('action.pay_bill')
     redirect_to = request.form.get("redirect_to") or url_for("flow")
     return redirect(f"{redirect_to}?msg={bill['name']}+—+£{bill['amount']:.2f}+paid.")
@@ -926,8 +933,8 @@ def add_expense():
     today_str = date.today().isoformat()
 
     add_transaction(today_str, description, amount, account, current_user.id, category=category)
-
     update_account_balance(account, amount, current_user.id)
+    bust_forecast_cache(current_user.id)
     track('action.add_expense')
     return redirect(
         url_for("actions", msg=f"Added {description}: £{abs(amount):.2f} from {account}")
@@ -955,8 +962,8 @@ def add_income():
     today_str = date.today().isoformat()
 
     add_transaction(today_str, description, amount, account, current_user.id)
-
     update_account_balance(account, amount, current_user.id)
+    bust_forecast_cache(current_user.id)
     track('action.add_income')
     return redirect(
         url_for("actions", msg=f"Added income {description}: £{amount:.2f} to {account}")
@@ -992,6 +999,7 @@ def quick_add():
         update_account_balance(account, amount, current_user.id)
         track('action.quick_add_expense')
 
+    bust_forecast_cache(current_user.id)
     return {"ok": True, "amount": abs(amount), "account": account, "type": tx_type}
 
 
@@ -1048,6 +1056,43 @@ def calendar_view():
             "count": int(row["count"])
         }
 
+    # Day-of-week averages: look back 12 weeks for enough data
+    twelve_weeks_ago = (date.today() - timedelta(weeks=12)).isoformat()
+    db2 = get_db()
+    cursor2 = db2.cursor()
+    if USE_POSTGRES:
+        cursor2.execute("""
+            SELECT EXTRACT(DOW FROM date::date) AS dow,
+                   AVG(ABS(amount)) AS avg_spent,
+                   COUNT(*) AS occurrences
+            FROM transactions
+            WHERE user_id = %s AND amount < 0 AND date >= %s
+            GROUP BY dow ORDER BY dow
+        """, (current_user.id, twelve_weeks_ago))
+    else:
+        cursor2.execute("""
+            SELECT CAST(strftime('%w', date) AS INTEGER) AS dow,
+                   AVG(ABS(amount)) AS avg_spent,
+                   COUNT(*) AS occurrences
+            FROM transactions
+            WHERE user_id = ? AND amount < 0 AND date >= ?
+            GROUP BY dow ORDER BY dow
+        """, (current_user.id, twelve_weeks_ago))
+    dow_rows = cursor2.fetchall()
+    cursor2.close()
+    release_db(db2)
+
+    # Postgres DOW: 0=Sun, 1=Mon ... 6=Sat — remap to Mon=0..Sun=6 to match JS Date
+    # SQLite strftime %w: 0=Sun, 1=Mon ... 6=Sat — same remap
+    dow_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    dow_avgs = [0.0] * 7
+    for r in dow_rows:
+        dow_raw = int(r[0])  # 0=Sun in both Postgres and SQLite
+        avg = round(float(r[1]), 2)
+        # Convert Sun=0 → index 6, Mon=1 → index 0, ..., Sat=6 → index 5
+        idx = (dow_raw - 1) % 7
+        dow_avgs[idx] = avg
+
     prev_month = f"{year-1}-12" if month == 1 else f"{year}-{month-1:02d}"
     next_month = f"{year+1}-01" if month == 12 else f"{year}-{month+1:02d}"
 
@@ -1059,6 +1104,8 @@ def calendar_view():
         first_weekday=first_day.weekday(),
         days_in_month=calendar.monthrange(year, month)[1],
         day_data=json.dumps(day_data),
+        dow_labels=json.dumps(dow_labels),
+        dow_avgs=json.dumps(dow_avgs),
         prev_month=prev_month,
         next_month=next_month,
         today=date.today().isoformat()
@@ -1124,6 +1171,7 @@ def transfer():
 
     update_account_balance(from_account, -amount, current_user.id)
     update_account_balance(to_account, amount, current_user.id)
+    bust_forecast_cache(current_user.id)
     track('action.transfer')
     return redirect(
         url_for("actions", msg=f"Transferred £{amount:.2f} from {from_account} → {to_account}")
@@ -2704,6 +2752,7 @@ def import_confirm():
     cursor.close()
     release_db(db)
 
+    bust_forecast_cache(current_user.id)
     track('action.import_csv')
     return redirect(url_for('transactions', msg=f"Imported {len(selected_rows)} transactions to {account}"))
 
