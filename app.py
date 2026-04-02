@@ -2059,7 +2059,12 @@ def forecast():
 
     account_names = list(accounts.keys())
     initial_balances = {name: round(simulated[name], 2) for name in account_names}
-    snapshots = []
+
+    # Start with today's actual balances as day 0
+    today_snapshot = {"date": today.isoformat()}
+    for acc in account_names:
+        today_snapshot[acc] = round(simulated[acc], 2)
+    snapshots = [today_snapshot]
 
     for day_offset in range(1, 91):
         sim_day = today + timedelta(days=day_offset)
