@@ -51,6 +51,7 @@ body { background: #f2f4f7; padding-bottom: 110px; }
   data-types='{{ account_types }}'
   data-initial='{{ initial_balances }}'
   data-upcoming='{{ upcoming }}'
+  data-history='{{ hist_snapshots }}'
   style="display:none">
 </div>
 <script>var CSRF_TOKEN = "{{ session['csrf_token'] }}";</script>
@@ -138,6 +139,8 @@ var accountNames = JSON.parse(el.getAttribute('data-accounts'));
 var accountTypes = JSON.parse(el.getAttribute('data-types'));
 var initialBalances = JSON.parse(el.getAttribute('data-initial') || '{}');
 var upcomingItems = JSON.parse(el.getAttribute('data-upcoming') || '[]');
+var histSnapshots = JSON.parse(el.getAttribute('data-history') || '[]');
+var TODAY_ISO = '{{ today }}';
 
 var COLORS = [
   '#111111', '#3b82f6', '#10b981', '#f59e0b',
@@ -146,6 +149,7 @@ var COLORS = [
 
 var chart = null;
 var currentFilter = 'all';
+var allSnapshots = [];
 
 // Index upcoming items by date for fast lookup
 var upcomingByDate = {};
@@ -173,14 +177,32 @@ function setFilter(type, btn) {
 
 function buildAnnotations() {
   var annotations = {};
-  // Build a set of unique event dates to avoid duplicate lines
+
+  // Today vertical line
+  annotations['today_line'] = {
+    type: 'line',
+    xMin: formatLabel(TODAY_ISO),
+    xMax: formatLabel(TODAY_ISO),
+    borderColor: 'rgba(0,0,0,0.5)',
+    borderWidth: 2,
+    label: {
+      display: true,
+      content: 'Today',
+      position: 'start',
+      color: '#111',
+      font: { size: 10, weight: 'bold' },
+      backgroundColor: 'rgba(255,255,255,0.85)',
+      padding: { top: 2, bottom: 2, left: 4, right: 4 }
+    }
+  };
+
+  // Bill/income event lines
   var seen = {};
   upcomingItems.forEach(function(item) {
     if (seen[item.date + item.type]) return;
     seen[item.date + item.type] = true;
     var isBill = item.type === 'bill';
-    // Find the label index for this date
-    var idx = snapshots.findIndex(function(s) { return s.date === item.date; });
+    var idx = allSnapshots.findIndex(function(s) { return s.date === item.date; });
     if (idx === -1) return;
     var label = formatLabel(item.date);
     annotations['evt_' + item.date + '_' + item.type] = {
@@ -190,9 +212,7 @@ function buildAnnotations() {
       borderColor: isBill ? 'rgba(239,68,68,0.35)' : 'rgba(16,185,129,0.35)',
       borderWidth: 2,
       borderDash: [4, 3],
-      label: {
-        display: false
-      }
+      label: { display: false }
     };
   });
   return annotations;
@@ -205,15 +225,19 @@ function formatLabel(isoDate) {
 
 function renderChart() {
   var visible = filteredAccounts();
-  var labels = snapshots.map(function(s) { return formatLabel(s.date); });
+
+  // Combine historical + forward snapshots into one timeline
+  allSnapshots = histSnapshots.concat(snapshots);
+  var labels = allSnapshots.map(function(s) { return formatLabel(s.date); });
 
   var datasets = visible.map(function(acc, i) {
     var colorIdx = accountNames.indexOf(acc);
+    var color = COLORS[colorIdx % COLORS.length];
     return {
       label: acc,
-      data: snapshots.map(function(s) { return s[acc]; }),
-      borderColor: COLORS[colorIdx % COLORS.length],
-      backgroundColor: COLORS[colorIdx % COLORS.length] + '18',
+      data: allSnapshots.map(function(s) { return s[acc] !== undefined ? s[acc] : null; }),
+      borderColor: color,
+      backgroundColor: color + '18',
       borderWidth: 2,
       pointRadius: 0,
       pointHoverRadius: 5,
@@ -227,10 +251,13 @@ function renderChart() {
   var annotations = buildAnnotations();
   var ctx = document.getElementById('forecastChart').getContext('2d');
 
-  // Show ~14 days initially
-  var windowSize = 14;
-  var xMin = labels[0];
-  var xMax = labels[Math.min(windowSize - 1, labels.length - 1)];
+  // Show 14 days back + 14 days forward around today
+  var todayIdx = allSnapshots.findIndex(function(s) { return s.date === TODAY_ISO; });
+  if (todayIdx === -1) todayIdx = histSnapshots.length;
+  var winStart = Math.max(0, todayIdx - 14);
+  var winEnd = Math.min(allSnapshots.length - 1, todayIdx + 14);
+  var xMin = labels[winStart];
+  var xMax = labels[winEnd];
 
   chart = new Chart(ctx, {
     type: 'line',
@@ -243,7 +270,7 @@ function renderChart() {
         var pts = chartRef.getElementsAtEventForMode(event, 'index', { intersect: false }, true);
         if (pts.length > 0) {
           var idx = pts[0].index;
-          showDayPanel(snapshots[idx].date);
+          showDayPanel(allSnapshots[idx].date);
         }
       },
       plugins: {
