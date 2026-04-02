@@ -199,6 +199,7 @@ var COLORS = [
 var chart = null;
 var currentFilter = 'all';
 var allSnapshots = [];
+var lastHoveredDate = null;
 
 // Index upcoming items by date for fast lookup
 var upcomingByDate = {};
@@ -321,6 +322,24 @@ function renderChart() {
         if (pts.length > 0) {
           var idx = pts[0].index;
           showDayPanel(allSnapshots[idx].date);
+        }
+      },
+      onHover: function(event, elements, chartRef) {
+        var pts = chartRef.getElementsAtEventForMode(event, 'index', { intersect: false }, true);
+        if (pts.length > 0) {
+          var isoDate = allSnapshots[pts[0].index].date;
+          if (upcomingByDate[isoDate]) {
+            event.native.target.style.cursor = 'pointer';
+            if (isoDate !== lastHoveredDate) {
+              lastHoveredDate = isoDate;
+              showDayPanel(isoDate);
+            }
+          } else {
+            event.native.target.style.cursor = 'default';
+            if (lastHoveredDate !== null) {
+              lastHoveredDate = null;
+            }
+          }
         }
       },
       plugins: {
