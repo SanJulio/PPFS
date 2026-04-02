@@ -222,6 +222,7 @@ function setFilter(type, btn) {
   btn.classList.add('active');
   currentFilter = type;
   renderChart();
+  if (v2Initialised) { v2ApplyFilter(); }
 }
 
 function buildAnnotations() {
@@ -801,6 +802,19 @@ function v2SetRange(range, btn) {
     var toTs = toDate.getTime() / 1000;
     v2MainChart.timeScale().setVisibleRange({ from: Math.max(fromTs, earliest), to: Math.min(toTs, latest) });
   }
+}
+
+function v2ApplyFilter() {
+  var visible = filteredAccounts();
+  var legendHtml = '';
+  v2Series.forEach(function(s, i) {
+    var show = visible.indexOf(s.acc) !== -1;
+    s.series.applyOptions({ visible: show });
+    if (show) {
+      legendHtml += '<div class="v2-legend-item"><div class="v2-legend-dot" style="background:' + V2_COLORS[accountNames.indexOf(s.acc) % V2_COLORS.length] + '"></div>' + escHtml(s.acc) + '</div>';
+    }
+  });
+  document.getElementById('v2Legend').innerHTML = legendHtml;
 }
 
 function v2ShowDayPanel(isoDate) {
