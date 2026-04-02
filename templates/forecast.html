@@ -16,6 +16,7 @@
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <title>Spendara — Forecast</title>
 <style>
 html, body { min-height: 100vh; }
@@ -41,6 +42,24 @@ body { background: #f2f4f7; padding-bottom: 110px; }
 .day-item { display:flex; align-items:center; justify-content:space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; gap: 12px; }
 .day-item:last-child { border-bottom: none; }
 .chart-hint { font-size: 11px; color: #aaa; text-align: center; margin-top: 6px; }
+
+/* V2 chart */
+#v2Section { display:none; }
+#v2Section.active { display:block; }
+.v2-card { background:#111; border-radius:18px; overflow:hidden; padding:16px; margin-bottom:12px; }
+.v2-toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.v2-range-btn { background:rgba(255,255,255,0.08); color:#ccc; border:none; border-radius:6px; font-size:12px; font-weight:600; padding:5px 12px; cursor:pointer; transition:background 0.15s; }
+.v2-range-btn:hover, .v2-range-btn.active { background:#fff; color:#111; }
+.v2-legend { display:flex; gap:12px; flex-wrap:wrap; }
+.v2-legend-item { display:flex; align-items:center; gap:5px; font-size:12px; color:#aaa; }
+.v2-legend-dot { width:10px; height:10px; border-radius:3px; flex-shrink:0; }
+#v2ChartMain { width:100%; height:300px; }
+#v2ChartVolume { width:100%; height:80px; margin-top:4px; }
+.v2-crosshair-box { background:#1a1a1a; border:1px solid #333; border-radius:10px; padding:10px 14px; font-size:12px; color:#eee; min-width:160px; pointer-events:none; }
+.v2-crosshair-row { display:flex; justify-content:space-between; gap:16px; margin-bottom:3px; }
+.v2-crosshair-row:last-child { margin-bottom:0; }
+.v2-netvale { font-size:15px; font-weight:700; color:#fff; margin-bottom:6px; }
+.v2-event-dot { width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:4px; }
 </style>
 </head>
 <body>
@@ -84,22 +103,52 @@ body { background: #f2f4f7; padding-bottom: 110px; }
     <a href="/settings" class="btn btn-dark btn-sm rounded-3 px-4">Go to Settings</a>
   </div>
 
-  <div class="card p-3 mb-3" id="forecastChartCard">
-    <div style="position:relative; height:280px; max-height:40vh;">
-      <canvas id="forecastChart"></canvas>
-    </div>
-    <div class="chart-hint">Drag to scroll · Pinch or scroll wheel to zoom · Tap a day to see events</div>
-    <div class="d-flex justify-content-center gap-2 mt-2">
-      <button class="btn btn-outline-secondary btn-sm rounded-3" onclick="resetZoom()" style="font-size:12px;">Reset view</button>
-    </div>
+  <!-- V1/V2 toggle -->
+  <div class="d-flex align-items-center gap-2 mb-3">
+    <button class="btn btn-outline-secondary btn-sm rounded-3 active" id="btnV1" onclick="switchView('v1')" style="font-size:12px;">Chart v1</button>
+    <button class="btn btn-outline-secondary btn-sm rounded-3" id="btnV2" onclick="switchView('v2')" style="font-size:12px;">✨ Chart v2 — Beta</button>
   </div>
 
-  <!-- Day detail panel -->
-  <div id="dayPanel" class="card p-3 mb-4" style="display:none;">
-    <div id="dayPanelContent"></div>
+  <!-- V1 -->
+  <div id="v1Section">
+    <div class="card p-3 mb-3" id="forecastChartCard">
+      <div style="position:relative; height:280px; max-height:40vh;">
+        <canvas id="forecastChart"></canvas>
+      </div>
+      <div class="chart-hint">Drag to scroll · Pinch or scroll wheel to zoom · Tap a day to see events</div>
+      <div class="d-flex justify-content-center gap-2 mt-2">
+        <button class="btn btn-outline-secondary btn-sm rounded-3" onclick="resetZoom()" style="font-size:12px;">Reset view</button>
+      </div>
+    </div>
+
+    <!-- Day detail panel -->
+    <div id="dayPanel" class="card p-3 mb-4" style="display:none;">
+      <div id="dayPanelContent"></div>
+    </div>
+
+    <div id="accountSummary"></div>
   </div>
 
-  <div id="accountSummary"></div>
+  <!-- V2 -->
+  <div id="v2Section">
+    <div class="v2-card">
+      <div class="v2-toolbar">
+        <div class="v2-range-btn active" id="v2r-2w" onclick="v2SetRange('2w', this)">2W</div>
+        <div class="v2-range-btn" id="v2r-1m" onclick="v2SetRange('1m', this)">1M</div>
+        <div class="v2-range-btn" id="v2r-3m" onclick="v2SetRange('3m', this)">3M</div>
+        <div class="v2-range-btn" id="v2r-all" onclick="v2SetRange('all', this)">ALL</div>
+        <div style="flex:1"></div>
+        <div class="v2-legend" id="v2Legend"></div>
+      </div>
+      <div id="v2ChartMain"></div>
+      <div id="v2ChartVolume"></div>
+    </div>
+
+    <!-- V2 day detail panel -->
+    <div id="v2DayPanel" class="card p-3 mb-4" style="display:none;">
+      <div id="v2DayPanelContent"></div>
+    </div>
+  </div>
 
 </div>
 
@@ -484,6 +533,313 @@ if (window.location.search) {
   url.searchParams.delete('refresh');
   url.searchParams.delete('msg');
   window.history.replaceState({}, '', url);
+}
+
+// ─── V1 / V2 toggle ──────────────────────────────────────────────────────────
+function switchView(v) {
+  var isV2 = v === 'v2';
+  document.getElementById('v1Section').style.display = isV2 ? 'none' : 'block';
+  document.getElementById('v2Section').style.display = isV2 ? 'block' : 'none';
+  document.getElementById('btnV1').classList.toggle('active', !isV2);
+  document.getElementById('btnV2').classList.toggle('active', isV2);
+  if (isV2 && !v2Initialised) { v2Init(); }
+}
+
+// ─── V2 — Lightweight Charts ─────────────────────────────────────────────────
+var v2Initialised = false;
+var v2MainChart = null;
+var v2VolChart = null;
+var v2Series = [];   // one area series per account
+var v2VolSeries = null;
+var v2CurrentRange = '2w';
+
+var V2_COLORS = [
+  '#60a5fa', '#34d399', '#fbbf24', '#f87171',
+  '#a78bfa', '#f472b6', '#22d3ee', '#ffffff'
+];
+
+function v2Init() {
+  v2Initialised = true;
+
+  var mainEl = document.getElementById('v2ChartMain');
+  var volEl  = document.getElementById('v2ChartVolume');
+
+  var chartOpts = {
+    layout: { background: { color: '#111' }, textColor: '#aaa' },
+    grid: { vertLines: { color: '#1f1f1f' }, horzLines: { color: '#1f1f1f' } },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    rightPriceScale: { borderColor: '#222', scaleMargins: { top: 0.08, bottom: 0.08 } },
+    timeScale: { borderColor: '#222', timeVisible: true, secondsVisible: false },
+    handleScroll: true,
+    handleScale: true,
+    width: mainEl.clientWidth,
+    height: 300
+  };
+
+  v2MainChart = LightweightCharts.createChart(mainEl, chartOpts);
+
+  v2VolChart = LightweightCharts.createChart(volEl, {
+    layout: { background: { color: '#111' }, textColor: '#aaa' },
+    grid: { vertLines: { color: '#1f1f1f' }, horzLines: { color: 'transparent' } },
+    rightPriceScale: { borderColor: '#222', scaleMargins: { top: 0.1, bottom: 0 } },
+    timeScale: { borderColor: '#222', visible: false },
+    handleScroll: false,
+    handleScale: false,
+    width: volEl.clientWidth,
+    height: 80
+  });
+
+  // Sync timescales
+  v2MainChart.timeScale().subscribeVisibleLogicalRangeChange(function(range) {
+    if (range) v2VolChart.timeScale().setVisibleLogicalRange(range);
+  });
+  v2VolChart.timeScale().subscribeVisibleLogicalRangeChange(function(range) {
+    if (range) v2MainChart.timeScale().setVisibleLogicalRange(range);
+  });
+
+  // Sync crosshair
+  v2MainChart.subscribeCrosshairMove(function(param) {
+    if (param.time) v2VolChart.setCrosshairPosition(0, param.time, v2VolSeries);
+  });
+
+  // Build legend
+  var legendHtml = '';
+  accountNames.forEach(function(acc, i) {
+    legendHtml += '<div class="v2-legend-item"><div class="v2-legend-dot" style="background:' + V2_COLORS[i % V2_COLORS.length] + '"></div>' + escHtml(acc) + '</div>';
+  });
+  document.getElementById('v2Legend').innerHTML = legendHtml;
+
+  // Build area series per account
+  v2Series = [];
+  accountNames.forEach(function(acc, i) {
+    var color = V2_COLORS[i % V2_COLORS.length];
+    var series = v2MainChart.addAreaSeries({
+      lineColor: color,
+      topColor: color + '40',
+      bottomColor: color + '05',
+      lineWidth: 2,
+      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+      title: acc
+    });
+    v2Series.push({ acc: acc, series: series });
+  });
+
+  // Net worth line (bold white)
+  var netSeries = v2MainChart.addLineSeries({
+    color: '#ffffff',
+    lineWidth: 2,
+    lineStyle: LightweightCharts.LineStyle.Dashed,
+    priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+    title: 'Net worth'
+  });
+
+  // Volume (daily spend) histogram
+  v2VolSeries = v2VolChart.addHistogramSeries({
+    color: '#ef444480',
+    priceFormat: { type: 'price', precision: 2, minMove: 0.01 }
+  });
+
+  // Populate data
+  var combined = histSnapshots.concat(snapshots);
+  var todayTs = v2DateToTs(TODAY_ISO);
+
+  v2Series.forEach(function(s) {
+    var pts = combined.map(function(snap) {
+      return { time: v2DateToTs(snap.date), value: snap[s.acc] !== undefined ? snap[s.acc] : null };
+    }).filter(function(p) { return p.value !== null; });
+    s.series.setData(pts);
+  });
+
+  // Net worth
+  var netPts = combined.map(function(snap) {
+    var total = accountNames.reduce(function(sum, acc) { return sum + (snap[acc] || 0); }, 0);
+    return { time: v2DateToTs(snap.date), value: Math.round(total * 100) / 100 };
+  });
+  netSeries.setData(netPts);
+
+  // Daily spend from histSnapshots (actual) — walk day-by-day
+  var volPts = [];
+  histSnapshots.forEach(function(snap) {
+    var total = accountNames.reduce(function(sum, acc) {
+      var prev = 0;
+      var idx = histSnapshots.indexOf(snap);
+      if (idx > 0) prev = histSnapshots[idx - 1][acc] || 0;
+      var cur = snap[acc] || 0;
+      var delta = prev - cur; // positive = spent
+      return sum + (delta > 0 ? delta : 0);
+    }, 0);
+    if (total > 0.01) volPts.push({ time: v2DateToTs(snap.date), value: Math.round(total * 100) / 100, color: '#ef444480' });
+  });
+  v2VolSeries.setData(volPts);
+
+  // Event markers (bills ▼ red, income ▲ green)
+  var markers = [];
+  upcomingItems.forEach(function(item) {
+    markers.push({
+      time: v2DateToTs(item.date),
+      position: item.type === 'bill' ? 'aboveBar' : 'belowBar',
+      color: item.type === 'bill' ? '#ef4444' : '#10b981',
+      shape: item.type === 'bill' ? 'arrowDown' : 'arrowUp',
+      text: item.name + ' £' + item.amount.toFixed(0)
+    });
+  });
+  // Use the first series for markers
+  if (v2Series.length > 0 && markers.length > 0) {
+    markers.sort(function(a, b) { return a.time - b.time; });
+    v2Series[0].series.setMarkers(markers);
+  }
+
+  // Today marker line
+  v2MainChart.addLineSeries({
+    color: 'rgba(255,255,255,0.25)',
+    lineWidth: 1,
+    lineStyle: LightweightCharts.LineStyle.Dotted,
+    lastValueVisible: false,
+    priceLineVisible: false,
+    crosshairMarkerVisible: false
+  });
+
+  // Crosshair tooltip
+  var tooltip = document.createElement('div');
+  tooltip.className = 'v2-crosshair-box';
+  tooltip.style.cssText = 'position:absolute;display:none;z-index:100;';
+  mainEl.style.position = 'relative';
+  mainEl.appendChild(tooltip);
+
+  v2MainChart.subscribeCrosshairMove(function(param) {
+    if (!param.time || param.point === undefined) { tooltip.style.display = 'none'; return; }
+    var isoDate = v2TsToIso(param.time);
+    var items = upcomingByDate[isoDate] || [];
+
+    var html = '<div style="font-size:11px;color:#888;margin-bottom:6px;">' + isoDate + '</div>';
+    var netTotal = 0;
+    v2Series.forEach(function(s) {
+      var val = param.seriesData.get(s.series);
+      if (val !== undefined) {
+        netTotal += val.value || 0;
+        html += '<div class="v2-crosshair-row"><span style="color:#aaa;">' + escHtml(s.acc) + '</span><span style="color:#fff;font-weight:600;">£' + (val.value || 0).toLocaleString('en-GB', {minimumFractionDigits:2,maximumFractionDigits:2}) + '</span></div>';
+      }
+    });
+    html = '<div class="v2-netvale">Net £' + netTotal.toLocaleString('en-GB', {minimumFractionDigits:2,maximumFractionDigits:2}) + '</div>' + html;
+    if (items.length > 0) {
+      html += '<div style="border-top:1px solid #333;margin-top:6px;padding-top:6px;">';
+      items.forEach(function(item) {
+        var dot = '<span class="v2-event-dot" style="background:' + (item.type === 'bill' ? '#ef4444' : '#10b981') + '"></span>';
+        html += '<div style="font-size:11px;color:#ccc;margin-bottom:2px;">' + dot + escHtml(item.name) + ' <strong>' + (item.type === 'bill' ? '-' : '+') + '£' + item.amount.toFixed(2) + '</strong></div>';
+      });
+      html += '</div>';
+    }
+    tooltip.innerHTML = html;
+
+    var left = param.point.x + 16;
+    if (left + 180 > mainEl.clientWidth) left = param.point.x - 180;
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = Math.max(0, param.point.y - 60) + 'px';
+    tooltip.style.display = 'block';
+
+    // Click to open day panel
+  });
+
+  mainEl.addEventListener('click', function(e) {
+    var param = v2MainChart.getCrossHairPosition ? null : null;
+    // use the last known crosshair time via chart click
+  });
+
+  // Subscribe click via chart
+  v2MainChart.subscribeClick(function(param) {
+    if (!param.time) return;
+    var isoDate = v2TsToIso(param.time);
+    v2ShowDayPanel(isoDate);
+  });
+
+  v2SetRange('2w', document.getElementById('v2r-2w'));
+
+  // Responsive resize
+  window.addEventListener('resize', function() {
+    v2MainChart.resize(mainEl.clientWidth, 300);
+    v2VolChart.resize(volEl.clientWidth, 80);
+  });
+}
+
+function v2DateToTs(isoDate) {
+  // Lightweight Charts uses unix seconds for 'time' when in UTC day mode
+  var parts = isoDate.split('-');
+  return Date.UTC(+parts[0], +parts[1] - 1, +parts[2]) / 1000;
+}
+
+function v2TsToIso(ts) {
+  var d = new Date(ts * 1000);
+  var y = d.getUTCFullYear();
+  var m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  var day = String(d.getUTCDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
+
+function v2SetRange(range, btn) {
+  v2CurrentRange = range;
+  document.querySelectorAll('.v2-range-btn').forEach(function(b) { b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  if (!v2MainChart) return;
+
+  var combined = histSnapshots.concat(snapshots);
+  var today = new Date(TODAY_ISO);
+  var fromDate;
+  if (range === '2w') { fromDate = new Date(today); fromDate.setDate(fromDate.getDate() - 14); }
+  else if (range === '1m') { fromDate = new Date(today); fromDate.setMonth(fromDate.getMonth() - 1); }
+  else if (range === '3m') { fromDate = new Date(today); fromDate.setMonth(fromDate.getMonth() - 3); }
+  else { fromDate = null; }
+
+  if (!fromDate) {
+    v2MainChart.timeScale().fitContent();
+    v2VolChart.timeScale().fitContent();
+  } else {
+    var earliest = combined[0] ? v2DateToTs(combined[0].date) : 0;
+    var latest = combined[combined.length - 1] ? v2DateToTs(combined[combined.length - 1].date) : 0;
+    var fromTs = fromDate.getTime() / 1000;
+    var toDate = new Date(today);
+    toDate.setDate(toDate.getDate() + 30);
+    var toTs = toDate.getTime() / 1000;
+    v2MainChart.timeScale().setVisibleRange({ from: Math.max(fromTs, earliest), to: Math.min(toTs, latest) });
+  }
+}
+
+function v2ShowDayPanel(isoDate) {
+  var panel = document.getElementById('v2DayPanel');
+  var content = document.getElementById('v2DayPanelContent');
+  var items = upcomingByDate[isoDate] || [];
+  var d = new Date(isoDate);
+  var dateStr = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  var html = '<div class="fw-bold mb-3" style="font-size:15px;">📅 ' + dateStr + '</div>';
+  if (items.length === 0) {
+    html += '<div class="text-muted small">No scheduled bills or income on this day.</div>';
+  } else {
+    items.forEach(function(item) {
+      var isBill = item.type === 'bill';
+      var icon = isBill ? '💸' : '💰';
+      var btnClass = isBill ? 'btn-danger' : 'btn-success';
+      var btnLabel = isBill ? 'Mark as Paid' : 'Mark as Received';
+      var action = isBill ? '/flow/pay-bill' : '/flow/pay-income';
+      var idField = isBill ? 'bill_id' : 'income_id';
+      html += '<div class="day-item">' +
+        '<div><span style="font-size:16px;margin-right:6px;">' + icon + '</span><span class="fw-semibold">' + escHtml(item.name) + '</span><span class="text-muted small ms-2">' + escHtml(item.account) + '</span></div>' +
+        '<div class="d-flex align-items-center gap-2 flex-shrink-0">' +
+          '<span class="fw-bold money" style="font-size:14px;">' + (isBill ? '-' : '+') + '£' + item.amount.toFixed(2) + '</span>' +
+          '<form method="POST" action="' + action + '" style="margin:0;">' +
+            '<input type="hidden" name="csrf_token" value="' + escHtml(CSRF_TOKEN) + '">' +
+            '<input type="hidden" name="' + idField + '" value="' + item.id + '">' +
+            '<input type="hidden" name="paid_date" value="' + item.date + '">' +
+            '<input type="hidden" name="redirect_to" value="/forecast?refresh=1">' +
+            '<button type="submit" class="btn ' + btnClass + ' btn-sm rounded-3" style="font-size:12px;white-space:nowrap;">' + btnLabel + '</button>' +
+          '</form>' +
+        '</div>' +
+      '</div>';
+    });
+  }
+  html += '<button onclick="document.getElementById(\'v2DayPanel\').style.display=\'none\'" style="background:none;border:none;color:#aaa;font-size:12px;padding:8px 0 0 0;cursor:pointer;">✕ Close</button>';
+  content.innerHTML = html;
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 </script>
 <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>
