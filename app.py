@@ -1734,6 +1734,7 @@ def settings_add_income():
     amount = (request.form.get("amount") or "").strip()
     frequency = (request.form.get("frequency") or "").strip()
     account = (request.form.get("account") or "").strip()
+    day_raw = (request.form.get("day") or "1").strip()
 
     if not name or not amount or not frequency or not account:
         return redirect(url_for("settings", msg="Missing fields."))
@@ -1741,13 +1742,17 @@ def settings_add_income():
         amount = float(amount)
     except ValueError:
         return redirect(url_for("settings", msg="Invalid amount."))
+    try:
+        day = max(1, min(31, int(day_raw)))
+    except ValueError:
+        day = 1
 
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("INSERT INTO income (name, amount, frequency, account, user_id) VALUES (%s, %s, %s, %s, %s)", (name, amount, frequency, account, current_user.id))
+        cursor.execute("INSERT INTO income (name, amount, frequency, account, user_id, day) VALUES (%s, %s, %s, %s, %s, %s)", (name, amount, frequency, account, current_user.id, day))
     else:
-        cursor.execute("INSERT INTO income (name, amount, frequency, account, user_id) VALUES (?, ?, ?, ?, ?)", (name, amount, frequency, account, current_user.id))
+        cursor.execute("INSERT INTO income (name, amount, frequency, account, user_id, day) VALUES (?, ?, ?, ?, ?, ?)", (name, amount, frequency, account, current_user.id, day))
     db.commit()
     cursor.close()
     release_db(db)
@@ -1761,6 +1766,7 @@ def settings_edit_income():
     amount = (request.form.get("amount") or "").strip()
     frequency = (request.form.get("frequency") or "").strip()
     account = (request.form.get("account") or "").strip()
+    day_raw = (request.form.get("day") or "1").strip()
 
     if not name or not amount or not frequency or not account:
         return redirect(url_for("settings", msg="Missing fields."))
@@ -1768,15 +1774,19 @@ def settings_edit_income():
         amount = float(amount)
     except ValueError:
         return redirect(url_for("settings", msg="Invalid amount."))
+    try:
+        day = max(1, min(31, int(day_raw)))
+    except ValueError:
+        day = 1
 
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("UPDATE income SET name=%s, amount=%s, frequency=%s, account=%s WHERE id=%s AND user_id=%s",
-                       (name, amount, frequency, account, income_id, current_user.id))
+        cursor.execute("UPDATE income SET name=%s, amount=%s, frequency=%s, account=%s, day=%s WHERE id=%s AND user_id=%s",
+                       (name, amount, frequency, account, day, income_id, current_user.id))
     else:
-        cursor.execute("UPDATE income SET name=?, amount=?, frequency=?, account=? WHERE id=? AND user_id=?",
-                       (name, amount, frequency, account, income_id, current_user.id))
+        cursor.execute("UPDATE income SET name=?, amount=?, frequency=?, account=?, day=? WHERE id=? AND user_id=?",
+                       (name, amount, frequency, account, day, income_id, current_user.id))
     db.commit()
     cursor.close()
     release_db(db)
@@ -2124,7 +2134,8 @@ def forecast():
 
         for inc in income_rows:
             if inc["frequency"] == "monthly" and inc["account"] in simulated:
-                if sim_day.day == 1:
+                pay_day = int(inc.get("day") or 1)
+                if sim_day.day == pay_day:
                     simulated[inc["account"]] += float(inc["amount"])
 
         for expense in scheduled:
@@ -2215,11 +2226,14 @@ def forecast():
                 if d.weekday() == 4:  # Friday
                     upcoming_items.append({"date": d.isoformat(), "name": inc["name"], "amount": float(inc["amount"]), "account": inc["account"], "type": "income", "id": inc["id"]})
                 d += timedelta(days=1)
-        else:  # monthly — day 1
+        else:  # monthly — use user's specified pay day
+            pay_day = int(inc.get("day") or 1)
             m_year, m_month = today.year, today.month
             for _ in range(4):
+                max_day = calendar.monthrange(m_year, m_month)[1]
+                actual_day = min(pay_day, max_day)
                 try:
-                    occurrence = date(m_year, m_month, 1)
+                    occurrence = date(m_year, m_month, actual_day)
                     if today <= occurrence <= end_date:
                         upcoming_items.append({"date": occurrence.isoformat(), "name": inc["name"], "amount": float(inc["amount"]), "account": inc["account"], "type": "income", "id": inc["id"]})
                 except ValueError:

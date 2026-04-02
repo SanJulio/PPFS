@@ -366,7 +366,10 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             <tr>
               <td>{{ i.name }}</td>
               <td class="text-end money">£{{ "%.2f"|format(i.amount) }}</td>
-              <td class="text-end"><span class="badge text-bg-light">{{ i.frequency }}</span></td>
+              <td class="text-end">
+                <span class="badge text-bg-light">{{ i.frequency }}</span>
+                {% if i.frequency == 'monthly' %}<span class="text-muted small ms-1">day {{ i.day if i.day else 1 }}</span>{% endif %}
+              </td>
               <td class="text-end">
                 <div class="d-flex gap-1 justify-content-end">
                   <button class="btn btn-sm btn-outline-secondary" onclick="toggleEdit('income-{{ i.id }}')">Edit</button>
@@ -391,11 +394,15 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                       <input class="form-control form-control-sm" name="amount" value="{{ '%.2f'|format(i.amount) }}" placeholder="Amount" required>
                     </div>
                     <div class="col-6">
-                      <select class="form-select form-select-sm" name="frequency" required>
+                      <select class="form-select form-select-sm" name="frequency" required onchange="toggleIncomeDay(this, 'edit-day-{{ i.id }}')">
                         <option value="weekly" {% if i.frequency == 'weekly' %}selected{% endif %}>Weekly</option>
                         <option value="monthly" {% if i.frequency == 'monthly' %}selected{% endif %}>Monthly</option>
                       </select>
                     </div>
+                    <div class="col-6" id="edit-day-{{ i.id }}" {% if i.frequency != 'monthly' %}style="display:none"{% endif %}>
+                      <input class="form-control form-control-sm" name="day" type="number" min="1" max="31" value="{{ i.day if i.day else 1 }}" placeholder="Pay day (1–31)">
+                    </div>
+                    <div class="col-6 {% if i.frequency == 'monthly' %}d-none{% endif %}"><!-- spacer --></div>
                     <div class="col-6">
                       <select class="form-select form-select-sm" name="account" required>
                         {% for a in accounts %}
@@ -427,11 +434,14 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <input class="form-control" name="amount" inputmode="decimal" placeholder="Amount (£)" required>
         </div>
         <div class="mb-2">
-          <select class="form-select" name="frequency" required>
+          <select class="form-select" name="frequency" required onchange="toggleIncomeDay(this, 'add-income-day')">
             <option value="">Select frequency</option>
             <option value="weekly">Weekly</option>
             <option value="monthly">Monthly</option>
           </select>
+        </div>
+        <div class="mb-2" id="add-income-day" style="display:none;">
+          <input class="form-control" name="day" type="number" min="1" max="31" placeholder="Which day of the month? (e.g. 25)">
         </div>
         <div class="mb-3">
           <select class="form-select" name="account" required>
@@ -912,6 +922,11 @@ function showTab(name, btn) {
 function toggleMonthField(select, targetId) {
   var el = document.getElementById(targetId);
   if (el) el.style.display = select.value === 'yearly' ? 'block' : 'none';
+}
+
+function toggleIncomeDay(select, targetId) {
+  const el = document.getElementById(targetId);
+  if (el) el.style.display = select.value === 'monthly' ? '' : 'none';
 }
 
 function toggleEdit(id) {

@@ -344,5 +344,26 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: income.day ---
+    # Stores which day of the month monthly income is received (1-31); defaults to 1
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='income' AND column_name='day'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE income ADD COLUMN day INTEGER NOT NULL DEFAULT 1")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE income ADD COLUMN day INTEGER NOT NULL DEFAULT 1")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (income.day): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)
