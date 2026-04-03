@@ -326,9 +326,7 @@ function renderChart() {
       plugins: {
         legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 12 } } },
         tooltip: {
-          callbacks: {
-            label: function(c) { return ' ' + c.dataset.label + ': £' + c.parsed.y.toFixed(2); }
-          }
+          enabled: false
         },
         zoom: {
           pan: {
@@ -706,7 +704,8 @@ function v2Init() {
   mainEl.style.position = 'relative';
   mainEl.appendChild(tooltip);
 
-  v2MainChart.subscribeCrosshairMove(function(param) {
+  // Tooltip only shows on click/tap — not on hover (avoids blocking mobile scroll)
+  v2MainChart.subscribeClick(function(param) {
     if (!param.time || param.point === undefined) { tooltip.style.display = 'none'; return; }
     var isoDate = v2TsToIso(param.time);
     var items = upcomingByDate[isoDate] || [];
@@ -737,18 +736,6 @@ function v2Init() {
     tooltip.style.top = Math.max(0, param.point.y - 60) + 'px';
     tooltip.style.display = 'block';
 
-    // Click to open day panel
-  });
-
-  mainEl.addEventListener('click', function(e) {
-    var param = v2MainChart.getCrossHairPosition ? null : null;
-    // use the last known crosshair time via chart click
-  });
-
-  // Subscribe click via chart
-  v2MainChart.subscribeClick(function(param) {
-    if (!param.time) return;
-    var isoDate = v2TsToIso(param.time);
     v2ShowDayPanel(isoDate);
   });
 
