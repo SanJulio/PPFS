@@ -571,70 +571,237 @@ body.privacy-invisible .amounts-visible .amount-private {
   </div>
 </div>
 
-  <div class="card p-3 mb-4" id="afford">
-  <div class="d-flex align-items-center justify-content-between mb-2">
-    <h5 class="mb-0">Can I afford this?</h5>
-    <span class="badge-soft">Forecast to end of next month</span>
+  <div class="card p-3 mb-4" id="snapshot">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h5 class="mb-0">📅 Financial Position</h5>
+    <span class="badge-soft" id="snapshotDayLabel">Day 30</span>
   </div>
 
-  <form method="POST" action="{{ url_for('afford') }}">
-    <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
-    <div class="mb-3">
-      <label class="form-label">Item (optional)</label>
-      <input class="form-control" name="desc" placeholder="e.g., Trainers" />
-    </div>
+  <!-- Date slider -->
+  <div class="mb-1">
+    <input type="range" id="snapshotSlider" min="1" max="90" value="30"
+      class="form-range" style="accent-color:#111;">
+  </div>
+  <div class="text-center fw-semibold mb-3" id="snapshotDateText" style="font-size:15px; color:#111;">—</div>
 
-    <div class="mb-3">
-      <label class="form-label">Purchase amount (£)</label>
-      <input class="form-control" name="amount" inputmode="decimal" placeholder="e.g., 180" required />
-    </div>
+  <!-- Account filter pills -->
+  <div class="d-flex flex-wrap gap-2 mb-3" id="snapshotPills">
+    <button onclick="toggleSnapshotAll()" id="snapshotPillAll"
+      class="btn btn-sm btn-dark rounded-pill" style="font-size:12px;">All accounts</button>
+    {% for b in balances %}
+    <button onclick="toggleSnapshotPill('{{ b.name }}')"
+      data-acc="{{ b.name }}"
+      class="btn btn-sm btn-outline-secondary rounded-pill snap-pill" style="font-size:12px;">{{ b.name }}</button>
+    {% endfor %}
+  </div>
 
-    <button type="submit" class="btn btn-dark w-100 py-3">Check</button>
-  </form>
+  <!-- Snapshot results -->
+  <div id="snapshotResults" style="min-height:60px;">
+    <div class="text-muted small text-center py-2">Move the slider to project your finances</div>
+  </div>
 
-  {% if afford_results %}
-    <hr class="my-3">
-
-    {% set safe_results = afford_results | selectattr('negative', 'equalto', false) | list %}
-    {% set best = safe_results | sort(attribute='lowest') | last if safe_results else None %}
-
-    {% if best %}
-    <div class="rounded-4 p-3 mb-3" style="background:#d1fae5;">
-      <div class="fw-bold" style="font-size:16px; color:#065f46;">✅ Yes — use {{ best.account }}</div>
-      <div class="small mt-1" style="color:#065f46;">Leaves you with £{{ "%.2f"|format(best.lowest) }} buffer at lowest point</div>
-    </div>
-    {% else %}
-    <div class="rounded-4 p-3 mb-3" style="background:#fde8e8;">
-      <div class="fw-bold" style="font-size:16px; color:#991b1b;">❌ Not safe right now</div>
-      {% set worst = afford_results | sort(attribute='lowest') | last %}
-      {% if worst %}
-      <div class="small mt-1" style="color:#991b1b;">Safe alternative: try £{{ "%.0f"|format([worst.lowest + afford_amount, 0] | max) }} or less</div>
-      {% endif %}
-    </div>
-    {% endif %}
-
-    <div class="vstack gap-2">
-      {% for r in afford_results %}
-        <div class="border rounded-4 p-3 bg-white">
-          <div class="d-flex justify-content-between align-items-center">
-            <div class="fw-semibold">{{ r.account }}</div>
-            {% if r.negative %}
-              <span class="badge text-bg-danger">❌ Risky</span>
-            {% elif r.lowest < 200 %}
-              <span class="badge text-bg-warning">⚠️ Tight</span>
-            {% else %}
-              <span class="badge text-bg-success">✅ Safe</span>
-            {% endif %}
-          </div>
-          <div class="small text-muted mt-2">
-            After purchase: <span class="money fw-semibold">£{{ "%.2f"|format(r.after) }}</span> &nbsp;·&nbsp;
-            Lowest: <span class="money {% if r.lowest < 0 %}text-danger{% endif %}">£{{ "%.2f"|format(r.lowest) }}</span>
-          </div>
-        </div>
-      {% endfor %}
-    </div>
-  {% endif %}
+  <!-- Integrated afford check -->
+  <hr class="my-3">
+  <div class="fw-semibold mb-2" style="font-size:14px;">Can I afford this on that date?</div>
+  <div class="d-flex gap-2">
+    <input id="snapshotAffordInput" class="form-control" inputmode="decimal"
+      placeholder="e.g. 200" style="border-radius:12px !important; font-size:15px !important;">
+    <button onclick="checkSnapshotAfford()" class="btn btn-dark rounded-3 px-4">Check</button>
+  </div>
+  <div id="snapshotAffordResult" class="mt-3"></div>
 </div>
+
+<script>
+(function() {
+  var snapshotData = null;
+  var selectedAccounts = null;
+  var debounceTimer = null;
+  var slider = document.getElementById('snapshotSlider');
+  var dayLabel = document.getElementById('snapshotDayLabel');
+  var dateText = document.getElementById('snapshotDateText');
+  var resultsEl = document.getElementById('snapshotResults');
+  var affordResult = document.getElementById('snapshotAffordResult');
+
+  function fetchSnapshot() {
+    var days = slider.value;
+    dayLabel.textContent = 'Day ' + days;
+    resultsEl.innerHTML = '<div class="text-muted small text-center py-2">Loading...</div>';
+    affordResult.innerHTML = '';
+    fetch('/api/snapshot?days=' + days)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        snapshotData = data;
+        dateText.textContent = data.date;
+        renderSnapshot();
+      })
+      .catch(function() {
+        resultsEl.innerHTML = '<div class="text-danger small text-center py-2">Failed to load</div>';
+      });
+  }
+
+  function renderSnapshot() {
+    if (!snapshotData) return;
+    var accounts = snapshotData.accounts;
+    var accs = Object.keys(accounts);
+    if (selectedAccounts && selectedAccounts.length > 0) {
+      accs = accs.filter(function(a) { return selectedAccounts.indexOf(a) >= 0; });
+    }
+
+    var cards = accs.map(function(name) {
+      var a = accounts[name];
+      var chg = a.change;
+      var chgStr = (chg >= 0 ? '+' : '') + '£' + Math.abs(chg).toFixed(2);
+      var chgColor = chg >= 0 ? '#065f46' : '#991b1b';
+      var chgBg = chg >= 0 ? '#d1fae5' : '#fde8e8';
+      var balStyle = a.balance_on_date < 0 ? 'color:#991b1b;' : '';
+      return '<div class="border rounded-4 p-3 bg-white mb-2">' +
+        '<div class="d-flex justify-content-between align-items-center">' +
+          '<div>' +
+            '<div class="fw-semibold" style="font-size:14px;">' + name + '</div>' +
+            '<div class="text-muted" style="font-size:11px;">' + a.type + '</div>' +
+          '</div>' +
+          '<div class="text-end">' +
+            '<div class="fw-bold money" style="font-size:18px;' + balStyle + '">£' + a.balance_on_date.toFixed(2) + '</div>' +
+            '<span class="rounded-pill px-2" style="font-size:11px;font-weight:600;background:' + chgBg + ';color:' + chgColor + ';">' + chgStr + ' from today</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    var incomeItems = snapshotData.income_arriving.slice();
+    if (selectedAccounts && selectedAccounts.length > 0) {
+      incomeItems = incomeItems.filter(function(i) { return selectedAccounts.indexOf(i.account) >= 0; });
+    }
+    var incomeHtml = '';
+    if (incomeItems.length > 0) {
+      var incTotal = incomeItems.reduce(function(s, i) { return s + i.amount; }, 0);
+      incomeHtml = '<div class="rounded-4 p-3 mb-2" style="background:#d1fae5;">' +
+        '<div class="fw-semibold mb-1" style="font-size:13px;color:#065f46;">💰 Income arriving — £' + incTotal.toFixed(2) + ' total</div>' +
+        '<div class="vstack gap-1">' +
+        incomeItems.map(function(i) {
+          return '<div class="d-flex justify-content-between small" style="color:#047857;">' +
+            '<span>' + i.name + (i.account ? ' → ' + i.account : '') + '</span>' +
+            '<span class="fw-semibold">£' + i.amount.toFixed(2) + ' · ' + i.date + '</span>' +
+          '</div>';
+        }).join('') + '</div></div>';
+    }
+
+    var billItems = snapshotData.bills_due.slice();
+    if (selectedAccounts && selectedAccounts.length > 0) {
+      billItems = billItems.filter(function(i) { return selectedAccounts.indexOf(i.account) >= 0; });
+    }
+    var billsHtml = '';
+    if (billItems.length > 0) {
+      var billTotal = billItems.reduce(function(s, i) { return s + i.amount; }, 0);
+      billsHtml = '<div class="rounded-4 p-3 mb-2" style="background:#fde8e8;">' +
+        '<div class="fw-semibold mb-1" style="font-size:13px;color:#991b1b;">📋 Bills due — £' + billTotal.toFixed(2) + ' total</div>' +
+        '<div class="vstack gap-1">' +
+        billItems.map(function(i) {
+          return '<div class="d-flex justify-content-between small" style="color:#991b1b;">' +
+            '<span>' + i.name + (i.account ? ' (' + i.account + ')' : '') + '</span>' +
+            '<span class="fw-semibold">£' + i.amount.toFixed(2) + ' · ' + i.date + '</span>' +
+          '</div>';
+        }).join('') + '</div></div>';
+    }
+
+    if (accs.length === 0) {
+      resultsEl.innerHTML = '<div class="text-muted small text-center py-2">No accounts selected</div>';
+    } else {
+      resultsEl.innerHTML = cards + incomeHtml + billsHtml;
+    }
+  }
+
+  window.toggleSnapshotPill = function(accName) {
+    if (!selectedAccounts) selectedAccounts = [];
+    var idx = selectedAccounts.indexOf(accName);
+    if (idx >= 0) selectedAccounts.splice(idx, 1);
+    else selectedAccounts.push(accName);
+    if (selectedAccounts.length === 0) selectedAccounts = null;
+    updatePillStyles();
+    renderSnapshot();
+  };
+
+  window.toggleSnapshotAll = function() {
+    selectedAccounts = null;
+    updatePillStyles();
+    renderSnapshot();
+  };
+
+  function updatePillStyles() {
+    var allBtn = document.getElementById('snapshotPillAll');
+    var pills = document.querySelectorAll('.snap-pill');
+    if (!selectedAccounts) {
+      allBtn.className = 'btn btn-sm btn-dark rounded-pill';
+      pills.forEach(function(p) { p.className = 'btn btn-sm btn-outline-secondary rounded-pill snap-pill'; });
+    } else {
+      allBtn.className = 'btn btn-sm btn-outline-secondary rounded-pill';
+      pills.forEach(function(p) {
+        var active = selectedAccounts.indexOf(p.dataset.acc) >= 0;
+        p.className = 'btn btn-sm ' + (active ? 'btn-dark' : 'btn-outline-secondary') + ' rounded-pill snap-pill';
+      });
+    }
+  }
+
+  window.checkSnapshotAfford = function() {
+    if (!snapshotData) { affordResult.innerHTML = '<div class="text-muted small">Load a date first</div>'; return; }
+    var amount = parseFloat(document.getElementById('snapshotAffordInput').value);
+    if (!amount || amount <= 0) { affordResult.innerHTML = '<div class="text-danger small">Enter a valid amount</div>'; return; }
+
+    var accounts = snapshotData.accounts;
+    var accsToCheck = Object.keys(accounts).filter(function(a) {
+      var t = accounts[a].type;
+      return t === 'current' || t === 'cash';
+    });
+    if (selectedAccounts && selectedAccounts.length > 0) {
+      accsToCheck = accsToCheck.filter(function(a) { return selectedAccounts.indexOf(a) >= 0; });
+    }
+
+    var results = accsToCheck.map(function(name) {
+      var bal = accounts[name].balance_on_date;
+      var after = bal - amount;
+      return { name: name, after: after, safe: after >= 0 };
+    });
+
+    var safe = results.filter(function(r) { return r.safe; });
+    var best = safe.sort(function(a, b) { return b.after - a.after; })[0];
+
+    var headline;
+    if (best) {
+      headline = '<div class="rounded-4 p-3 mb-2" style="background:#d1fae5;">' +
+        '<div class="fw-bold" style="color:#065f46;">✅ Yes — use ' + best.name + '</div>' +
+        '<div class="small mt-1" style="color:#065f46;">Leaves £' + best.after.toFixed(2) + ' on ' + snapshotData.date + '</div>' +
+        '</div>';
+    } else {
+      var worst = results.slice().sort(function(a, b) { return b.after - a.after; })[0];
+      headline = '<div class="rounded-4 p-3 mb-2" style="background:#fde8e8;">' +
+        '<div class="fw-bold" style="color:#991b1b;">❌ Not safe on that date</div>' +
+        (worst ? '<div class="small mt-1" style="color:#991b1b;">You\'d need £' + Math.abs(worst.after).toFixed(2) + ' more in ' + worst.name + '</div>' : '') +
+        '</div>';
+    }
+
+    var perAcc = results.map(function(r) {
+      var badge = r.safe ? (r.after < 200 ? '⚠️ Tight' : '✅ Safe') : '❌ Risky';
+      var cls = r.safe ? (r.after < 200 ? 'text-bg-warning' : 'text-bg-success') : 'text-bg-danger';
+      return '<div class="border rounded-4 p-2 bg-white d-flex justify-content-between align-items-center">' +
+        '<span class="fw-semibold" style="font-size:13px;">' + r.name + '</span>' +
+        '<div class="text-end">' +
+          '<div class="small text-muted">After: £' + r.after.toFixed(2) + '</div>' +
+          '<span class="badge ' + cls + '">' + badge + '</span>' +
+        '</div></div>';
+    }).join('');
+
+    affordResult.innerHTML = headline + '<div class="vstack gap-2">' + perAcc + '</div>';
+  };
+
+  slider.addEventListener('input', function() {
+    dayLabel.textContent = 'Day ' + slider.value;
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(fetchSnapshot, 400);
+  });
+
+  fetchSnapshot();
+})();
+</script>
   
   <div class="card p-3 mb-4" id="accounts">
   <div class="d-flex justify-content-between align-items-center mb-2">

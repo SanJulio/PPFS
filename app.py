@@ -21,7 +21,7 @@ import random
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from flask import Flask, request, redirect, url_for, render_template
+from flask import Flask, request, redirect, url_for, render_template, jsonify
 from flask.sessions import SessionInterface, SessionMixin
 from werkzeug.datastructures import CallbackDict
 
@@ -1460,6 +1460,145 @@ def afford():
         recommendation=recommendation,
         monthly=calculate_monthly_spending(),
     )
+
+# --- FINANCIAL SNAPSHOT API ---
+# Returns projected balances, income arriving, and bills due up to a given number of days ahead.
+# Used by the Financial Position card on the home page.
+@app.get("/api/snapshot")
+@login_required
+def api_snapshot():
+    try:
+        days = int(request.args.get('days', 30))
+    except (ValueError, TypeError):
+        days = 30
+    days = max(1, min(90, days))
+
+    today = date.today()
+    target = today + timedelta(days=days)
+
+    from database import get_db, USE_POSTGRES
+    db = get_db()
+    cursor = db.cursor()
+
+    accounts_rows = get_active_accounts(current_user.id)
+    accounts = {}
+    for r in accounts_rows:
+        accounts[r["name"]] = {
+            "balance": float(r["balance"]),
+            "type": r["type"],
+        }
+
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = %s", (current_user.id,))
+    else:
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = ?", (current_user.id,))
+    cols = [d[0] for d in cursor.description]
+    scheduled = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM income WHERE user_id = %s", (current_user.id,))
+    else:
+        cursor.execute("SELECT * FROM income WHERE user_id = ?", (current_user.id,))
+    cols = [d[0] for d in cursor.description]
+    income_rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    if USE_POSTGRES:
+        cursor.execute(
+            "SELECT * FROM future_events WHERE user_id = %s AND date >= %s AND date <= %s",
+            (current_user.id, today.isoformat(), target.isoformat())
+        )
+    else:
+        cursor.execute(
+            "SELECT * FROM future_events WHERE user_id = ? AND date >= ? AND date <= ?",
+            (current_user.id, today.isoformat(), target.isoformat())
+        )
+    cols = [d[0] for d in cursor.description]
+    future_events_raw = [dict(zip(cols, row)) for row in cursor.fetchall()]
+    cursor.close()
+    release_db(db)
+
+    future_events = []
+    for e in future_events_raw:
+        try:
+            future_events.append({
+                "date": date.fromisoformat(str(e["date"])),
+                "name": e["name"],
+                "amount": float(e["amount"]),
+                "account": e["account"]
+            })
+        except (ValueError, KeyError):
+            continue
+
+    simulated = {name: float(info["balance"]) for name, info in accounts.items()}
+    income_arriving = []
+    bills_due = []
+
+    sim_day = today + timedelta(days=1)
+    while sim_day <= target:
+        day_str = f"{sim_day.day} {sim_day.strftime('%b')}"
+
+        # Income
+        for row in income_rows:
+            freq = row.get("frequency", "monthly")
+            acc = row.get("account", "")
+            amt = float(row["amount"])
+            applies = False
+            if freq == "monthly" and row.get("day") == sim_day.day:
+                applies = True
+            elif freq == "weekly" and sim_day.weekday() == 4:
+                applies = True
+            if applies:
+                income_arriving.append({"name": row["name"], "amount": amt, "date": day_str, "account": acc})
+                if acc in simulated:
+                    simulated[acc] += amt
+
+        # Scheduled expenses
+        for expense in scheduled:
+            exp_day = expense.get("day")
+            if exp_day is None:
+                continue
+            freq = expense.get("frequency", "monthly")
+            acc = expense.get("account", "")
+            amt = float(expense["amount"])
+            applies = False
+            if freq == "monthly" and exp_day == sim_day.day:
+                applies = True
+            elif freq == "yearly":
+                exp_month = expense.get("month")
+                if exp_day == sim_day.day and exp_month == sim_day.month:
+                    applies = True
+            if applies:
+                bills_due.append({"name": expense["name"], "amount": amt, "date": day_str, "account": acc})
+                if acc in simulated:
+                    simulated[acc] -= amt
+
+        # Future events
+        for event in future_events:
+            if event["date"] == sim_day:
+                acc = event["account"]
+                amt = float(event["amount"])
+                bills_due.append({"name": event["name"], "amount": amt, "date": day_str, "account": acc})
+                if acc in simulated:
+                    simulated[acc] -= amt
+
+        sim_day += timedelta(days=1)
+
+    return jsonify({
+        "date": f"{target.day} {target.strftime('%b %Y')}",
+        "days": days,
+        "accounts": {
+            name: {
+                "balance_today": round(accounts[name]["balance"], 2),
+                "balance_on_date": round(simulated[name], 2),
+                "change": round(simulated[name] - accounts[name]["balance"], 2),
+                "type": accounts[name]["type"]
+            }
+            for name in accounts
+        },
+        "income_arriving": income_arriving,
+        "bills_due": bills_due
+    })
+
 
 # --- SETTINGS PAGE ---
 # Plan (billing) and Danger zone only — day-to-day management moved to /manage
