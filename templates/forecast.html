@@ -355,7 +355,14 @@ function renderChart() {
         tip.style.display = 'block';
       },
       plugins: {
-        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 12 } } },
+        legend: {
+          position: 'bottom',
+          labels: { boxWidth: 12, font: { size: 12 } },
+          onClick: function(e, legendItem, legend) {
+            Chart.defaults.plugins.legend.onClick.call(legend.chart, e, legendItem, legend);
+            renderSummary();
+          }
+        },
         tooltip: {
           enabled: false
         },
@@ -507,7 +514,13 @@ function renderSummary() {
   var first = snapshots[0];
   var last = snapshots[snapshots.length - 1];
 
-  var cards = filteredAccounts().map(function(acc) {
+  var chartVisible = filteredAccounts().filter(function(acc) {
+    if (!chart) return true;
+    var dsIdx = chart.data.datasets.findIndex(function(ds) { return ds.label === acc; });
+    return dsIdx === -1 || chart.isDatasetVisible(dsIdx);
+  });
+
+  var cards = chartVisible.map(function(acc) {
     var i = accountNames.indexOf(acc);
     var endVal = last[acc];
     var startVal = first[acc];
