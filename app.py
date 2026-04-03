@@ -629,8 +629,8 @@ def home():
             "include_in_overview": accounts[n].get("include_in_overview", True)
         })
 
-    # Check if user has no accounts (show onboarding)
-    show_onboarding = len(active_accounts) == 0
+    # Check if user has no accounts (show onboarding), or manually triggered via ?onboarding=1
+    show_onboarding = len(active_accounts) == 0 or request.args.get('onboarding') == '1'
 
     return render_template(
         "index.html",
