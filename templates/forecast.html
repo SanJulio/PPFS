@@ -422,7 +422,6 @@ function showDayPanel(isoDate) {
 
   content.innerHTML = html;
   panel.style.display = 'block';
-  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function escHtml(str) {
@@ -853,7 +852,6 @@ function v2ShowDayPanel(isoDate) {
   html += '<button onclick="document.getElementById(\'v2DayPanel\').style.display=\'none\'" style="background:none;border:none;color:#aaa;font-size:12px;padding:8px 0 0 0;cursor:pointer;">✕ Close</button>';
   content.innerHTML = html;
   panel.style.display = 'block';
-  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 </script>
 <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>
