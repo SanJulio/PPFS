@@ -825,8 +825,8 @@ function closeOnboarding() {
   if (overlay) {
     overlay.style.display = 'none';
   }
-  // Reload page to show new account
-  location.reload();
+  // Navigate to / to strip any ?onboarding=1 param and reload fresh
+  window.location.href = '/';
 }
 </script>
 <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>
