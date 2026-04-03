@@ -1420,11 +1420,20 @@ def afford():
     )
 
 # --- SETTINGS PAGE ---
-# Loads all user data for the 5-tab settings page:
-# Accounts, Bills, Income, Savings Rules, Investments (+ Danger zone)
+# Plan (billing) and Danger zone only — day-to-day management moved to /manage
 @app.get("/settings")
 @login_required
 def settings():
+    track('page_view.settings')
+    is_pro = user_is_pro()
+    return render_template("settings.html",
+        is_pro=is_pro,
+        message=request.args.get("msg", "")
+    )
+
+@app.get("/manage")
+@login_required
+def manage():
     track('page_view.settings')
     from database import get_db, USE_POSTGRES
     db = get_db()
@@ -1451,7 +1460,7 @@ def settings():
 
     is_pro = user_is_pro()
 
-    return render_template("settings.html",
+    return render_template("manage.html",
         accounts=accounts,
         bills=bills,
         savings_rules=savings_rules,
@@ -1470,18 +1479,18 @@ def settings_add_account():
     balance = (request.form.get("balance") or "0").strip()
 
     if not name or not acc_type:
-        return redirect(url_for("settings", msg="Missing fields."))
+        return redirect(url_for("manage", msg="Missing fields."))
     try:
         balance = float(balance)
     except ValueError:
-        return redirect(url_for("settings", msg="Invalid balance."))
+        return redirect(url_for("manage", msg="Invalid balance."))
 
     # Free tier limit: max 3 accounts
     # Check current account count before inserting
     if not user_is_pro():
         existing = get_active_accounts(current_user.id)
         if len(existing) >= 3:
-            return redirect(url_for("settings", msg="FREE_LIMIT_ACCOUNTS"))
+            return redirect(url_for("manage", msg="FREE_LIMIT_ACCOUNTS"))
 
     db = get_db()
     cursor = db.cursor()
@@ -1492,7 +1501,7 @@ def settings_add_account():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg=f"Account '{name}' created."))
+    return redirect(url_for("manage", msg=f"Account '{name}' created."))
 
 @app.post("/settings/deactivate-account")
 @login_required
@@ -1507,7 +1516,7 @@ def settings_deactivate_account():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg=f"Account '{name}' deactivated."))
+    return redirect(url_for("manage", msg=f"Account '{name}' deactivated."))
 
 @app.post("/settings/edit-account")
 @login_required
@@ -1518,11 +1527,11 @@ def settings_edit_account():
     balance = (request.form.get("balance") or "").strip()
 
     if not name or not acc_type or not balance:
-        return redirect(url_for("settings", msg="Missing fields."))
+        return redirect(url_for("manage", msg="Missing fields."))
     try:
         balance = float(balance)
     except ValueError:
-        return redirect(url_for("settings", msg="Invalid balance."))
+        return redirect(url_for("manage", msg="Invalid balance."))
 
     db = get_db()
     cursor = db.cursor()
@@ -1533,7 +1542,7 @@ def settings_edit_account():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg="Account updated."))
+    return redirect(url_for("manage", msg="Account updated."))
 
 @app.post("/settings/add-bill")
 @login_required
@@ -1546,15 +1555,15 @@ def settings_add_bill():
     month_raw = (request.form.get("month") or "").strip()
 
     if not name or not amount or not day or not account:
-        return redirect(url_for("settings", msg="Missing fields."))
+        return redirect(url_for("manage", msg="Missing fields."))
     if frequency == "yearly" and not month_raw:
-        return redirect(url_for("settings", msg="Please select a month for yearly bills."))
+        return redirect(url_for("manage", msg="Please select a month for yearly bills."))
     amount, err = validate_amount(amount)
     if err:
-        return redirect(url_for("settings", msg=err))
+        return redirect(url_for("manage", msg=err))
     day, err = validate_day(day)
     if err:
-        return redirect(url_for("settings", msg=err))
+        return redirect(url_for("manage", msg=err))
     bill_month = int(month_raw) if month_raw and frequency == "yearly" else None
 
     db = get_db()
@@ -1566,7 +1575,7 @@ def settings_add_bill():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg=f"Bill '{name}' added."))
+    return redirect(url_for("manage", msg=f"Bill '{name}' added."))
 
 @app.post("/settings/edit-bill")
 @login_required
@@ -1580,13 +1589,13 @@ def settings_edit_bill():
     month_raw = (request.form.get("month") or "").strip()
 
     if not name or not amount or not day or not account:
-        return redirect(url_for("settings", msg="Missing fields."))
+        return redirect(url_for("manage", msg="Missing fields."))
     amount, err = validate_amount(amount)
     if err:
-        return redirect(url_for("settings", msg=err))
+        return redirect(url_for("manage", msg=err))
     day, err = validate_day(day)
     if err:
-        return redirect(url_for("settings", msg=err))
+        return redirect(url_for("manage", msg=err))
     bill_month = int(month_raw) if month_raw and frequency == "yearly" else None
 
     db = get_db()
@@ -1598,7 +1607,7 @@ def settings_edit_bill():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg="Bill updated."))
+    return redirect(url_for("manage", msg="Bill updated."))
 
 @app.post("/settings/delete-bill")
 @login_required
@@ -1613,7 +1622,7 @@ def settings_delete_bill():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg="Bill deleted."))
+    return redirect(url_for("manage", msg="Bill deleted."))
 
 @app.post("/settings/add-savings-rule")
 @login_required
@@ -1626,13 +1635,13 @@ def settings_add_savings_rule():
     to_account = (request.form.get("to_account") or "").strip()
 
     if not name or not amount or not from_account or not to_account:
-        return redirect(url_for("settings", msg="Missing fields."))
+        return redirect(url_for("manage", msg="Missing fields."))
     amount, err = validate_amount(amount)
     if err:
-        return redirect(url_for("settings", msg=err))
+        return redirect(url_for("manage", msg=err))
     day, err = validate_day(day)
     if err:
-        return redirect(url_for("settings", msg=err))
+        return redirect(url_for("manage", msg=err))
 
     db = get_db()
     cursor = db.cursor()
@@ -1643,7 +1652,7 @@ def settings_add_savings_rule():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg=f"Savings rule '{name}' added."))
+    return redirect(url_for("manage", msg=f"Savings rule '{name}' added."))
 
 @app.post("/settings/edit-savings-rule")
 @login_required
@@ -1657,13 +1666,13 @@ def settings_edit_savings_rule():
     to_account = (request.form.get("to_account") or "").strip()
 
     if not name or not amount or not from_account or not to_account:
-        return redirect(url_for("settings", msg="Missing fields."))
+        return redirect(url_for("manage", msg="Missing fields."))
     amount, err = validate_amount(amount)
     if err:
-        return redirect(url_for("settings", msg=err))
+        return redirect(url_for("manage", msg=err))
     day, err = validate_day(day)
     if err:
-        return redirect(url_for("settings", msg=err))
+        return redirect(url_for("manage", msg=err))
 
     db = get_db()
     cursor = db.cursor()
@@ -1674,7 +1683,7 @@ def settings_edit_savings_rule():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg="Savings rule updated."))
+    return redirect(url_for("manage", msg="Savings rule updated."))
 
 @app.post("/settings/delete-savings-rule")
 @login_required
@@ -1689,7 +1698,7 @@ def settings_delete_savings_rule():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg="Savings rule deleted."))
+    return redirect(url_for("manage", msg="Savings rule deleted."))
 
 @app.post("/settings/add-future-event")
 @login_required
@@ -1700,11 +1709,11 @@ def settings_add_future_event():
     account = (request.form.get("account") or "").strip()
 
     if not name or not amount or not date_input or not account:
-        return redirect(url_for("settings", msg="Missing fields."))
+        return redirect(url_for("manage", msg="Missing fields."))
     try:
         amount = float(amount)
     except ValueError:
-        return redirect(url_for("settings", msg="Invalid amount."))
+        return redirect(url_for("manage", msg="Invalid amount."))
 
     db = get_db()
     cursor = db.cursor()
@@ -1715,7 +1724,7 @@ def settings_add_future_event():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg=f"Future event '{name}' added."))
+    return redirect(url_for("manage", msg=f"Future event '{name}' added."))
 
 @app.post("/settings/edit-future-event")
 @login_required
@@ -1727,11 +1736,11 @@ def settings_edit_future_event():
     account = (request.form.get("account") or "").strip()
 
     if not name or not amount or not date_input or not account:
-        return redirect(url_for("settings", msg="Missing fields."))
+        return redirect(url_for("manage", msg="Missing fields."))
     try:
         amount = float(amount)
     except ValueError:
-        return redirect(url_for("settings", msg="Invalid amount."))
+        return redirect(url_for("manage", msg="Invalid amount."))
 
     db = get_db()
     cursor = db.cursor()
@@ -1742,7 +1751,7 @@ def settings_edit_future_event():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg="Future event updated."))
+    return redirect(url_for("manage", msg="Future event updated."))
 
 @app.post("/settings/add-income")
 @login_required
@@ -1754,11 +1763,11 @@ def settings_add_income():
     day_raw = (request.form.get("day") or "1").strip()
 
     if not name or not amount or not frequency or not account:
-        return redirect(url_for("settings", msg="Missing fields."))
+        return redirect(url_for("manage", msg="Missing fields."))
     try:
         amount = float(amount)
     except ValueError:
-        return redirect(url_for("settings", msg="Invalid amount."))
+        return redirect(url_for("manage", msg="Invalid amount."))
     try:
         day = max(1, min(31, int(day_raw)))
     except ValueError:
@@ -1773,7 +1782,7 @@ def settings_add_income():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg=f"Income source '{name}' added."))
+    return redirect(url_for("manage", msg=f"Income source '{name}' added."))
 
 @app.post("/settings/edit-income")
 @login_required
@@ -1786,11 +1795,11 @@ def settings_edit_income():
     day_raw = (request.form.get("day") or "1").strip()
 
     if not name or not amount or not frequency or not account:
-        return redirect(url_for("settings", msg="Missing fields."))
+        return redirect(url_for("manage", msg="Missing fields."))
     try:
         amount = float(amount)
     except ValueError:
-        return redirect(url_for("settings", msg="Invalid amount."))
+        return redirect(url_for("manage", msg="Invalid amount."))
     try:
         day = max(1, min(31, int(day_raw)))
     except ValueError:
@@ -1807,7 +1816,7 @@ def settings_edit_income():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg="Income updated."))
+    return redirect(url_for("manage", msg="Income updated."))
 
 @app.post("/settings/delete-income")
 @login_required
@@ -1822,7 +1831,7 @@ def settings_delete_income():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg="Income source deleted."))
+    return redirect(url_for("manage", msg="Income source deleted."))
 
 @app.post("/settings/add-investment")
 @login_required
@@ -1833,11 +1842,11 @@ def settings_add_investment():
     inv_date = (request.form.get("date") or "").strip()
 
     if not name or not inv_type or not initial_amount or not inv_date:
-        return redirect(url_for("settings", msg="Missing fields."))
+        return redirect(url_for("manage", msg="Missing fields."))
     try:
         initial_amount = float(initial_amount)
     except ValueError:
-        return redirect(url_for("settings", msg="Invalid amount."))
+        return redirect(url_for("manage", msg="Invalid amount."))
 
     db = get_db()
     cursor = db.cursor()
@@ -1850,7 +1859,7 @@ def settings_add_investment():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg=f"Investment '{name}' added."))
+    return redirect(url_for("manage", msg=f"Investment '{name}' added."))
 
 
 @app.post("/settings/delete-investment")
@@ -1868,7 +1877,7 @@ def settings_delete_investment():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg="Investment deleted."))
+    return redirect(url_for("manage", msg="Investment deleted."))
 
 
 @app.post("/actions/update-investment")
