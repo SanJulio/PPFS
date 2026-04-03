@@ -114,6 +114,7 @@ body { background: #f2f4f7; padding-bottom: 110px; }
     <div class="card p-3 mb-3" id="forecastChartCard">
       <div style="position:relative; height:280px; max-height:40vh;">
         <canvas id="forecastChart"></canvas>
+        <div id="v1Tooltip" style="position:absolute;display:none;z-index:100;background:#fff;border:1px solid #dee2e6;border-radius:10px;padding:10px 14px;font-size:12px;min-width:160px;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
       </div>
       <div class="chart-hint">Drag to scroll · Pinch or scroll wheel to zoom · Tap a day to see events</div>
       <div class="d-flex justify-content-center gap-2 mt-2">
@@ -318,10 +319,39 @@ function renderChart() {
       interaction: { mode: 'index', intersect: false },
       onClick: function(event, elements, chartRef) {
         var pts = chartRef.getElementsAtEventForMode(event, 'index', { intersect: false }, true);
-        if (pts.length > 0) {
-          var idx = pts[0].index;
-          showDayPanel(allSnapshots[idx].date);
-        }
+        var tip = document.getElementById('v1Tooltip');
+        if (pts.length === 0) { tip.style.display = 'none'; return; }
+        var idx = pts[0].index;
+        var snap = allSnapshots[idx];
+        showDayPanel(snap.date);
+
+        // Build click tooltip with account balances
+        var visible = filteredAccounts();
+        var total = 0;
+        var rows = '';
+        visible.forEach(function(acc) {
+          var val = snap[acc];
+          if (val !== undefined) {
+            total += val;
+            var colorIdx = accountNames.indexOf(acc);
+            var color = COLORS[colorIdx % COLORS.length];
+            rows += '<div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:3px;">' +
+              '<span style="color:#555;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + color + ';margin-right:5px;"></span>' + escHtml(acc) + '</span>' +
+              '<span style="font-weight:600;">£' + val.toLocaleString('en-GB', {minimumFractionDigits:2,maximumFractionDigits:2}) + '</span>' +
+              '</div>';
+          }
+        });
+        tip.innerHTML =
+          '<div style="font-size:11px;color:#888;margin-bottom:5px;">' + escHtml(snap.date) + '</div>' +
+          '<div style="font-weight:700;font-size:13px;margin-bottom:6px;">Net £' + total.toLocaleString('en-GB', {minimumFractionDigits:2,maximumFractionDigits:2}) + '</div>' +
+          rows;
+
+        var x = event.native.offsetX + 16;
+        var wrapW = tip.parentElement.clientWidth;
+        if (x + 175 > wrapW) x = event.native.offsetX - 185;
+        tip.style.left = Math.max(0, x) + 'px';
+        tip.style.top = Math.max(0, event.native.offsetY - 60) + 'px';
+        tip.style.display = 'block';
       },
       plugins: {
         legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 12 } } },
