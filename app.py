@@ -2888,10 +2888,34 @@ def billing_upgrade():
 
 # --- BILLING SUCCESS ---
 # User lands here after successful Stripe payment
-# The webhook will have already (or will soon) set is_pro=1 — this just shows a nice message
+# We verify the session directly here so is_pro=1 is set immediately (no webhook race condition)
+# The webhook still fires later and is a reliable backup
 @app.get("/billing/success")
 @login_required
 def billing_success():
+    session_id = request.args.get("session_id")
+    if session_id:
+        try:
+            checkout_session = stripe.checkout.Session.retrieve(session_id)
+            if checkout_session.payment_status in ("paid", "no_payment_required"):
+                customer_id = checkout_session.customer
+                db = get_db()
+                cursor = db.cursor()
+                if USE_POSTGRES:
+                    cursor.execute(
+                        "UPDATE users SET is_pro = 1, stripe_customer_id = %s WHERE id = %s",
+                        (customer_id, current_user.id)
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE users SET is_pro = 1, stripe_customer_id = ? WHERE id = ?",
+                        (customer_id, current_user.id)
+                    )
+                db.commit()
+                cursor.close()
+                release_db(db)
+        except Exception as e:
+            logger.error(f"Billing success session retrieval error: {e}")
     return redirect(url_for("settings", msg="You're now on Pro! Unlimited accounts unlocked."))
 
 
