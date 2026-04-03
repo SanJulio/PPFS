@@ -114,7 +114,7 @@ body { background: #f2f4f7; padding-bottom: 110px; }
     <div class="card p-3 mb-3" id="forecastChartCard">
       <div style="position:relative; height:280px; max-height:40vh;">
         <canvas id="forecastChart"></canvas>
-        <div id="v1Tooltip" style="position:absolute;display:none;z-index:100;background:#fff;border:1px solid #dee2e6;border-radius:10px;padding:10px 14px;font-size:12px;min-width:160px;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
+        <div id="v1Tooltip" onclick="this.style.display='none'" style="position:absolute;display:none;z-index:100;background:#fff;border:1px solid #dee2e6;border-radius:10px;padding:10px 14px;font-size:12px;min-width:160px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
       </div>
       <div class="chart-hint">Drag to scroll · Pinch or scroll wheel to zoom · Tap a day to see events</div>
       <div class="d-flex justify-content-center gap-2 mt-2">
