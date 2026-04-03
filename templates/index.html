@@ -115,6 +115,14 @@ input, select {
 }
 .amounts-visible .amount-private {
   filter: none;
+  visibility: visible;
+}
+body.privacy-invisible .amount-private {
+  filter: none;
+  visibility: hidden;
+}
+body.privacy-invisible .amounts-visible .amount-private {
+  visibility: visible;
 }
 </style>
 </head>
@@ -616,6 +624,19 @@ input, select {
 // Toggle button to show/hide financial figures
 const privateCards = [document.getElementById('overviewCard'), document.getElementById('spendingCard')];
 let amountsVisible = false;
+
+// Apply display prefs from settings
+(function() {
+  var disabled = localStorage.getItem('spendara_privacy_disabled') === '1';
+  var style = localStorage.getItem('spendara_privacy_style') || 'blur';
+  var btn = document.getElementById('toggleAmountsBtn');
+  if (style === 'invisible') document.body.classList.add('privacy-invisible');
+  if (disabled) {
+    if (btn) btn.style.display = 'none';
+    amountsVisible = true;
+    privateCards.forEach(c => c && c.classList.add('amounts-visible'));
+  }
+})();
 
 function toggleAmounts() {
   amountsVisible = !amountsVisible;

@@ -86,6 +86,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   <!-- TABS -->
   <div class="settings-tabs mb-4">
     <button class="tab-btn active" onclick="showTab('billing')">⭐ Plan</button>
+    <button class="tab-btn" onclick="showTab('display')">🖥️ Display</button>
     <button class="tab-btn" onclick="showTab('danger')">⚠️ Danger</button>
   </div>
 
@@ -121,6 +122,39 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         <div class="text-muted small text-center">Secure payment via Stripe. Cancel any time from your billing portal.</div>
       {% endif %}
 
+    </div>
+  </div>
+
+  <!-- TAB: DISPLAY -->
+  <div class="tab-section" id="tab-display">
+    <div class="card p-4 mb-4">
+      <h5 class="mb-1">Privacy Toggle</h5>
+      <p class="text-muted small mb-4">Control how the Show/Hide button works on the home page.</p>
+
+      <!-- Setting 1: disable the toggle entirely -->
+      <div class="d-flex justify-content-between align-items-center mb-4 pb-3" style="border-bottom:1px solid #f0f0f0;">
+        <div>
+          <div class="fw-semibold" style="font-size:15px;">Show/Hide button</div>
+          <div class="text-muted small mt-1">When off, figures are always visible and the button is hidden.</div>
+        </div>
+        <button id="privacyToggleBtn" onclick="toggleDisplaySetting('privacyToggle')"
+          class="btn btn-sm rounded-pill px-4 fw-semibold" style="min-width:70px;">
+        </button>
+      </div>
+
+      <!-- Setting 2: blur vs invisible -->
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <div class="fw-semibold" style="font-size:15px;">Hidden style</div>
+          <div class="text-muted small mt-1">How figures appear before you tap Show.</div>
+        </div>
+        <div class="d-flex gap-2">
+          <button id="styleBlurBtn" onclick="setPrivacyStyle('blur')"
+            class="btn btn-sm rounded-pill px-3 fw-semibold" style="min-width:70px;">Blur</button>
+          <button id="styleInvisBtn" onclick="setPrivacyStyle('invisible')"
+            class="btn btn-sm rounded-pill px-3 fw-semibold" style="min-width:80px;">Invisible</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -248,6 +282,41 @@ function showTab(name, btn) {
   document.getElementById('tab-' + name).classList.add('active');
   (btn || event.currentTarget).classList.add('active');
 }
+
+// --- Display settings (stored in localStorage) ---
+function renderDisplaySettings() {
+  var disabled = localStorage.getItem('spendara_privacy_disabled') === '1';
+  var style = localStorage.getItem('spendara_privacy_style') || 'blur';
+  var btn = document.getElementById('privacyToggleBtn');
+  if (btn) {
+    btn.textContent = disabled ? 'Off' : 'On';
+    btn.style.background = disabled ? '#e9ecef' : '#198754';
+    btn.style.color = disabled ? '#555' : 'white';
+    btn.style.border = 'none';
+  }
+  var blurBtn = document.getElementById('styleBlurBtn');
+  var invisBtn = document.getElementById('styleInvisBtn');
+  if (blurBtn && invisBtn) {
+    blurBtn.style.background = style === 'blur' ? '#111' : '#e9ecef';
+    blurBtn.style.color = style === 'blur' ? 'white' : '#555';
+    blurBtn.style.border = 'none';
+    invisBtn.style.background = style === 'invisible' ? '#111' : '#e9ecef';
+    invisBtn.style.color = style === 'invisible' ? 'white' : '#555';
+    invisBtn.style.border = 'none';
+  }
+}
+function toggleDisplaySetting(key) {
+  if (key === 'privacyToggle') {
+    var current = localStorage.getItem('spendara_privacy_disabled') === '1';
+    localStorage.setItem('spendara_privacy_disabled', current ? '0' : '1');
+  }
+  renderDisplaySettings();
+}
+function setPrivacyStyle(val) {
+  localStorage.setItem('spendara_privacy_style', val);
+  renderDisplaySettings();
+}
+renderDisplaySettings();
 
 // Auto-open tab from URL param (e.g. ?tab=danger after email mismatch redirect)
 (function() {
