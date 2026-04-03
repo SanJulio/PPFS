@@ -360,6 +360,7 @@ function renderChart() {
           labels: { boxWidth: 12, font: { size: 12 } },
           onClick: function(e, legendItem, legend) {
             Chart.defaults.plugins.legend.onClick.call(legend.chart, e, legendItem, legend);
+            renderWarnings();
             renderSummary();
           }
         },
@@ -492,7 +493,13 @@ function renderWarnings() {
   var box = document.getElementById('warnings');
   var issues = [];
 
-  filteredAccounts().forEach(function(acc) {
+  var warnVisible = filteredAccounts().filter(function(acc) {
+    if (!chart) return true;
+    var dsIdx = chart.data.datasets.findIndex(function(ds) { return ds.label === acc; });
+    return dsIdx === -1 || chart.isDatasetVisible(dsIdx);
+  });
+
+  warnVisible.forEach(function(acc) {
     var lowest = Math.min.apply(null, snapshots.map(function(s) { return s[acc]; }));
     if (lowest < 0) {
       var firstNeg = snapshots.find(function(s) { return s[acc] < 0; });
