@@ -325,11 +325,12 @@ function renderChart() {
         var snap = allSnapshots[idx];
         showDayPanel(snap.date);
 
-        // Build click tooltip with account balances
-        var visible = filteredAccounts();
+        // Build click tooltip with account balances (only visible/selected datasets)
         var total = 0;
         var rows = '';
-        visible.forEach(function(acc) {
+        chartRef.data.datasets.forEach(function(ds, dsIdx) {
+          if (!chartRef.isDatasetVisible(dsIdx)) return;
+          var acc = ds.label;
           var val = snap[acc];
           if (val !== undefined) {
             total += val;
