@@ -686,27 +686,25 @@ body.privacy-invisible .amounts-visible .amount-private {
       var chgBg = chg >= 0 ? '#d1fae5' : '#fde8e8';
       var balStyle = a.balance_on_date < 0 ? 'color:#991b1b;' : '';
 
-      // Income for this account, sorted by date
-      var accIncome = snapshotData.income_arriving.filter(function(i) { return i.account === name; })
-        .sort(function(a, b) { return a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0; });
-      // Bills for this account, sorted by date
-      var accBills = snapshotData.bills_due.filter(function(i) { return i.account === name; })
-        .sort(function(a, b) { return a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0; });
+      // Merge income and bills for this account, sorted by date
+      var accEvents = []
+        .concat(snapshotData.income_arriving.filter(function(i) { return i.account === name; }).map(function(i) { return {type:'income', item:i}; }))
+        .concat(snapshotData.bills_due.filter(function(i) { return i.account === name; }).map(function(i) { return {type:'bill', item:i}; }))
+        .sort(function(a, b) { return a.item.iso < b.item.iso ? -1 : a.item.iso > b.item.iso ? 1 : 0; });
 
-      var incRows = accIncome.map(function(i) {
-        return '<div class="d-flex justify-content-between" style="font-size:12px;color:#047857;padding:2px 0;">' +
-          '<span>💰 ' + i.name + '</span><span class="fw-semibold">+£' + i.amount.toFixed(2) + ' · ' + i.date + '</span>' +
+      var eventRows = accEvents.map(function(e) {
+        var isIncome = e.type === 'income';
+        var color = isIncome ? '#047857' : '#991b1b';
+        var icon = isIncome ? '💰' : '📋';
+        var sign = isIncome ? '+' : '−';
+        return '<div class="d-flex justify-content-between" style="font-size:12px;color:' + color + ';padding:2px 0;">' +
+          '<span>' + icon + ' ' + e.item.name + '</span>' +
+          '<span class="fw-semibold">' + sign + '£' + e.item.amount.toFixed(2) + ' · ' + e.item.date + '</span>' +
         '</div>';
       }).join('');
 
-      var billRows = accBills.map(function(i) {
-        return '<div class="d-flex justify-content-between" style="font-size:12px;color:#991b1b;padding:2px 0;">' +
-          '<span>📋 ' + i.name + '</span><span class="fw-semibold">−£' + i.amount.toFixed(2) + ' · ' + i.date + '</span>' +
-        '</div>';
-      }).join('');
-
-      var breakdown = (incRows || billRows)
-        ? '<div class="mt-2 pt-2 border-top">' + incRows + billRows + '</div>'
+      var breakdown = eventRows
+        ? '<div class="mt-2 pt-2 border-top">' + eventRows + '</div>'
         : '';
 
       return '<div class="border rounded-4 p-3 bg-white mb-2">' +
