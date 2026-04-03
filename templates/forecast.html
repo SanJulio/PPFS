@@ -84,7 +84,10 @@ body { background: #f2f4f7; padding-bottom: 110px; }
   </div>
 
   {% if message %}
-  <div class="alert rounded-4 mb-3" style="background:#d1fae5; border:none;">{{ message }}</div>
+  <div class="alert rounded-4 mb-3" style="background:#d1fae5; border:none; position:relative;">
+    <button onclick="this.closest('.alert').remove()" style="position:absolute;top:10px;right:12px;background:none;border:none;font-size:16px;line-height:1;color:#888;cursor:pointer;">✕</button>
+    {{ message }}
+  </div>
   {% endif %}
 
   <div class="d-flex gap-2 mb-4 flex-wrap">
@@ -509,10 +512,11 @@ function renderWarnings() {
     }
   });
 
+  var closeBtn = '<button onclick="this.closest(\'.alert\').remove()" style="position:absolute;top:10px;right:12px;background:none;border:none;font-size:16px;line-height:1;color:#888;cursor:pointer;">✕</button>';
   if (issues.length > 0) {
-    box.innerHTML = '<div class="alert rounded-4 mb-3" style="background:#fff3cd; border:none;"><div class="fw-bold mb-1">⚠️ Balance warnings</div>' + issues.map(function(i) { return '<div class="small">' + i + '</div>'; }).join('') + '</div>';
+    box.innerHTML = '<div class="alert rounded-4 mb-3" style="background:#fff3cd; border:none; position:relative;">' + closeBtn + '<div class="fw-bold mb-1">⚠️ Balance warnings</div>' + issues.map(function(i) { return '<div class="small">' + i + '</div>'; }).join('') + '</div>';
   } else {
-    box.innerHTML = '<div class="alert rounded-4 mb-3" style="background:#d1fae5; border:none;"><div class="fw-bold">✅ All accounts stay positive over the next 90 days</div></div>';
+    box.innerHTML = '<div class="alert rounded-4 mb-3" style="background:#d1fae5; border:none; position:relative;">' + closeBtn + '<div class="fw-bold">✅ All accounts stay positive over the next 90 days</div></div>';
   }
 }
 
