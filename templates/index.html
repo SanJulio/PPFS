@@ -858,8 +858,10 @@ document.getElementById('quickAddModal').addEventListener('click', function(e) {
 
 // ONBOARDING FUNCTIONS
 var onboardingAccountName = '';
+var currentOnboardingStep = 1;
 
 function onboardingStep(step) {
+  currentOnboardingStep = step;
   document.querySelectorAll('.onboarding-step').forEach(el => el.style.display = 'none');
   const stepEl = document.getElementById('step-' + step);
   if (stepEl) stepEl.style.display = 'block';
@@ -969,6 +971,27 @@ function closeOnboarding() {
   // Navigate to / to strip any ?onboarding=1 param and reload fresh
   window.location.href = '/';
 }
+
+// Swipe to navigate onboarding steps
+(function() {
+  var card = document.querySelector('#onboardingOverlay .card');
+  if (!card) return;
+  var touchStartX = 0;
+  card.addEventListener('touchstart', function(e) {
+    touchStartX = e.changedTouches[0].clientX;
+  }, { passive: true });
+  card.addEventListener('touchend', function(e) {
+    var dx = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(dx) < 50) return; // ignore small movements
+    if (dx < 0 && currentOnboardingStep < 5) {
+      // swipe left = next step (only step 1 is safe to auto-advance without form)
+      if (currentOnboardingStep === 1) onboardingStep(2);
+    } else if (dx > 0 && currentOnboardingStep > 1) {
+      // swipe right = previous step
+      onboardingStep(currentOnboardingStep - 1);
+    }
+  }, { passive: true });
+})();
 </script>
 <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>
 </body>
