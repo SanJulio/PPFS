@@ -869,6 +869,14 @@ def bills_pay():
     except ValueError:
         paid_date_str = date.today().isoformat()
 
+    amount_override_raw = (request.form.get("amount_override") or "").strip()
+    try:
+        override = float(amount_override_raw)
+        if override > 0:
+            bill["amount"] = round(override, 2)
+    except (ValueError, TypeError):
+        pass
+
     add_transaction(paid_date_str, bill["name"], -bill["amount"], bill["account"], current_user.id, type="bill")
     update_account_balance(bill["account"], -bill["amount"], current_user.id)
     bust_forecast_cache(current_user.id)
@@ -903,6 +911,14 @@ def income_pay():
         paid_date_str = date.fromisoformat(paid_date_raw).isoformat()
     except ValueError:
         paid_date_str = date.today().isoformat()
+
+    amount_override_raw = (request.form.get("amount_override") or "").strip()
+    try:
+        override = float(amount_override_raw)
+        if override > 0:
+            income["amount"] = round(override, 2)
+    except (ValueError, TypeError):
+        pass
 
     add_transaction(paid_date_str, income["name"], income["amount"], income["account"], current_user.id, type="income")
     update_account_balance(income["account"], income["amount"], current_user.id)

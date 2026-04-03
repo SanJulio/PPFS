@@ -398,6 +398,23 @@ function renderChart() {
   renderSummary();
 }
 
+function toggleFcstEdit(uid, defaultAmt) {
+  var lbl = document.getElementById('amtlbl_' + uid);
+  var inp = document.getElementById('amtinp_' + uid);
+  if (!lbl || !inp) return;
+  var editing = inp.style.display !== 'none';
+  if (editing) {
+    lbl.style.display = '';
+    inp.style.display = 'none';
+  } else {
+    inp.value = defaultAmt;
+    lbl.style.display = 'none';
+    inp.style.display = 'inline-block';
+    inp.focus();
+    inp.select();
+  }
+}
+
 function resetZoom() {
   if (chart) {
     chart.resetZoom();
@@ -417,13 +434,14 @@ function showDayPanel(isoDate) {
   if (items.length === 0) {
     html += '<div class="text-muted small">No scheduled bills or income on this day.</div>';
   } else {
-    items.forEach(function(item) {
+    items.forEach(function(item, i) {
       var isBill = item.type === 'bill';
       var icon = isBill ? '💸' : '💰';
       var btnClass = isBill ? 'btn-danger' : 'btn-success';
       var btnLabel = isBill ? 'Mark as Paid' : 'Mark as Received';
       var action = isBill ? '/flow/pay-bill' : '/flow/pay-income';
       var idField = isBill ? 'bill_id' : 'income_id';
+      var uid = 'fcst_' + isoDate.replace(/-/g,'') + '_' + i;
 
       html += '<div class="day-item">' +
         '<div>' +
@@ -432,12 +450,14 @@ function showDayPanel(isoDate) {
           '<span class="text-muted small ms-2">' + escHtml(item.account) + '</span>' +
         '</div>' +
         '<div class="d-flex align-items-center gap-2 flex-shrink-0">' +
-          '<span class="fw-bold money" style="font-size:14px;">' + (isBill ? '-' : '+') + '£' + item.amount.toFixed(2) + '</span>' +
+          '<span id="amtlbl_' + uid + '" class="fw-bold money" style="font-size:14px;">' + (isBill ? '-' : '+') + '£' + item.amount.toFixed(2) + '</span>' +
+          '<button type="button" class="btn btn-outline-secondary btn-sm rounded-3 px-2" style="font-size:12px;" onclick="toggleFcstEdit(\'' + uid + '\',' + item.amount.toFixed(2) + ')" title="Edit amount">✏️</button>' +
           '<form method="POST" action="' + action + '" style="margin:0;">' +
             '<input type="hidden" name="csrf_token" value="' + escHtml(CSRF_TOKEN) + '">' +
             '<input type="hidden" name="' + idField + '" value="' + item.id + '">' +
             '<input type="hidden" name="paid_date" value="' + item.date + '">' +
             '<input type="hidden" name="redirect_to" value="/forecast">' +
+            '<input type="number" id="amtinp_' + uid + '" name="amount_override" step="0.01" min="0.01" value="' + item.amount.toFixed(2) + '" style="display:none;width:80px;" class="form-control form-control-sm d-inline-block">' +
             '<button type="submit" class="btn ' + btnClass + ' btn-sm rounded-3" style="font-size:12px; white-space:nowrap;">' + btnLabel + '</button>' +
           '</form>' +
         '</div>' +
