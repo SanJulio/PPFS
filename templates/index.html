@@ -686,10 +686,12 @@ body.privacy-invisible .amounts-visible .amount-private {
       var chgBg = chg >= 0 ? '#d1fae5' : '#fde8e8';
       var balStyle = a.balance_on_date < 0 ? 'color:#991b1b;' : '';
 
-      // Income for this account
-      var accIncome = snapshotData.income_arriving.filter(function(i) { return i.account === name; });
-      // Bills for this account
-      var accBills = snapshotData.bills_due.filter(function(i) { return i.account === name; });
+      // Income for this account, sorted by date
+      var accIncome = snapshotData.income_arriving.filter(function(i) { return i.account === name; })
+        .sort(function(a, b) { return a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0; });
+      // Bills for this account, sorted by date
+      var accBills = snapshotData.bills_due.filter(function(i) { return i.account === name; })
+        .sort(function(a, b) { return a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0; });
 
       var incRows = accIncome.map(function(i) {
         return '<div class="d-flex justify-content-between" style="font-size:12px;color:#047857;padding:2px 0;">' +

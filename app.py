@@ -1548,7 +1548,7 @@ def api_snapshot():
             elif freq == "weekly" and sim_day.weekday() == 4:
                 applies = True
             if applies:
-                income_arriving.append({"name": row["name"], "amount": amt, "date": day_str, "account": acc})
+                income_arriving.append({"name": row["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc})
                 if acc in simulated:
                     simulated[acc] += amt
 
@@ -1568,7 +1568,7 @@ def api_snapshot():
                 if exp_day == sim_day.day and exp_month == sim_day.month:
                     applies = True
             if applies:
-                bills_due.append({"name": expense["name"], "amount": amt, "date": day_str, "account": acc})
+                bills_due.append({"name": expense["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc})
                 if acc in simulated:
                     simulated[acc] -= amt
 
