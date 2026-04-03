@@ -906,6 +906,7 @@ def income_pay():
 
     add_transaction(paid_date_str, income["name"], income["amount"], income["account"], current_user.id, type="income")
     update_account_balance(income["account"], income["amount"], current_user.id)
+    bust_forecast_cache(current_user.id)
     track('action.receive_income')
     redirect_to = request.form.get("redirect_to") or url_for("flow")
     return redirect(f"{redirect_to}?msg={income['name']}+—+£{income['amount']:.2f}+received.")

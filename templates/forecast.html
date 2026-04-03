@@ -409,7 +409,7 @@ function showDayPanel(isoDate) {
             '<input type="hidden" name="csrf_token" value="' + escHtml(CSRF_TOKEN) + '">' +
             '<input type="hidden" name="' + idField + '" value="' + item.id + '">' +
             '<input type="hidden" name="paid_date" value="' + item.date + '">' +
-            '<input type="hidden" name="redirect_to" value="/forecast?refresh=1">' +
+            '<input type="hidden" name="redirect_to" value="/forecast">' +
             '<button type="submit" class="btn ' + btnClass + ' btn-sm rounded-3" style="font-size:12px; white-space:nowrap;">' + btnLabel + '</button>' +
           '</form>' +
         '</div>' +
@@ -842,7 +842,7 @@ function v2ShowDayPanel(isoDate) {
             '<input type="hidden" name="csrf_token" value="' + escHtml(CSRF_TOKEN) + '">' +
             '<input type="hidden" name="' + idField + '" value="' + item.id + '">' +
             '<input type="hidden" name="paid_date" value="' + item.date + '">' +
-            '<input type="hidden" name="redirect_to" value="/forecast?refresh=1">' +
+            '<input type="hidden" name="redirect_to" value="/forecast">' +
             '<button type="submit" class="btn ' + btnClass + ' btn-sm rounded-3" style="font-size:12px;white-space:nowrap;">' + btnLabel + '</button>' +
           '</form>' +
         '</div>' +
