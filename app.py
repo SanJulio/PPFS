@@ -460,7 +460,6 @@ def calculate_financial_overview(accounts):
             continue
         freq = expense.get("frequency") or "monthly"
         if freq == "yearly":
-            # Only show yearly bills that fall this month
             if expense.get("month") != current_month:
                 continue
         if expense["day"] > current_day:
@@ -474,12 +473,54 @@ def calculate_financial_overview(accounts):
                     "account": expense["account"]
                 })
 
-    safe_spending = spending_balance - spending_future_bills
+    # --- Pending income arriving later this month ---
+    # Accounts for mid-month or end-of-month pay days so safe_spending is accurate
+    future_income = 0.0
+    future_income_list = []
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        if USE_POSTGRES:
+            cursor.execute("SELECT name, amount, frequency, account, day FROM income WHERE user_id = %s", (current_user.id,))
+        else:
+            cursor.execute("SELECT name, amount, frequency, account, day FROM income WHERE user_id = ?", (current_user.id,))
+        cols = [d[0] for d in cursor.description]
+        income_rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+        cursor.close()
+        release_db(db)
+
+        import calendar as _cal
+        days_in_month = _cal.monthrange(today.year, today.month)[1]
+
+        for inc in income_rows:
+            freq = inc.get("frequency") or "monthly"
+            acc = inc.get("account") or ""
+            amount = float(inc.get("amount") or 0)
+            if freq == "monthly":
+                day = int(inc.get("day") or 1)
+                if day > current_day:
+                    future_income += amount
+                    future_income_list.append({"name": inc["name"], "amount": amount, "day": day})
+            elif freq == "weekly":
+                # Count how many weekly payments fall on remaining days this month
+                day = int(inc.get("day") or 1)  # day of week (1=Mon, 7=Sun) — stored as day of month for weekly
+                # For weekly, count remaining full weeks
+                remaining_days = days_in_month - current_day
+                weekly_count = remaining_days // 7
+                if weekly_count > 0:
+                    future_income += amount * weekly_count
+                    future_income_list.append({"name": inc["name"], "amount": amount * weekly_count, "day": current_day + 7})
+    except Exception as e:
+        logger.debug(f"Could not load future income for overview: {e}")
+
+    safe_spending = spending_balance - spending_future_bills + future_income
     net_worth = spending_balance + savings_balance
 
     return {
         "spending_balance": spending_balance,
         "future_bills": spending_future_bills,
+        "future_income": future_income,
+        "future_income_list": sorted(future_income_list, key=lambda x: x["day"]),
         "safe_spending": safe_spending,
         "savings_balance": savings_balance,
         "net_worth": net_worth,

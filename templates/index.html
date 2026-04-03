@@ -448,7 +448,16 @@ body.privacy-invisible .amounts-visible .amount-private {
         <div class="fs-4 fw-bold text-success amount-private">£{{ "%.2f"|format(overview.safe_spending) }}</div>
       </div>
       <div id="tile-safe" class="d-none mt-2 px-1">
-        <div class="small text-muted py-1">Available (<span class="amount-private">£{{ "%.2f"|format(overview.spending_balance) }}</span>) minus Bills left (<span class="amount-private">£{{ "%.2f"|format(overview.future_bills) }}</span>)</div>
+        <div class="small text-muted py-1">
+          Available <span class="amount-private">£{{ "%.2f"|format(overview.spending_balance) }}</span>
+          {% if overview.future_income > 0 %}
+          + Income due <span class="amount-private">£{{ "%.2f"|format(overview.future_income) }}</span>
+          {% for inc in overview.future_income_list %}
+          <div class="ps-2">↳ {{ inc.name }} £{{ "%.2f"|format(inc.amount) }} (day {{ inc.day }})</div>
+          {% endfor %}
+          {% endif %}
+          − Bills left <span class="amount-private">£{{ "%.2f"|format(overview.future_bills) }}</span>
+        </div>
       </div>
     </div>
 
