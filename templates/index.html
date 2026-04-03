@@ -139,6 +139,8 @@ body.privacy-invisible .amounts-visible .amount-private {
         <div id="dot-1" style="width:10px; height:10px; border-radius:50%; background:#111; transition:background 0.2s;"></div>
         <div id="dot-2" style="width:10px; height:10px; border-radius:50%; background:#ddd; transition:background 0.2s;"></div>
         <div id="dot-3" style="width:10px; height:10px; border-radius:50%; background:#ddd; transition:background 0.2s;"></div>
+        <div id="dot-4" style="width:10px; height:10px; border-radius:50%; background:#ddd; transition:background 0.2s;"></div>
+        <div id="dot-5" style="width:10px; height:10px; border-radius:50%; background:#ddd; transition:background 0.2s;"></div>
       </div>
       <!-- Step 1: Welcome -->
       <div id="step-1" class="onboarding-step">
@@ -204,34 +206,87 @@ body.privacy-invisible .amounts-visible .amount-private {
         <button type="button" class="btn btn-link text-muted w-100 mt-2" onclick="onboardingStep(1)">← Back</button>
       </div>
 
-      <!-- Step 3: Success -->
+      <!-- Step 3: Add Income -->
       <div id="step-3" class="onboarding-step" style="display: none;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="font-size: 48px; margin-bottom: 12px;">💰</div>
+          <h3 class="fw-bold">Add your income</h3>
+          <p class="text-muted">So Spendara can forecast your future balance</p>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Income name</label>
+          <input class="form-control" id="obIncomeName" placeholder="e.g. Salary">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Amount (£)</label>
+          <input class="form-control" id="obIncomeAmount" inputmode="decimal" placeholder="e.g. 2000">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Frequency</label>
+          <select class="form-select" id="obIncomeFreq" onchange="document.getElementById('obIncomeDayRow').style.display=this.value==='monthly'?'':'none'">
+            <option value="monthly">Monthly</option>
+            <option value="weekly">Weekly</option>
+          </select>
+        </div>
+        <div class="mb-3" id="obIncomeDayRow">
+          <label class="form-label">Day of month received</label>
+          <input class="form-control" id="obIncomeDay" type="number" min="1" max="31" placeholder="e.g. 25">
+        </div>
+        <button type="button" class="btn btn-dark w-100 py-3" onclick="createOnboardingIncome(this)">Add income →</button>
+        <button type="button" class="btn btn-link text-muted w-100 mt-2" onclick="onboardingStep(4)">Skip →</button>
+      </div>
+
+      <!-- Step 4: Add a Bill -->
+      <div id="step-4" class="onboarding-step" style="display: none;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="font-size: 48px; margin-bottom: 12px;">📋</div>
+          <h3 class="fw-bold">Add a bill</h3>
+          <p class="text-muted">e.g. Netflix, rent, gym — anything recurring</p>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Bill name</label>
+          <input class="form-control" id="obBillName" placeholder="e.g. Netflix">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Amount (£)</label>
+          <input class="form-control" id="obBillAmount" inputmode="decimal" placeholder="e.g. 15">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Day of month it's due</label>
+          <input class="form-control" id="obBillDay" type="number" min="1" max="31" placeholder="e.g. 1">
+        </div>
+        <button type="button" class="btn btn-dark w-100 py-3" onclick="createOnboardingBill(this)">Add bill →</button>
+        <button type="button" class="btn btn-link text-muted w-100 mt-2" onclick="onboardingStep(5)">Skip →</button>
+      </div>
+
+      <!-- Step 5: Success -->
+      <div id="step-5" class="onboarding-step" style="display: none;">
         <div style="text-align: center; margin-bottom: 24px;">
           <div style="font-size: 48px; margin-bottom: 12px;">✨</div>
           <h3 class="fw-bold">You're all set!</h3>
-          <p class="text-muted">Your account is ready</p>
+          <p class="text-muted">Spendara is ready to forecast your future</p>
         </div>
         <p class="mb-3">Next steps:</p>
         <div class="mb-4">
           <div class="d-flex gap-2 mb-2">
             <div class="fw-semibold">1.</div>
             <div>
-              <div class="fw-semibold">Add your first transaction</div>
-              <div class="small text-muted">Go to Actions tab</div>
+              <div class="fw-semibold">Check your forecast</div>
+              <div class="small text-muted">See 90 days ahead</div>
             </div>
           </div>
           <div class="d-flex gap-2 mb-2">
             <div class="fw-semibold">2.</div>
             <div>
-              <div class="fw-semibold">Set up your bills</div>
-              <div class="small text-muted">In Account settings</div>
+              <div class="fw-semibold">Log transactions as you spend</div>
+              <div class="small text-muted">Tap + from the home screen</div>
             </div>
           </div>
           <div class="d-flex gap-2">
             <div class="fw-semibold">3.</div>
             <div>
-              <div class="fw-semibold">Check your forecast</div>
-              <div class="small text-muted">See 90 days ahead</div>
+              <div class="fw-semibold">Add more bills &amp; income</div>
+              <div class="small text-muted">In the Manage tab</div>
             </div>
           </div>
         </div>
@@ -250,6 +305,13 @@ body.privacy-invisible .amounts-visible .amount-private {
     <div class="d-flex justify-content-between align-items-center mb-3">
       <span class="fw-bold" style="font-size:16px;">Quick Add</span>
       <button onclick="closeQuickAdd()" style="background:none;border:none;font-size:20px;color:#aaa;cursor:pointer;">✕</button>
+    </div>
+    <!-- Quick shortcuts -->
+    <div class="d-flex gap-2 mb-3 flex-wrap">
+      <button onclick="quickFill(5, 'Coffee', 'Food & Drink')" class="btn btn-outline-secondary btn-sm rounded-pill" style="font-size:12px;">☕ £5</button>
+      <button onclick="quickFill(10, 'Lunch', 'Food & Drink')" class="btn btn-outline-secondary btn-sm rounded-pill" style="font-size:12px;">🍱 £10</button>
+      <button onclick="quickFill(20, 'Groceries', 'Food & Drink')" class="btn btn-outline-secondary btn-sm rounded-pill" style="font-size:12px;">🛒 £20</button>
+      <button onclick="quickFill(50, 'Fuel', 'Transport')" class="btn btn-outline-secondary btn-sm rounded-pill" style="font-size:12px;">⛽ £50</button>
     </div>
     <!-- Expense / Income toggle -->
     <div class="d-flex gap-2 mb-3">
@@ -303,7 +365,7 @@ body.privacy-invisible .amounts-visible .amount-private {
   <a href="/calendar" class="text-decoration-none">
     <div class="card p-3 mb-3 d-flex flex-row align-items-center justify-content-between" style="background:#111; color:#fff; border-radius:16px;">
       <div>
-        <div class="fw-bold" style="font-size:15px;">You've spent £{{ "%.2f"|format(today_spent) }} today</div>
+        <div class="fw-bold" style="font-size:15px;">£{{ "%.2f"|format(today_spent) }} spent · £{{ "%.0f"|format(overview.safe_spending) }} safe to spend</div>
         <div class="small" style="color:#aaa;">{{ today_count }} transaction{{ 's' if today_count != 1 else '' }} — tap to see calendar</div>
       </div>
       <div style="font-size:22px;">📅</div>
@@ -313,12 +375,32 @@ body.privacy-invisible .amounts-visible .amount-private {
   <a href="/calendar" class="text-decoration-none">
     <div class="card p-3 mb-3 d-flex flex-row align-items-center justify-content-between" style="border-radius:16px;">
       <div>
-        <div class="fw-bold" style="font-size:15px;">Nothing logged today yet</div>
-        <div class="small text-muted">Tap + to add an expense — or view calendar</div>
+        <div class="fw-bold" style="font-size:15px;">£{{ "%.0f"|format(overview.safe_spending) }} safe to spend today</div>
+        <div class="small text-muted">Nothing logged yet — tap + to add an expense</div>
       </div>
       <div style="font-size:22px;">📅</div>
     </div>
   </a>
+  {% endif %}
+
+  {% if balances %}
+  {% if overview.safe_spending > 500 %}
+  <div class="mb-3 px-1 py-2 rounded-4 d-flex align-items-center gap-2" style="background:#d1fae5; font-size:14px; font-weight:600; color:#065f46; padding-left:14px!important; padding-right:14px!important;">
+    ✅ You're on track this month
+  </div>
+  {% elif overview.safe_spending > 100 %}
+  <div class="mb-3 px-1 py-2 rounded-4 d-flex align-items-center gap-2" style="background:#fff3cd; font-size:14px; font-weight:600; color:#856404; padding-left:14px!important; padding-right:14px!important;">
+    ⚠️ Looking tight this month
+  </div>
+  {% elif overview.safe_spending >= 0 %}
+  <div class="mb-3 px-1 py-2 rounded-4 d-flex align-items-center gap-2" style="background:#ffe8cc; font-size:14px; font-weight:600; color:#7c3c00; padding-left:14px!important; padding-right:14px!important;">
+    ⚠️ Very tight — watch your spending
+  </div>
+  {% else %}
+  <div class="mb-3 px-1 py-2 rounded-4 d-flex align-items-center gap-2" style="background:#fde8e8; font-size:14px; font-weight:600; color:#991b1b; padding-left:14px!important; padding-right:14px!important;">
+    ❌ Overspending this month
+  </div>
+  {% endif %}
   {% endif %}
 
   {% if not user_verified %}
@@ -522,7 +604,23 @@ body.privacy-invisible .amounts-visible .amount-private {
   {% if afford_results %}
     <hr class="my-3">
 
-    <div class="small text-muted mb-2">Results</div>
+    {% set safe_results = afford_results | selectattr('negative', 'equalto', false) | list %}
+    {% set best = safe_results | sort(attribute='lowest') | last if safe_results else None %}
+
+    {% if best %}
+    <div class="rounded-4 p-3 mb-3" style="background:#d1fae5;">
+      <div class="fw-bold" style="font-size:16px; color:#065f46;">✅ Yes — use {{ best.account }}</div>
+      <div class="small mt-1" style="color:#065f46;">Leaves you with £{{ "%.2f"|format(best.lowest) }} buffer at lowest point</div>
+    </div>
+    {% else %}
+    <div class="rounded-4 p-3 mb-3" style="background:#fde8e8;">
+      <div class="fw-bold" style="font-size:16px; color:#991b1b;">❌ Not safe right now</div>
+      {% set worst = afford_results | sort(attribute='lowest') | last %}
+      {% if worst %}
+      <div class="small mt-1" style="color:#991b1b;">Safe alternative: try £{{ "%.0f"|format([worst.lowest + afford_amount, 0] | max) }} or less</div>
+      {% endif %}
+    </div>
+    {% endif %}
 
     <div class="vstack gap-2">
       {% for r in afford_results %}
@@ -530,22 +628,20 @@ body.privacy-invisible .amounts-visible .amount-private {
           <div class="d-flex justify-content-between align-items-center">
             <div class="fw-semibold">{{ r.account }}</div>
             {% if r.negative %}
-              <span class="badge text-bg-danger">Risk</span>
+              <span class="badge text-bg-danger">❌ Risky</span>
+            {% elif r.lowest < 200 %}
+              <span class="badge text-bg-warning">⚠️ Tight</span>
             {% else %}
-              <span class="badge text-bg-success">Safe</span>
+              <span class="badge text-bg-success">✅ Safe</span>
             {% endif %}
           </div>
-
           <div class="small text-muted mt-2">
-            After purchase: <span class="money">£{{ "%.2f"|format(r.after) }}</span><br>
-            Lowest predicted: <span class="money">£{{ "%.2f"|format(r.lowest) }}</span>
+            After purchase: <span class="money fw-semibold">£{{ "%.2f"|format(r.after) }}</span> &nbsp;·&nbsp;
+            Lowest: <span class="money {% if r.lowest < 0 %}text-danger{% endif %}">£{{ "%.2f"|format(r.lowest) }}</span>
           </div>
         </div>
       {% endfor %}
     </div>
-
-    <div class="mt-3 small text-muted">Recommendation</div>
-    <div class="fw-bold">{{ recommendation }}</div>
   {% endif %}
 </div>
   
@@ -571,7 +667,13 @@ body.privacy-invisible .amounts-visible .amount-private {
             <td>
               <span class="ellipsis d-inline-block">{{ row.name }}</span>
             </td>
-            <td class="text-end money">£{{ "%.2f"|format(row.balance) }}</td>
+            <td class="text-end money">
+              £{{ "%.2f"|format(row.balance) }}
+              {% if row.balance <= 0 %}<span class="badge ms-1" style="background:#fde8e8;color:#991b1b;font-size:10px;">🔴 At risk</span>
+              {% elif row.balance <= 100 %}<span class="badge ms-1" style="background:#ffe8cc;color:#7c3c00;font-size:10px;">🟠 Low</span>
+              {% elif row.balance <= 500 %}<span class="badge ms-1" style="background:#fff3cd;color:#856404;font-size:10px;">🟡 Tight</span>
+              {% endif %}
+            </td>
             <td class="text-end">
               <span class="badge {% if row.type == 'current' %}text-bg-primary{% elif row.type == 'savings' %}text-bg-success{% elif row.type == 'cash' %}text-bg-warning{% else %}text-bg-light{% endif %}">{{ row.type }}</span>
             </td>
@@ -685,6 +787,17 @@ function closeQuickAdd() {
   document.getElementById('quickAddModal').style.display = 'none';
 }
 
+function quickFill(amount, desc, category) {
+  document.getElementById('qa-amount').value = amount;
+  document.getElementById('qa-description').value = desc;
+  var catEl = document.getElementById('qa-category');
+  if (catEl && category) {
+    for (var i = 0; i < catEl.options.length; i++) {
+      if (catEl.options[i].value === category) { catEl.selectedIndex = i; break; }
+    }
+  }
+}
+
 function setQaType(type) {
   qaType = type;
   var expBtn = document.getElementById('qa-expense-btn');
@@ -753,12 +866,15 @@ document.getElementById('quickAddModal').addEventListener('click', function(e) {
 });
 
 // ONBOARDING FUNCTIONS
+var onboardingAccountName = '';
+
 function onboardingStep(step) {
   document.querySelectorAll('.onboarding-step').forEach(el => el.style.display = 'none');
   const stepEl = document.getElementById('step-' + step);
   if (stepEl) stepEl.style.display = 'block';
-  [1, 2, 3].forEach(i => {
-    document.getElementById('dot-' + i).style.background = i === step ? '#111' : '#ddd';
+  [1, 2, 3, 4, 5].forEach(i => {
+    var dot = document.getElementById('dot-' + i);
+    if (dot) dot.style.background = i === step ? '#111' : '#ddd';
   });
 }
 
@@ -807,7 +923,7 @@ function createOnboardingAccount(btn) {
   })
   .then(response => {
     if (response.ok) {
-      // Success - show step 3
+      onboardingAccountName = name;
       onboardingStep(3);
     } else {
       throw new Error('Failed to create account');
@@ -819,6 +935,39 @@ function createOnboardingAccount(btn) {
     btn.textContent = originalText;
     alert('Failed to create account. Please check your details and try again.');
   });
+}
+
+function createOnboardingIncome(btn) {
+  const name = document.getElementById('obIncomeName').value.trim();
+  const amount = document.getElementById('obIncomeAmount').value.trim();
+  const freq = document.getElementById('obIncomeFreq').value;
+  const day = document.getElementById('obIncomeDay').value.trim() || '1';
+  if (!name || !amount) { alert('Please fill in name and amount'); return; }
+  btn.disabled = true; btn.textContent = 'Adding...';
+  const fd = new URLSearchParams();
+  fd.append('csrf_token', HOME_CSRF);
+  fd.append('name', name); fd.append('amount', amount);
+  fd.append('frequency', freq); fd.append('account', onboardingAccountName);
+  fd.append('day', day);
+  fetch('/settings/add-income', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: fd.toString(), redirect: 'follow' })
+    .then(r => { onboardingStep(4); })
+    .catch(() => { onboardingStep(4); });
+}
+
+function createOnboardingBill(btn) {
+  const name = document.getElementById('obBillName').value.trim();
+  const amount = document.getElementById('obBillAmount').value.trim();
+  const day = document.getElementById('obBillDay').value.trim();
+  if (!name || !amount || !day) { alert('Please fill in all fields'); return; }
+  btn.disabled = true; btn.textContent = 'Adding...';
+  const fd = new URLSearchParams();
+  fd.append('csrf_token', HOME_CSRF);
+  fd.append('name', name); fd.append('amount', amount);
+  fd.append('day', day); fd.append('account', onboardingAccountName);
+  fd.append('frequency', 'monthly');
+  fetch('/settings/add-bill', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: fd.toString(), redirect: 'follow' })
+    .then(r => { onboardingStep(5); })
+    .catch(() => { onboardingStep(5); });
 }
 
 function closeOnboarding() {

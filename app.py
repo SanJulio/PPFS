@@ -1415,6 +1415,7 @@ def afford():
         balances=[{"name":a,"balance":accounts[a]["balance"],"type":accounts[a]["type"]} for a in accounts if accounts[a]["active"]],
         overview=calculate_financial_overview(accounts),
         afford_results=results,
+        afford_amount=amount,
         recommendation=recommendation,
         monthly=calculate_monthly_spending(),
     )

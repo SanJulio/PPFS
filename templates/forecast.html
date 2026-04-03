@@ -95,8 +95,10 @@ body { background: #f2f4f7; padding-bottom: 110px; }
     <button class="btn btn-outline-secondary btn-filter" id="filterCurrent" onclick="setFilter('current', this)">Current</button>
     <button class="btn btn-outline-secondary btn-filter" id="filterSavings" onclick="setFilter('savings', this)">Savings</button>
     <button class="btn btn-outline-secondary btn-filter" id="filterCash" onclick="setFilter('cash', this)">Cash</button>
+    <button class="btn btn-outline-warning btn-filter ms-auto" id="filterRisky" onclick="toggleRiskyFilter(this)">⚠️ At risk only</button>
   </div>
 
+  <div id="insightsStrip"></div>
   <div id="warnings"></div>
 
   <div id="forecastEmpty" class="card p-5 text-center text-muted mb-4 d-none">
@@ -202,6 +204,7 @@ var COLORS = [
 
 var chart = null;
 var currentFilter = 'all';
+var riskyFilter = false;
 var allSnapshots = [];
 
 // Index upcoming items by date for fast lookup
@@ -217,14 +220,24 @@ if (accountNames.length === 0) {
 }
 
 function filteredAccounts() {
-  if (currentFilter === 'all') return accountNames;
-  return accountNames.filter(function(name) { return accountTypes[name] === currentFilter; });
+  var base = currentFilter === 'all' ? accountNames : accountNames.filter(function(name) { return accountTypes[name] === currentFilter; });
+  if (!riskyFilter) return base;
+  return base.filter(function(name) {
+    return snapshots.length > 0 && Math.min.apply(null, snapshots.map(function(s) { return s[name] !== undefined ? s[name] : 0; })) < 0;
+  });
 }
 
 function setFilter(type, btn) {
   document.querySelectorAll('#filterAll,#filterCurrent,#filterSavings,#filterCash').forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
   currentFilter = type;
+  renderChart();
+  if (v2Initialised) { v2ApplyFilter(); }
+}
+
+function toggleRiskyFilter(btn) {
+  riskyFilter = !riskyFilter;
+  btn.classList.toggle('active', riskyFilter);
   renderChart();
   if (v2Initialised) { v2ApplyFilter(); }
 }
@@ -363,6 +376,7 @@ function renderChart() {
           labels: { boxWidth: 12, font: { size: 12 } },
           onClick: function(e, legendItem, legend) {
             Chart.defaults.plugins.legend.onClick.call(legend.chart, e, legendItem, legend);
+            renderInsights();
             renderWarnings();
             renderSummary();
           }
@@ -406,6 +420,7 @@ function renderChart() {
     }
   });
 
+  renderInsights();
   renderWarnings();
   renderSummary();
 }
@@ -492,6 +507,81 @@ function escHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+function renderInsights() {
+  var box = document.getElementById('insightsStrip');
+  if (!box || snapshots.length === 0) return;
+
+  var visible = filteredAccounts().filter(function(acc) {
+    if (!chart) return true;
+    var dsIdx = chart.data.datasets.findIndex(function(ds) { return ds.label === acc; });
+    return dsIdx === -1 || chart.isDatasetVisible(dsIdx);
+  });
+
+  // Find earliest date any visible account goes negative
+  var daysUntilNegative = null;
+  var negAccount = null;
+  visible.forEach(function(acc) {
+    snapshots.forEach(function(s, i) {
+      if (s[acc] < 0 && daysUntilNegative === null) {
+        var today = new Date(TODAY_ISO);
+        var negDate = new Date(s.date);
+        var diff = Math.round((negDate - today) / 86400000);
+        if (diff >= 0) { daysUntilNegative = diff; negAccount = acc; }
+      }
+    });
+  });
+
+  // Find lowest combined balance across forecast
+  var lowestTotal = null;
+  var lowestDate = null;
+  snapshots.forEach(function(s) {
+    var total = visible.reduce(function(sum, acc) { return sum + (s[acc] || 0); }, 0);
+    if (lowestTotal === null || total < lowestTotal) { lowestTotal = total; lowestDate = s.date; }
+  });
+
+  // Find end total
+  var last = snapshots[snapshots.length - 1];
+  var endTotal = visible.reduce(function(sum, acc) { return sum + (last[acc] || 0); }, 0);
+
+  // Build cards
+  var cards = '';
+
+  if (daysUntilNegative !== null) {
+    var urgency = daysUntilNegative <= 7 ? '#dc3545' : daysUntilNegative <= 21 ? '#fd7e14' : '#856404';
+    var bg = daysUntilNegative <= 7 ? '#fde8e8' : daysUntilNegative <= 21 ? '#fff3e0' : '#fff3cd';
+    cards += '<div style="background:' + bg + ';border-radius:14px;padding:14px 16px;flex:1;min-width:140px;">' +
+      '<div style="font-size:11px;color:' + urgency + ';font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">⚠️ Risk in</div>' +
+      '<div style="font-size:22px;font-weight:800;color:' + urgency + ';">' + daysUntilNegative + ' days</div>' +
+      '<div style="font-size:11px;color:#666;margin-top:2px;">' + escHtml(negAccount) + ' goes negative</div>' +
+    '</div>';
+  } else {
+    cards += '<div style="background:#d1fae5;border-radius:14px;padding:14px 16px;flex:1;min-width:140px;">' +
+      '<div style="font-size:11px;color:#065f46;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">✅ Status</div>' +
+      '<div style="font-size:22px;font-weight:800;color:#065f46;">All safe</div>' +
+      '<div style="font-size:11px;color:#666;margin-top:2px;">90 days ahead</div>' +
+    '</div>';
+  }
+
+  if (lowestTotal !== null && lowestDate) {
+    var d = new Date(lowestDate);
+    var dateStr = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    var isNeg = lowestTotal < 0;
+    cards += '<div style="background:' + (isNeg ? '#fde8e8' : '#f8f9fa') + ';border-radius:14px;padding:14px 16px;flex:1;min-width:140px;">' +
+      '<div style="font-size:11px;color:#555;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">📉 Lowest point</div>' +
+      '<div style="font-size:22px;font-weight:800;color:' + (isNeg ? '#dc3545' : '#111') + ';">£' + Math.abs(lowestTotal).toLocaleString('en-GB', {minimumFractionDigits:0,maximumFractionDigits:0}) + '</div>' +
+      '<div style="font-size:11px;color:#666;margin-top:2px;">' + dateStr + (isNeg ? ' (negative)' : '') + '</div>' +
+    '</div>';
+  }
+
+  cards += '<div style="background:#f0f4ff;border-radius:14px;padding:14px 16px;flex:1;min-width:140px;">' +
+    '<div style="font-size:11px;color:#3730a3;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">🏁 In 90 days</div>' +
+    '<div style="font-size:22px;font-weight:800;color:#111;">£' + endTotal.toLocaleString('en-GB', {minimumFractionDigits:0,maximumFractionDigits:0}) + '</div>' +
+    '<div style="font-size:11px;color:#666;margin-top:2px;">Combined balance</div>' +
+  '</div>';
+
+  box.innerHTML = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">' + cards + '</div>';
+}
+
 function renderWarnings() {
   var box = document.getElementById('warnings');
   var issues = [];
@@ -506,15 +596,24 @@ function renderWarnings() {
     var lowest = Math.min.apply(null, snapshots.map(function(s) { return s[acc]; }));
     if (lowest < 0) {
       var firstNeg = snapshots.find(function(s) { return s[acc] < 0; });
-      var d = new Date(firstNeg.date);
-      var dateStr = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-      issues.push('<strong>' + acc + '</strong> goes negative on ' + dateStr + ' (lowest: £' + lowest.toFixed(2) + ')');
+      var today = new Date(TODAY_ISO);
+      var negDate = new Date(firstNeg.date);
+      var daysUntil = Math.max(1, Math.round((negDate - today) / 86400000));
+      var dateStr = negDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      var dailyCut = (Math.abs(lowest) / daysUntil).toFixed(2);
+      var moveAmt = Math.ceil(Math.abs(lowest));
+      issues.push(
+        '<div class="mb-2">' +
+          '<strong>' + escHtml(acc) + '</strong> goes negative on ' + dateStr + ' (lowest: £' + lowest.toFixed(2) + ')<br>' +
+          '<span style="color:#666;font-size:12px;">→ Reduce spending by £' + dailyCut + '/day, or move £' + moveAmt + ' from savings to fix this</span>' +
+        '</div>'
+      );
     }
   });
 
   var closeBtn = '<button onclick="this.closest(\'.alert\').remove()" style="position:absolute;top:10px;right:12px;background:none;border:none;font-size:16px;line-height:1;color:#888;cursor:pointer;">✕</button>';
   if (issues.length > 0) {
-    box.innerHTML = '<div class="alert rounded-4 mb-3" style="background:#fff3cd; border:none; position:relative;">' + closeBtn + '<div class="fw-bold mb-1">⚠️ Balance warnings</div>' + issues.map(function(i) { return '<div class="small">' + i + '</div>'; }).join('') + '</div>';
+    box.innerHTML = '<div class="alert rounded-4 mb-3" style="background:#fff3cd; border:none; position:relative;">' + closeBtn + '<div class="fw-bold mb-2">⚠️ Balance warnings</div>' + issues.join('') + '</div>';
   } else {
     box.innerHTML = '<div class="alert rounded-4 mb-3" style="background:#d1fae5; border:none; position:relative;">' + closeBtn + '<div class="fw-bold">✅ All accounts stay positive over the next 90 days</div></div>';
   }

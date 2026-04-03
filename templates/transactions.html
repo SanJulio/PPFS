@@ -91,6 +91,8 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
     </div>
   </div>
 
+  <div id="categoryTotals" class="card p-3 mb-3" style="display:none;"></div>
+
   <div class="card p-3 mb-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h5 class="mb-0">Recent Transactions</h5>
@@ -123,7 +125,7 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
           {% for t in transactions %}
           <tr class="tx-row" data-id="{{ t.id }}" data-description="{{ t.description|lower }}"
             data-account="{{ t.account|lower }}" data-date="{{ t.date }}"
-            data-category="{{ t.category or 'Other' }}"
+            data-category="{{ t.category or 'Other' }}" data-amount="{{ t.amount }}"
             onclick="toggleTx(this.dataset.id)">
             <td><span id="arrow-{{ t.id }}" class="fw-bold" style="font-size:13px; color:#111">+</span></td>
             <td class="text-muted small">{{ t.date }}</td>
@@ -252,6 +254,29 @@ function filterTransactions() {
   });
 
   document.getElementById('countBadge').textContent = visible + ' shown';
+  renderCategoryTotals();
+}
+
+function renderCategoryTotals() {
+  const box = document.getElementById('categoryTotals');
+  const rows = document.querySelectorAll('#txBody tr.tx-row');
+  const totals = {};
+  rows.forEach(row => {
+    if (row.style.display === 'none') return;
+    const amount = parseFloat(row.dataset.amount || '0');
+    if (amount >= 0) return; // only expenses
+    const cat = row.dataset.category || 'Other';
+    totals[cat] = (totals[cat] || 0) + Math.abs(amount);
+  });
+  const cats = Object.keys(totals);
+  if (cats.length === 0) { box.style.display = 'none'; return; }
+  cats.sort((a, b) => totals[b] - totals[a]);
+  box.style.display = '';
+  box.innerHTML = '<div class="small fw-semibold text-muted mb-2">Spending by category</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;">' +
+    cats.map(c => '<span style="background:#f0f0f0;border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;">' +
+      c + ' <span style="color:#555;">£' + totals[c].toFixed(2) + '</span></span>').join('') +
+    '</div>';
 }
 
 function clearFilters() {
@@ -266,6 +291,7 @@ document.getElementById('searchInput').addEventListener('input', filterTransacti
 document.getElementById('categoryFilter').addEventListener('change', filterTransactions);
 document.getElementById('dateFrom').addEventListener('change', filterTransactions);
 document.getElementById('dateTo').addEventListener('change', filterTransactions);
+renderCategoryTotals();
 
 if (window.location.search.includes('msg=')) {
   const url = new URL(window.location);
