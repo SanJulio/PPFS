@@ -12,7 +12,16 @@
       "Bash(sed -i 's|<img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"Spendara Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-2 d-block\"\">|<a href=\"\"/\"\"><img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"Spendara Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-2 d-block\"\"></a>|g' templates/forecast.html)",
       "Bash(sed -i 's|<img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"PPFS Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-2\"\">|<a href=\"\"/\"\"><img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"PPFS Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-2\"\"></a>|g' templates/index.html)",
       "Bash(sed -i 's|<img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"Spendara Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-4 d-block mx-auto\"\">|<a href=\"\"/\"\"><img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"Spendara Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-4 d-block mx-auto\"\"></a>|g' templates/404.html templates/500.html)",
-      "Bash(sed -i 's|<img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"PPFS Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-2 d-block mx-auto\"\">|<a href=\"\"/\"\"><img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"PPFS Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-2 d-block mx-auto\"\"></a>|g' templates/login.html)"
+      "Bash(sed -i 's|<img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"PPFS Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-2 d-block mx-auto\"\">|<a href=\"\"/\"\"><img src=\"\"{{ url_for\\(''''static'''', filename=''''6000-logo.png''''\\) }}\"\" alt=\"\"PPFS Logo\"\" style=\"\"height:50px; object-fit:contain;\"\" class=\"\"mb-2 d-block mx-auto\"\"></a>|g' templates/login.html)",
+      "Bash(wc -l /c/Users/srajb/Desktop/Tings/Python/PPFS/templates/*.html)",
+      "Bash(grep -l '<meta name=\"\"viewport\"\"' templates/*.html)",
+      "Bash(sed -i 's|<a href=\"/flow\" class=\"text-decoration-none text-dark\">|<a href=\"/manage\" class=\"text-decoration-none text-dark\">|g' c:/Users/srajb/Desktop/Tings/Python/PPFS/templates/__TRACKED_VAR__)",
+      "Bash(sed -i 's|<div style=\"font-size:20px\">💸</div>|<div style=\"font-size:20px\">🎛️</div>|g' c:/Users/srajb/Desktop/Tings/Python/PPFS/templates/__TRACKED_VAR__)",
+      "Bash(sed -i 's|<small>Flow</small>|<small>Manage</small>|g' c:/Users/srajb/Desktop/Tings/Python/PPFS/templates/__TRACKED_VAR__)",
+      "Bash(py -c ':*)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app.py'\\).read\\(\\)\\); print\\('app.py OK'\\)\")",
+      "Bash(python -c ':*)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app.py'\\).read\\(\\)\\); print\\('OK'\\)\")"
     ]
   }
 }
