@@ -235,10 +235,13 @@ footer a:hover {
 <div class="container-fluid">
   <!-- HERO SECTION -->
   <div class="hero">
-    <img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara Logo" style="height:50px; object-fit:contain; margin-bottom: 24px;">
+    <img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara Logo" style="height:80px; object-fit:contain; margin-bottom: 24px;">
     <h1>Track your money. Forecast your future.</h1>
     <p class="lead">Know exactly where your money goes and where it's going. Get 90-day forecasts, set goals, and make smarter decisions.</p>
-    <a href="/register" class="btn btn-dark py-3 px-5" style="border-radius: 14px; font-size: 16px; font-weight: 600;">Get started free</a>
+    <div class="d-flex justify-content-center gap-3 flex-wrap">
+      <a href="/register" class="btn btn-dark py-3 px-5" style="border-radius: 14px; font-size: 16px; font-weight: 600;">Get started free</a>
+      <a href="/login" class="btn btn-outline-dark py-3 px-5" style="border-radius: 14px; font-size: 16px; font-weight: 600;">Log in</a>
+    </div>
   </div>
 </div>
 
@@ -286,35 +289,6 @@ footer a:hover {
         <p>Get a 90-day snapshot of your finances. Plan ahead, hit goals, and never miss a bill.</p>
       </div>
     </div>
-  </section>
-
-  <!-- BENEFITS -->
-  <section class="benefits">
-    <h2>Real results from real users</h2>
-    <div class="benefits-grid">
-      <div class="benefit">
-        <div class="benefit-title">💷 Save £500/month</div>
-        <p class="benefit-text">Without complicated budgeting tools. Just clarity.</p>
-      </div>
-      <div class="benefit">
-        <div class="benefit-title">🛑 Stop wasting money</div>
-        <p class="benefit-text">Spot unused subscriptions and recurring charges.</p>
-      </div>
-      <div class="benefit">
-        <div class="benefit-title">✅ Never miss bills</div>
-        <p class="benefit-text">Know exactly when they're due and have the cash.</p>
-      </div>
-      <div class="benefit">
-        <div class="benefit-title">🎯 Reach goals 3x faster</div>
-        <p class="benefit-text">See your targets within reach. Build momentum.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- SOCIAL PROOF -->
-  <section class="social-proof">
-    <h2>Join others who are taking control</h2>
-    <p>Join 1,000+ users improving their finances with Spendara. If you can track it, you can control it.</p>
   </section>
 
   <!-- CTA SECTION -->
