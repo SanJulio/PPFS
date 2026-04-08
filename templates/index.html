@@ -375,6 +375,49 @@ body.privacy-invisible .amounts-visible .amount-private {
   <div class="msg">{{ message }}</div>
   {% endif %}
 
+  {% if pending_items %}
+  <div class="card p-3 mb-4" style="border-left:4px solid #0d6efd;">
+    <div class="d-flex justify-content-between align-items-center">
+      <div>
+        <div class="fw-semibold" style="font-size:15px;">📋 {{ pending_items|length }} scheduled item{{ 's' if pending_items|length != 1 }} ready to apply</div>
+        <div class="text-muted small mt-1">
+          {% for item in pending_items[:3] %}{{ item.name }} ({{ '£%.2f'|format(item.amount|abs) }}){% if not loop.last %}, {% endif %}{% endfor %}{% if pending_items|length > 3 %} and {{ pending_items|length - 3 }} more{% endif %}
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm ms-3" onclick="openAutoApplyModal()">Review</button>
+    </div>
+  </div>
+
+  <!-- Auto-apply modal -->
+  <div id="autoApplyModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:20px;">
+    <div class="card p-4" style="max-width:480px; width:100%; max-height:80vh; overflow-y:auto;">
+      <h5 class="fw-bold mb-1">Apply scheduled items</h5>
+      <p class="text-muted small mb-3">Tick the items you want applied to your accounts now.</p>
+      <div id="autoApplyList">
+        {% for item in pending_items %}
+        <div class="d-flex align-items-center justify-content-between py-2" style="border-bottom:1px solid #f0f0f0;">
+          <div class="d-flex align-items-center gap-2">
+            <input type="checkbox" class="auto-apply-check form-check-input mt-0" checked
+              data-item='{{ item | tojson }}'>
+            <div>
+              <div class="fw-semibold small">{{ item.name }}</div>
+              <div class="text-muted" style="font-size:12px;">{{ item.account }} · {{ item.due_date }}</div>
+            </div>
+          </div>
+          <div class="fw-semibold small {% if item.amount < 0 %}text-danger{% else %}text-success{% endif %}">
+            {{ '–£%.2f'|format(item.amount|abs) if item.amount < 0 else '+£%.2f'|format(item.amount|abs) }}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="d-grid gap-2 mt-3">
+        <button class="btn btn-primary" onclick="submitAutoApply()">Apply selected</button>
+        <button class="btn btn-outline-secondary" onclick="closeAutoApplyModal()">Dismiss</button>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {% if balances %}
   {% if overview.safe_spending > 500 %}
   <div class="mb-3 px-1 py-2 rounded-4 d-flex align-items-center gap-2" style="background:#d1fae5; font-size:14px; font-weight:600; color:#065f46; padding-left:14px!important; padding-right:14px!important;">
@@ -1169,6 +1212,31 @@ function closeOnboarding() {
     }
   }, { passive: true });
 })();
+
+// --- Auto-apply modal ---
+function openAutoApplyModal() {
+  document.getElementById('autoApplyModal').style.display = 'flex';
+}
+function closeAutoApplyModal() {
+  document.getElementById('autoApplyModal').style.display = 'none';
+}
+function submitAutoApply() {
+  var checks = document.querySelectorAll('.auto-apply-check:checked');
+  var items = [];
+  checks.forEach(function(cb) {
+    try { items.push(JSON.parse(cb.dataset.item)); } catch(e) {}
+  });
+  if (items.length === 0) { closeAutoApplyModal(); return; }
+  fetch('/auto-apply', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ csrf_token: HOME_CSRF, items: items })
+  }).then(function() {
+    window.location.reload();
+  }).catch(function() {
+    window.location.reload();
+  });
+}
 </script>
 <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>
 </body>

@@ -416,6 +416,267 @@ def track_for_user(user_id: int, event: str):
     except Exception as e:
         logger.debug(f"Analytics track_for_user error: {e}")
 
+# --- AUTO-APPLY HELPERS ---
+
+def _get_occurrences_between(item, start_date, end_date):
+    """Return all dates a scheduled item fires between start_date and end_date (inclusive).
+    Handles monthly and yearly frequencies. Weekly is skipped (no fixed anchor date)."""
+    import calendar as _cal
+    from datetime import date as _date
+
+    freq = item.get('frequency') or 'monthly'
+    day = int(item.get('day') or 1)
+    results = []
+
+    if freq == 'monthly':
+        y, m = start_date.year, start_date.month
+        while (y, m) <= (end_date.year, end_date.month):
+            actual_day = min(day, _cal.monthrange(y, m)[1])
+            try:
+                candidate = _date(y, m, actual_day)
+                if start_date <= candidate <= end_date:
+                    results.append(candidate)
+            except ValueError:
+                pass
+            m += 1
+            if m > 12:
+                m = 1
+                y += 1
+
+    elif freq == 'yearly':
+        bill_month = int(item.get('month') or 1)
+        for yr in range(start_date.year, end_date.year + 1):
+            actual_day = min(day, _cal.monthrange(yr, bill_month)[1])
+            try:
+                candidate = _date(yr, bill_month, actual_day)
+                if start_date <= candidate <= end_date:
+                    results.append(candidate)
+            except ValueError:
+                pass
+
+    return results
+
+
+def run_auto_apply_backfill(user_id):
+    """One-time backfill: insert transactions for April 1 to yesterday for items with
+    last_applied=NULL. Does NOT update account balances. Sets last_applied=yesterday."""
+    from datetime import date as _date, timedelta
+
+    today = _date.today()
+    backfill_start = _date(2026, 4, 1)
+    yesterday = today - timedelta(days=1)
+
+    if yesterday < backfill_start:
+        return  # Nothing to backfill yet
+
+    db = get_db()
+    cursor = db.cursor()
+
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = %s AND last_applied IS NULL", (user_id,))
+    else:
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = ? AND last_applied IS NULL", (user_id,))
+    cols = [d[0] for d in cursor.description]
+    bills = [dict(zip(cols, r)) for r in cursor.fetchall()]
+
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM income WHERE user_id = %s AND last_applied IS NULL", (user_id,))
+    else:
+        cursor.execute("SELECT * FROM income WHERE user_id = ? AND last_applied IS NULL", (user_id,))
+    cols = [d[0] for d in cursor.description]
+    income_items = [dict(zip(cols, r)) for r in cursor.fetchall()]
+
+    yesterday_str = yesterday.isoformat()
+
+    for bill in bills:
+        if bill.get('day') is None:
+            continue
+        for d in _get_occurrences_between(bill, backfill_start, yesterday):
+            try:
+                if USE_POSTGRES:
+                    cursor.execute(
+                        "INSERT INTO transactions (date, description, amount, account, type, user_id, category, auto_generated) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                        (d.isoformat(), bill['name'], -abs(float(bill['amount'])), bill['account'], 'bill', user_id, 'Bills', 1)
+                    )
+                else:
+                    cursor.execute(
+                        "INSERT INTO transactions (date, description, amount, account, type, user_id, category, auto_generated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (d.isoformat(), bill['name'], -abs(float(bill['amount'])), bill['account'], 'bill', user_id, 'Bills', 1)
+                    )
+            except Exception as e:
+                logger.debug(f"Backfill bill insert error: {e}")
+        if USE_POSTGRES:
+            cursor.execute("UPDATE scheduled_expenses SET last_applied = %s WHERE id = %s", (yesterday_str, bill['id']))
+        else:
+            cursor.execute("UPDATE scheduled_expenses SET last_applied = ? WHERE id = ?", (yesterday_str, bill['id']))
+
+    for inc in income_items:
+        if inc.get('day') is None:
+            continue
+        for d in _get_occurrences_between(inc, backfill_start, yesterday):
+            try:
+                if USE_POSTGRES:
+                    cursor.execute(
+                        "INSERT INTO transactions (date, description, amount, account, type, user_id, category, auto_generated) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                        (d.isoformat(), inc['name'], abs(float(inc['amount'])), inc['account'], 'income', user_id, 'Income', 1)
+                    )
+                else:
+                    cursor.execute(
+                        "INSERT INTO transactions (date, description, amount, account, type, user_id, category, auto_generated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (d.isoformat(), inc['name'], abs(float(inc['amount'])), inc['account'], 'income', user_id, 'Income', 1)
+                    )
+            except Exception as e:
+                logger.debug(f"Backfill income insert error: {e}")
+        if USE_POSTGRES:
+            cursor.execute("UPDATE income SET last_applied = %s WHERE id = %s", (yesterday_str, inc['id']))
+        else:
+            cursor.execute("UPDATE income SET last_applied = ? WHERE id = ?", (yesterday_str, inc['id']))
+
+    db.commit()
+    cursor.close()
+    release_db(db)
+
+
+def get_pending_auto_apply_items(user_id):
+    """Returns list of items due today (or overdue since last_applied) that need applying.
+    Each entry: {type, item_id, name, amount, account, due_date}
+    Amount is negative for bills, positive for income."""
+    from datetime import date as _date, timedelta
+
+    today = _date.today()
+
+    db = get_db()
+    cursor = db.cursor()
+
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = %s AND last_applied IS NOT NULL", (user_id,))
+    else:
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = ? AND last_applied IS NOT NULL", (user_id,))
+    cols = [d[0] for d in cursor.description]
+    bills = [dict(zip(cols, r)) for r in cursor.fetchall()]
+
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM income WHERE user_id = %s AND last_applied IS NOT NULL", (user_id,))
+    else:
+        cursor.execute("SELECT * FROM income WHERE user_id = ? AND last_applied IS NOT NULL", (user_id,))
+    cols = [d[0] for d in cursor.description]
+    income_items = [dict(zip(cols, r)) for r in cursor.fetchall()]
+
+    cursor.close()
+    release_db(db)
+
+    pending = []
+
+    for bill in bills:
+        if bill.get('day') is None:
+            continue
+        last_applied = _date.fromisoformat(bill['last_applied'])
+        search_from = last_applied + timedelta(days=1)
+        if search_from > today:
+            continue
+        for d in _get_occurrences_between(bill, search_from, today):
+            pending.append({
+                'type': 'bill',
+                'item_id': bill['id'],
+                'name': bill['name'],
+                'amount': -abs(float(bill['amount'])),
+                'account': bill['account'],
+                'due_date': d.isoformat(),
+            })
+
+    for inc in income_items:
+        if inc.get('day') is None:
+            continue
+        last_applied = _date.fromisoformat(inc['last_applied'])
+        search_from = last_applied + timedelta(days=1)
+        if search_from > today:
+            continue
+        for d in _get_occurrences_between(inc, search_from, today):
+            pending.append({
+                'type': 'income',
+                'item_id': inc['id'],
+                'name': inc['name'],
+                'amount': abs(float(inc['amount'])),
+                'account': inc['account'],
+                'due_date': d.isoformat(),
+            })
+
+    return sorted(pending, key=lambda x: (x['due_date'], x['name']))
+
+
+def apply_auto_items(user_id, items):
+    """Apply a list of pending items: insert transactions, update balances, update last_applied."""
+    from datetime import date as _date
+
+    today_str = _date.today().isoformat()
+    db = get_db()
+    cursor = db.cursor()
+
+    for item in items:
+        try:
+            tx_type = 'bill' if item['type'] == 'bill' else 'income'
+            category = 'Bills' if item['type'] == 'bill' else 'Income'
+            if USE_POSTGRES:
+                cursor.execute(
+                    "INSERT INTO transactions (date, description, amount, account, type, user_id, category, auto_generated) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                    (item['due_date'], item['name'], item['amount'], item['account'], tx_type, user_id, category, 1)
+                )
+                cursor.execute(
+                    "UPDATE accounts SET balance = balance + %s WHERE name = %s AND id IN (SELECT id FROM accounts WHERE name = %s LIMIT 1)",
+                    (item['amount'], item['account'], item['account'])
+                )
+            else:
+                cursor.execute(
+                    "INSERT INTO transactions (date, description, amount, account, type, user_id, category, auto_generated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (item['due_date'], item['name'], item['amount'], item['account'], tx_type, user_id, category, 1)
+                )
+                cursor.execute(
+                    "UPDATE accounts SET balance = balance + ? WHERE name = ?",
+                    (item['amount'], item['account'])
+                )
+        except Exception as e:
+            logger.debug(f"Auto-apply item error: {e}")
+
+    # Update last_applied for each unique item_id
+    applied_bills = {i['item_id'] for i in items if i['type'] == 'bill'}
+    applied_income = {i['item_id'] for i in items if i['type'] == 'income'}
+
+    for item_id in applied_bills:
+        if USE_POSTGRES:
+            cursor.execute("UPDATE scheduled_expenses SET last_applied = %s WHERE id = %s", (today_str, item_id))
+        else:
+            cursor.execute("UPDATE scheduled_expenses SET last_applied = ? WHERE id = ?", (today_str, item_id))
+
+    for item_id in applied_income:
+        if USE_POSTGRES:
+            cursor.execute("UPDATE income SET last_applied = %s WHERE id = %s", (today_str, item_id))
+        else:
+            cursor.execute("UPDATE income SET last_applied = ? WHERE id = ?", (today_str, item_id))
+
+    db.commit()
+    cursor.close()
+    release_db(db)
+
+
+def get_auto_apply_settings(user_id):
+    """Returns (auto_apply_enabled, auto_apply_confirm) booleans for the user."""
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        if USE_POSTGRES:
+            cursor.execute("SELECT auto_apply_enabled, auto_apply_confirm FROM users WHERE id = %s", (user_id,))
+        else:
+            cursor.execute("SELECT auto_apply_enabled, auto_apply_confirm FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        cursor.close()
+        release_db(db)
+        if row:
+            return bool(row[0]), bool(row[1])
+    except Exception:
+        pass
+    return True, True
+
+
 # --- FINANCIAL OVERVIEW CALCULATION ---
 # Splits accounts into spending (current/cash) and savings, then calculates:
 # - spending balance (total in spending accounts)
@@ -673,6 +934,48 @@ def home():
     # Check if user has no accounts (show onboarding), or manually triggered via ?onboarding=1
     show_onboarding = len(active_accounts) == 0 or request.args.get('onboarding') == '1'
 
+    # --- Auto-apply scheduled bills/income ---
+    pending_items = []
+    try:
+        auto_apply_enabled, auto_apply_confirm = get_auto_apply_settings(current_user.id)
+        if auto_apply_enabled:
+            # Run one-time backfill silently (inserts history, no balance change)
+            run_auto_apply_backfill(current_user.id)
+            # Get items due today (or overdue since last applied)
+            pending = get_pending_auto_apply_items(current_user.id)
+            if pending:
+                if auto_apply_confirm:
+                    # Pass to template for user confirmation
+                    pending_items = pending
+                else:
+                    # Silent mode: apply immediately
+                    apply_auto_items(current_user.id, pending)
+                    # Refresh accounts/overview after applying
+                    accounts_rows = get_active_accounts(current_user.id)
+                    accounts = {}
+                    for r in accounts_rows:
+                        accounts[r["name"]] = {
+                            "id": r["id"],
+                            "balance": r["balance"],
+                            "type": r["type"],
+                            "active": bool(r["active"]),
+                            "include_in_overview": bool(r.get("include_in_overview", 1))
+                        }
+                    overview = calculate_financial_overview(accounts)
+                    monthly = calculate_monthly_spending()
+                    balances = []
+                    for n in sorted(accounts, key=lambda x: x.lower()):
+                        if accounts[n].get("active", True):
+                            balances.append({
+                                "name": n,
+                                "balance": float(accounts[n].get("balance", 0.0)),
+                                "type": accounts[n].get("type", ""),
+                                "id": accounts[n].get("id"),
+                                "include_in_overview": accounts[n].get("include_in_overview", True)
+                            })
+    except Exception as e:
+        logger.debug(f"Auto-apply home check error: {e}")
+
     return render_template(
         "index.html",
         message=request.args.get("msg", ""),
@@ -684,7 +987,40 @@ def home():
         user_verified=verified,
         today_spent=today_spent,
         today_count=today_count,
+        pending_items=pending_items,
     )
+
+# --- AUTO-APPLY ROUTE ---
+# Called via AJAX when user confirms pending scheduled items from the home page banner
+@app.post("/auto-apply")
+@login_required
+def auto_apply():
+    from flask import request as _req
+    if _req.json.get("csrf_token") != session.get("csrf_token"):
+        return {"error": "Invalid CSRF token"}, 403
+
+    items = _req.json.get("items", [])
+    if not items:
+        return {"ok": True}
+
+    # Validate structure — only accept keys we expect
+    safe_items = []
+    for item in items:
+        try:
+            safe_items.append({
+                "type": str(item["type"]),
+                "item_id": int(item["item_id"]),
+                "name": str(item["name"]),
+                "amount": float(item["amount"]),
+                "account": str(item["account"]),
+                "due_date": str(item["due_date"]),
+            })
+        except (KeyError, ValueError, TypeError):
+            continue
+
+    apply_auto_items(current_user.id, safe_items)
+    return {"ok": True}
+
 
 # --- TRANSACTIONS PAGE ---
 # Lists all transactions for the current user, newest first
@@ -1607,10 +1943,35 @@ def api_snapshot():
 def settings():
     track('page_view.settings')
     is_pro = user_is_pro()
+    auto_apply_enabled, auto_apply_confirm = get_auto_apply_settings(current_user.id)
     return render_template("settings.html",
         is_pro=is_pro,
-        message=request.args.get("msg", "")
+        message=request.args.get("msg", ""),
+        auto_apply_enabled=auto_apply_enabled,
+        auto_apply_confirm=auto_apply_confirm,
     )
+
+
+@app.post("/settings/save-automation")
+@login_required
+def settings_save_automation():
+    from database import get_db, USE_POSTGRES
+    if request.form.get("csrf_token") != session.get("csrf_token"):
+        return redirect(url_for("settings"))
+    enabled = 1 if request.form.get("auto_apply_enabled") else 0
+    confirm = 1 if request.form.get("auto_apply_confirm") else 0
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE users SET auto_apply_enabled = %s, auto_apply_confirm = %s WHERE id = %s",
+                       (enabled, confirm, current_user.id))
+    else:
+        cursor.execute("UPDATE users SET auto_apply_enabled = ?, auto_apply_confirm = ? WHERE id = ?",
+                       (enabled, confirm, current_user.id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+    return redirect(url_for("settings", msg="Automation settings saved."))
 
 @app.get("/manage")
 @login_required

@@ -162,6 +162,43 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       <p class="text-muted small mb-3">Walk through the getting started guide again.</p>
       <a href="/?onboarding=1" class="btn btn-outline-dark">Restart onboarding →</a>
     </div>
+
+    <div class="card p-4 mb-4">
+      <h5 class="mb-1">Automation</h5>
+      <p class="text-muted small mb-4">Control how scheduled bills and income are applied to your accounts.</p>
+
+      <form method="POST" action="/settings/save-automation">
+        <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+
+        <div class="d-flex justify-content-between align-items-center mb-4 pb-3" style="border-bottom:1px solid #f0f0f0;">
+          <div>
+            <div class="fw-semibold" style="font-size:15px;">Auto-apply scheduled items</div>
+            <div class="text-muted small mt-1">When on, bills and income are automatically logged and applied when due.</div>
+          </div>
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" role="switch" id="autoApplyEnabled"
+              name="auto_apply_enabled" value="1"
+              {{ 'checked' if auto_apply_enabled else '' }}
+              onchange="document.getElementById('confirmRow').style.display = this.checked ? 'flex' : 'none'">
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center" id="confirmRow"
+          {% if not auto_apply_enabled %}style="display:none"{% endif %}>
+          <div>
+            <div class="fw-semibold" style="font-size:15px;">Ask for confirmation</div>
+            <div class="text-muted small mt-1">When on, you'll see a banner to review items before they're applied.</div>
+          </div>
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" role="switch" id="autoApplyConfirm"
+              name="auto_apply_confirm" value="1"
+              {{ 'checked' if auto_apply_confirm else '' }}>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-dark w-100 mt-4">Save automation settings</button>
+      </form>
+    </div>
   </div>
 
   <!-- TAB: DANGER -->

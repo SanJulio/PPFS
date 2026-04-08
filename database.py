@@ -365,5 +365,110 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: users.auto_apply_enabled ---
+    # Whether scheduled bills/income are automatically applied to accounts when due (default on)
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='auto_apply_enabled'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN auto_apply_enabled INTEGER NOT NULL DEFAULT 1")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN auto_apply_enabled INTEGER NOT NULL DEFAULT 1")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (auto_apply_enabled): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: users.auto_apply_confirm ---
+    # Whether to show a confirmation banner before applying (default on)
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='auto_apply_confirm'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN auto_apply_confirm INTEGER NOT NULL DEFAULT 1")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN auto_apply_confirm INTEGER NOT NULL DEFAULT 1")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (auto_apply_confirm): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: scheduled_expenses.last_applied ---
+    # Tracks when this bill was last auto-applied, to prevent double-applying
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='scheduled_expenses' AND column_name='last_applied'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE scheduled_expenses ADD COLUMN last_applied TEXT")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE scheduled_expenses ADD COLUMN last_applied TEXT")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (scheduled_expenses.last_applied): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: income.last_applied ---
+    # Tracks when this income source was last auto-applied
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='income' AND column_name='last_applied'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE income ADD COLUMN last_applied TEXT")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE income ADD COLUMN last_applied TEXT")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (income.last_applied): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: transactions.auto_generated ---
+    # Marks transactions that were created by the auto-apply system (vs manually entered)
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='transactions' AND column_name='auto_generated'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE transactions ADD COLUMN auto_generated INTEGER NOT NULL DEFAULT 0")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN auto_generated INTEGER NOT NULL DEFAULT 0")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (transactions.auto_generated): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)
