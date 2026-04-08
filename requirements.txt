@@ -6,3 +6,4 @@ gunicorn
 flask-limiter
 sib-api-v3-sdk
 stripe
+python-dateutil

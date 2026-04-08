@@ -164,6 +164,22 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     </div>
 
     <div class="card p-4 mb-4">
+      <h5 class="mb-1">Budget Cycle</h5>
+      <p class="text-muted small mb-3">Set the day your pay cycle starts. The "Current Cycle" section on the home page will use this date range.</p>
+      <form method="POST" action="/settings/save-cycle" class="d-flex align-items-center gap-3">
+        <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+        <div class="d-flex align-items-center gap-2 flex-grow-1">
+          <label class="fw-semibold small mb-0 text-nowrap">Cycle starts on day</label>
+          <input type="number" name="budget_cycle_start" min="1" max="28"
+            value="{{ budget_cycle_start }}"
+            class="form-control" style="max-width:80px;">
+          <span class="text-muted small text-nowrap">of each month (1–28)</span>
+        </div>
+        <button type="submit" class="btn btn-dark btn-sm text-nowrap">Save</button>
+      </form>
+    </div>
+
+    <div class="card p-4 mb-4">
       <h5 class="mb-1">Automation</h5>
       <p class="text-muted small mb-4">Control how scheduled bills and income are applied to your accounts.</p>
 

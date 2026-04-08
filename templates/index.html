@@ -556,7 +556,17 @@ body.privacy-invisible .amounts-visible .amount-private {
 </div>
 
 <div class="card p-3 mb-4" id="spendingCard">
-  <h5 class="mb-3">This Month's Spending</h5>
+  <div class="d-flex justify-content-between align-items-start mb-1">
+    <h5 class="mb-0">Current Cycle</h5>
+    {% if days_to_payday == 1 %}
+    <span class="badge-soft" style="background:#d1fae5;color:#065f46;font-size:12px;">Payday tomorrow</span>
+    {% elif days_to_payday == 0 %}
+    <span class="badge-soft" style="background:#d1fae5;color:#065f46;font-size:12px;">Payday today 🎉</span>
+    {% else %}
+    <span class="badge-soft" style="background:#f0f0f0;color:#555;font-size:12px;">{{ days_to_payday }}d to payday</span>
+    {% endif %}
+  </div>
+  <div class="text-muted small mb-3">{{ cycle_start_date.strftime('%-d %b') }} – {{ cycle_end_date.strftime('%-d %b') }}</div>
   <div class="row g-3">
 
     <div class="col-4">
@@ -575,7 +585,7 @@ body.privacy-invisible .amounts-visible .amount-private {
         </div>
         {% endfor %}
         {% if not monthly.normal_list %}
-        <div class="small text-muted py-1">No expenses this month yet</div>
+        <div class="small text-muted py-1">No expenses this cycle yet</div>
         {% endif %}
       </div>
     </div>
@@ -596,7 +606,7 @@ body.privacy-invisible .amounts-visible .amount-private {
         </div>
         {% endfor %}
         {% if not monthly.bills_list %}
-        <div class="small text-muted py-1">No bills paid this month yet</div>
+        <div class="small text-muted py-1">No bills paid this cycle yet</div>
         {% endif %}
       </div>
     </div>

@@ -470,5 +470,26 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: users.budget_cycle_start ---
+    # Day of month the user's budget cycle starts (1-28, default 1)
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='budget_cycle_start'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN budget_cycle_start INTEGER NOT NULL DEFAULT 1")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN budget_cycle_start INTEGER NOT NULL DEFAULT 1")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (budget_cycle_start): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

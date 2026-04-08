@@ -790,13 +790,53 @@ def calculate_financial_overview(accounts):
         "future_bills_list": sorted(future_bills_list, key=lambda x: x["day"]),
     }
 
-# --- MONTHLY SPENDING CALCULATION ---
-# Queries all negative (outgoing) transactions this month for the current user
-# Splits them into normal spending vs bills (type='bill'), returns totals and line items
-def calculate_monthly_spending():
-    today = date.today()
-    year = today.year
-    month = today.month
+# --- CYCLE DATE HELPER ---
+# Given a cycle start day (1-28) and today's date, returns (cycle_start, cycle_end) as date objects.
+# e.g. start_day=15, today=20 Apr → cycle_start=15 Apr, cycle_end=14 May
+# e.g. start_day=15, today=10 Apr → cycle_start=15 Mar, cycle_end=14 Apr
+def get_cycle_dates(start_day, today=None):
+    from datetime import date as _date
+    from dateutil.relativedelta import relativedelta
+    if today is None:
+        today = _date.today()
+    start_day = max(1, min(28, int(start_day)))
+    if today.day >= start_day:
+        cycle_start = today.replace(day=start_day)
+        cycle_end = (cycle_start + relativedelta(months=1)) - relativedelta(days=1)
+    else:
+        cycle_start = (today.replace(day=1) - relativedelta(days=1)).replace(day=start_day)
+        cycle_end = today.replace(day=start_day) - relativedelta(days=1)
+    return cycle_start, cycle_end
+
+
+def get_budget_cycle_start(user_id):
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        if USE_POSTGRES:
+            cursor.execute("SELECT budget_cycle_start FROM users WHERE id = %s", (user_id,))
+        else:
+            cursor.execute("SELECT budget_cycle_start FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        cursor.close()
+        release_db(db)
+        if row:
+            return int(row[0] or 1)
+    except Exception:
+        pass
+    return 1
+
+
+# --- CYCLE SPENDING CALCULATION ---
+# Queries outgoing transactions within the current budget cycle for the user.
+# Cycle is defined by budget_cycle_start day (1-28). Default is 1 (calendar month).
+def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
+    if cycle_start_date is None:
+        cycle_start_date = date.today().replace(day=1)
+    if cycle_end_date is None:
+        import calendar as _cal
+        today = date.today()
+        cycle_end_date = today.replace(day=_cal.monthrange(today.year, today.month)[1])
 
     db = get_db()
     cursor = db.cursor()
@@ -805,25 +845,25 @@ def calculate_monthly_spending():
         cursor.execute(
             """
             SELECT amount, type, description, date, account FROM transactions
-            WHERE EXTRACT(YEAR FROM date::date) = %s
-            AND EXTRACT(MONTH FROM date::date) = %s
+            WHERE date::date >= %s
+            AND date::date <= %s
             AND user_id = %s
             AND amount < 0
             AND type != 'transfer'
             """,
-            (year, month, current_user.id)
+            (cycle_start_date.isoformat(), cycle_end_date.isoformat(), current_user.id)
         )
     else:
         cursor.execute(
             """
             SELECT amount, type, description, date, account FROM transactions
-            WHERE strftime('%Y', date) = ?
-            AND strftime('%m', date) = ?
+            WHERE date >= ?
+            AND date <= ?
             AND user_id = ?
             AND amount < 0
             AND type != 'transfer'
             """,
-            (str(year), f"{month:02d}", current_user.id)
+            (cycle_start_date.isoformat(), cycle_end_date.isoformat(), current_user.id)
         )
 
     rows = cursor.fetchall()
@@ -916,7 +956,9 @@ def home():
         }
 
     overview = calculate_financial_overview(accounts)
-    monthly = calculate_monthly_spending()
+    cycle_start_day = get_budget_cycle_start(current_user.id)
+    cycle_start_date, cycle_end_date = get_cycle_dates(cycle_start_day)
+    monthly = calculate_monthly_spending(cycle_start_date, cycle_end_date)
 
     active_accounts = [n for n in accounts if accounts[n].get("active", True)]
     active_accounts.sort(key=lambda x: x.lower())
@@ -962,7 +1004,7 @@ def home():
                             "include_in_overview": bool(r.get("include_in_overview", 1))
                         }
                     overview = calculate_financial_overview(accounts)
-                    monthly = calculate_monthly_spending()
+                    monthly = calculate_monthly_spending(cycle_start_date, cycle_end_date)
                     balances = []
                     for n in sorted(accounts, key=lambda x: x.lower()):
                         if accounts[n].get("active", True):
@@ -976,6 +1018,8 @@ def home():
     except Exception as e:
         logger.debug(f"Auto-apply home check error: {e}")
 
+    days_to_payday = (cycle_end_date - date.today()).days + 1
+
     return render_template(
         "index.html",
         message=request.args.get("msg", ""),
@@ -988,6 +1032,9 @@ def home():
         today_spent=today_spent,
         today_count=today_count,
         pending_items=pending_items,
+        cycle_start_date=cycle_start_date,
+        cycle_end_date=cycle_end_date,
+        days_to_payday=days_to_payday,
     )
 
 # --- AUTO-APPLY ROUTE ---
@@ -1944,12 +1991,36 @@ def settings():
     track('page_view.settings')
     is_pro = user_is_pro()
     auto_apply_enabled, auto_apply_confirm = get_auto_apply_settings(current_user.id)
+    budget_cycle_start = get_budget_cycle_start(current_user.id)
     return render_template("settings.html",
         is_pro=is_pro,
         message=request.args.get("msg", ""),
         auto_apply_enabled=auto_apply_enabled,
         auto_apply_confirm=auto_apply_confirm,
+        budget_cycle_start=budget_cycle_start,
     )
+
+
+@app.post("/settings/save-cycle")
+@login_required
+def settings_save_cycle():
+    from database import get_db, USE_POSTGRES
+    if request.form.get("csrf_token") != session.get("csrf_token"):
+        return redirect(url_for("settings"))
+    try:
+        start_day = max(1, min(28, int(request.form.get("budget_cycle_start", 1))))
+    except (ValueError, TypeError):
+        start_day = 1
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE users SET budget_cycle_start = %s WHERE id = %s", (start_day, current_user.id))
+    else:
+        cursor.execute("UPDATE users SET budget_cycle_start = ? WHERE id = ?", (start_day, current_user.id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+    return redirect(url_for("settings", msg="Budget cycle updated."))
 
 
 @app.post("/settings/save-automation")
