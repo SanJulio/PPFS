@@ -357,8 +357,18 @@ body.privacy-invisible .amounts-visible .amount-private {
     <div class="text-muted">📊 Track your money as you go</div>
   </div>
   <a href="/calendar" class="text-decoration-none mt-1" title="Calendar">
-    <div style="font-size:28px; line-height:1;">📅</div>
+    <div style="width:36px;text-align:center;border:2px solid #ccc;border-radius:6px;overflow:hidden;line-height:1;">
+      <div style="background:#dc3545;color:#fff;font-size:9px;font-weight:700;padding:2px 0;letter-spacing:0.5px;" id="cal-month"></div>
+      <div style="font-size:16px;font-weight:700;color:#333;padding:2px 0;" id="cal-day"></div>
+    </div>
   </a>
+  <script>
+    (function(){
+      var d = new Date();
+      document.getElementById('cal-month').textContent = d.toLocaleString('default',{month:'short'}).toUpperCase();
+      document.getElementById('cal-day').textContent = d.getDate();
+    })();
+  </script>
 </div>
 
   {% if message %}
