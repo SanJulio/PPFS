@@ -125,7 +125,7 @@ def set_csrf_token():
 @app.before_request
 def check_csrf():
     if request.method == 'POST':
-        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid']
+        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid', '/dismiss-auto-apply']
         if request.path not in exempt:
             token = request.form.get('csrf_token')
             if not token or token != session.get('csrf_token'):
@@ -1102,6 +1102,43 @@ def mark_bill_paid():
     else:
         cursor.execute("UPDATE scheduled_expenses SET last_applied = ? WHERE id = ? AND user_id = ?",
                        (due_date_str, bill_id, current_user.id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+    return {"ok": True}
+
+
+@app.post("/dismiss-auto-apply")
+@login_required
+def dismiss_auto_apply():
+    from flask import request as _req
+    from datetime import date as _date
+    if _req.json is None or _req.json.get("csrf_token") != session.get("csrf_token"):
+        return {"error": "Invalid CSRF token"}, 403
+    items = _req.json.get("items", [])
+    today_str = _date.today().isoformat()
+    db = get_db()
+    cursor = db.cursor()
+    for item in items:
+        try:
+            item_id = int(item["item_id"])
+            item_type = str(item["type"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if item_type == "bill":
+            if USE_POSTGRES:
+                cursor.execute("UPDATE scheduled_expenses SET last_applied = %s WHERE id = %s AND user_id = %s",
+                               (today_str, item_id, current_user.id))
+            else:
+                cursor.execute("UPDATE scheduled_expenses SET last_applied = ? WHERE id = ? AND user_id = ?",
+                               (today_str, item_id, current_user.id))
+        elif item_type == "income":
+            if USE_POSTGRES:
+                cursor.execute("UPDATE income SET last_applied = %s WHERE id = %s AND user_id = %s",
+                               (today_str, item_id, current_user.id))
+            else:
+                cursor.execute("UPDATE income SET last_applied = ? WHERE id = ? AND user_id = ?",
+                               (today_str, item_id, current_user.id))
     db.commit()
     cursor.close()
     release_db(db)

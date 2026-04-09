@@ -420,7 +420,7 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
       </div>
       <div class="d-grid gap-2 mt-3">
         <button class="btn btn-primary" onclick="submitAutoApply()">Apply selected</button>
-        <button class="btn btn-outline-secondary" onclick="closeAutoApplyModal()">Dismiss</button>
+        <button class="btn btn-outline-secondary" onclick="dismissAutoApply()">Dismiss</button>
       </div>
     </div>
   </div>
@@ -1279,6 +1279,20 @@ function openAutoApplyModal() {
 }
 function closeAutoApplyModal() {
   document.getElementById('autoApplyModal').style.display = 'none';
+}
+function dismissAutoApply() {
+  var checks = document.querySelectorAll('.auto-apply-check');
+  var items = [];
+  checks.forEach(function(cb) {
+    items.push({ type: cb.dataset.type, item_id: parseInt(cb.dataset.itemId, 10) });
+  });
+  closeAutoApplyModal();
+  if (items.length === 0) return;
+  fetch('/dismiss-auto-apply', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ csrf_token: HOME_CSRF, items: items })
+  });
 }
 function submitAutoApply() {
   var checks = document.querySelectorAll('.auto-apply-check:checked');
