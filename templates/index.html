@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{ session['csrf_token'] }}">
 <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
 <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
 <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}">
@@ -297,10 +298,8 @@ body.privacy-invisible .amounts-visible .amount-private {
 </div>
 {% endif %}
 
-<script type="application/json" id="pendingItemsData">{{ pending_items | tojson | safe }}</script>
 <script>
-var HOME_CSRF = "{{ session['csrf_token'] }}";
-var PENDING_ITEMS = JSON.parse(document.getElementById('pendingItemsData').textContent || '[]');
+var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 </script>
 
 <!-- Quick-add modal -->
