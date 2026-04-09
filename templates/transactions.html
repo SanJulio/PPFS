@@ -46,6 +46,10 @@ tbody tr.tx-row:hover { background: #f8f9fa; }
 input.form-control-sm { border-radius: 10px; font-size: 13px; }
 .search-input { border-radius: 12px; border: 1px solid rgba(0,0,0,0.1); padding: 10px 14px; font-size: 14px; }
 .search-input:focus { outline: none; border-color: #111; box-shadow: none; }
+.col-filter-btn { background:none; border:none; padding:2px 4px; font-size:11px; color:#bbb; cursor:pointer; border-radius:5px; line-height:1; vertical-align:middle; }
+.col-filter-btn:hover { background:#f0f0f0; color:#555; }
+.col-filter-btn.active { color:#111; background:#e0e7ff; }
+#filterPanel { position:fixed; z-index:9992; background:#fff; border-radius:14px; box-shadow:0 8px 28px rgba(0,0,0,0.18); padding:14px; width:min(260px,calc(100vw - 24px)); border:1px solid rgba(0,0,0,0.07); }
 </style>
 </head>
 <body>
@@ -77,53 +81,9 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
   <div class="card p-3 mb-4">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <h5 class="mb-0">Recent Transactions</h5>
-      <span class="badge-soft" id="countBadge">{{ transactions|length }} transactions</span>
-    </div>
-
-    <!-- Filters -->
-    <div class="mb-3 pb-3" style="border-bottom:1px solid #f0f0f0;">
-      <!-- Type pills -->
-      <div class="d-flex gap-2 mb-2 flex-wrap">
-        <button class="btn btn-sm rounded-pill fw-semibold type-pill active" id="typeAll" onclick="setTypeFilter('all', this)" style="font-size:13px; padding:5px 14px;">All</button>
-        <button class="btn btn-sm rounded-pill fw-semibold type-pill" id="typeExpenses" onclick="setTypeFilter('expenses', this)" style="font-size:13px; padding:5px 14px;">Expenses</button>
-        <button class="btn btn-sm rounded-pill fw-semibold type-pill" id="typeIncome" onclick="setTypeFilter('income', this)" style="font-size:13px; padding:5px 14px;">Income</button>
-        <button onclick="clearFilters()" class="btn btn-sm btn-outline-secondary rounded-pill ms-auto" style="font-size:12px; padding:5px 12px;" id="clearBtn">Clear ✕</button>
-      </div>
-      <!-- Row 2: text search + account + category + dates -->
-      <div class="row g-2">
-        <div class="col-12 col-sm-4">
-          <input type="text" id="searchInput" class="form-control search-input w-100"
-            placeholder="🔍 Description..." style="font-size:13px; padding:8px 12px;">
-        </div>
-        <div class="col-6 col-sm-2">
-          <select id="accountFilter" class="form-select search-input w-100" style="font-size:13px; padding:8px 12px;">
-            <option value="">All accounts</option>
-          </select>
-        </div>
-        <div class="col-6 col-sm-2">
-          <select id="categoryFilter" class="form-select search-input w-100" style="font-size:13px; padding:8px 12px;">
-            <option value="">All categories</option>
-            <option>Food &amp; Drink</option>
-            <option>Transport</option>
-            <option>Housing</option>
-            <option>Bills &amp; Utilities</option>
-            <option>Entertainment</option>
-            <option>Shopping</option>
-            <option>Health</option>
-            <option>Personal Care</option>
-            <option>Other</option>
-          </select>
-        </div>
-        <div class="col-6 col-sm-2">
-          <input type="text" id="dateFrom" class="form-control search-input w-100"
-            placeholder="From" style="font-size:13px; padding:8px 12px;"
-            onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'">
-        </div>
-        <div class="col-6 col-sm-2">
-          <input type="text" id="dateTo" class="form-control search-input w-100"
-            placeholder="To" style="font-size:13px; padding:8px 12px;"
-            onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'">
-        </div>
+      <div class="d-flex align-items-center gap-2">
+        <button onclick="clearFilters()" id="clearBtn" class="btn btn-sm btn-outline-secondary rounded-pill" style="font-size:12px; padding:4px 10px; opacity:0.3; display:none;">Clear ✕</button>
+        <span class="badge-soft" id="countBadge">{{ transactions|length }} transactions</span>
       </div>
     </div>
 
@@ -131,13 +91,13 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
       <table class="table table-sm align-middle mb-0" id="txTable">
         <thead>
           <tr>
-            <th><input type="checkbox" id="selectAll" onclick="toggleSelectAll(this)" title="Select all"></th>
-            <th></th>
-            <th>Date</th>
-            <th>Description</th>
-            <th class="text-end">Amount</th>
-            <th>Account</th>
-            <th>Category</th>
+            <th style="width:32px;"><input type="checkbox" id="selectAll" onclick="toggleSelectAll(this)" title="Select all"></th>
+            <th style="width:20px;"></th>
+            <th style="white-space:nowrap;">Date <button class="col-filter-btn" data-col="date" onclick="toggleFilterPanel('date',this)">▾</button></th>
+            <th>Description <button class="col-filter-btn" data-col="description" onclick="toggleFilterPanel('description',this)">▾</button></th>
+            <th class="text-end" style="white-space:nowrap;">Amount <button class="col-filter-btn" data-col="amount" onclick="toggleFilterPanel('amount',this)">▾</button></th>
+            <th style="white-space:nowrap;">Account <button class="col-filter-btn" data-col="account" onclick="toggleFilterPanel('account',this)">▾</button></th>
+            <th style="white-space:nowrap;">Category <button class="col-filter-btn" data-col="category" onclick="toggleFilterPanel('category',this)">▾</button></th>
           </tr>
         </thead>
         <tbody id="txBody">
@@ -222,6 +182,15 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
     </div>
   </div>
 
+</div>
+
+<!-- Column filter panel -->
+<div id="filterPanel" class="d-none">
+  <div id="filterPanelContent"></div>
+  <div class="d-flex justify-content-between align-items-center mt-2 pt-2" style="border-top:1px solid #f0f0f0;">
+    <button onclick="clearColumnFilter()" class="btn btn-sm btn-outline-secondary rounded-3" style="font-size:12px;">Clear</button>
+    <button onclick="closeFilterPanel()" class="btn btn-sm btn-dark rounded-3" style="font-size:12px;">Done</button>
+  </div>
 </div>
 
 <!-- Bulk categorize action bar -->
@@ -373,127 +342,188 @@ function toggleEdit(id) {
   editRow.classList.toggle('d-none');
 }
 
-// ── Populate account dropdown from actual transaction data ───────────────────
-(function() {
-  var seen = {};
-  var sel = document.getElementById('accountFilter');
-  document.querySelectorAll('#txBody tr.tx-row').forEach(function(row) {
-    var acc = row.dataset.account || '';
-    if (acc && !seen[acc]) {
-      seen[acc] = true;
-      var opt = document.createElement('option');
-      opt.value = acc;
-      opt.textContent = acc.charAt(0).toUpperCase() + acc.slice(1);
-      sel.appendChild(opt);
-    }
-  });
-})();
+// ── Column filter panel ──────────────────────────────────────────────────────
+var filterState = { search: '', account: '', category: '', dateFrom: '', dateTo: '', type: 'all' };
+var activeFilterCol = null;
 
-var currentTypeFilter = 'all';
+function toggleFilterPanel(col, btn) {
+  var panel = document.getElementById('filterPanel');
+  if (activeFilterCol === col && !panel.classList.contains('d-none')) {
+    closeFilterPanel(); return;
+  }
+  activeFilterCol = col;
+  renderFilterPanel(col);
+  var rect = btn.getBoundingClientRect();
+  var panelWidth = 260;
+  var left = Math.min(rect.left, window.innerWidth - panelWidth - 8);
+  left = Math.max(8, left);
+  panel.style.left = left + 'px';
+  panel.style.top = (rect.bottom + 6) + 'px';
+  panel.classList.remove('d-none');
+}
+
+function renderFilterPanel(col) {
+  var content = document.getElementById('filterPanelContent');
+  if (col === 'date') {
+    content.innerHTML = '<div class="fw-semibold small mb-2">Filter by Date</div>' +
+      '<div class="mb-2"><label style="font-size:11px;color:#888;" class="form-label">From</label>' +
+      '<input type="date" id="fpDateFrom" class="form-control form-control-sm" value="' + filterState.dateFrom + '"></div>' +
+      '<div><label style="font-size:11px;color:#888;" class="form-label">To</label>' +
+      '<input type="date" id="fpDateTo" class="form-control form-control-sm" value="' + filterState.dateTo + '"></div>';
+    document.getElementById('fpDateFrom').addEventListener('change', function() { filterState.dateFrom = this.value; applyFilter(); });
+    document.getElementById('fpDateTo').addEventListener('change', function() { filterState.dateTo = this.value; applyFilter(); });
+  } else if (col === 'description') {
+    content.innerHTML = '<div class="fw-semibold small mb-2">Search Description</div>' +
+      '<input type="text" id="fpSearch" class="form-control form-control-sm" placeholder="Type to search..." value="' + filterState.search + '">';
+    var inp = document.getElementById('fpSearch');
+    inp.focus();
+    inp.addEventListener('input', function() { filterState.search = this.value.toLowerCase(); applyFilter(); });
+  } else if (col === 'amount') {
+    content.innerHTML = '<div class="fw-semibold small mb-2">Filter by Type</div>' +
+      '<div class="d-flex gap-2 flex-wrap">' +
+      ['all','expenses','income'].map(function(t) {
+        return '<button class="btn btn-sm rounded-pill fw-semibold type-pill' + (filterState.type === t ? ' active' : '') +
+          '" onclick="setTypeFilter(\'' + t + '\',this)">' + t.charAt(0).toUpperCase() + t.slice(1) + '</button>';
+      }).join('') + '</div>';
+  } else if (col === 'account') {
+    var accounts = [];
+    var seen = {};
+    document.querySelectorAll('#txBody tr.tx-row').forEach(function(row) {
+      var acc = row.dataset.account || '';
+      if (acc && !seen[acc]) { seen[acc] = true; accounts.push(acc); }
+    });
+    content.innerHTML = '<div class="fw-semibold small mb-2">Filter by Account</div>' +
+      '<div id="fpAccountList" style="max-height:180px;overflow-y:auto;">' +
+      accounts.map(function(a) {
+        return '<label class="d-flex align-items-center gap-2 py-1" style="cursor:pointer;font-size:13px;">' +
+          '<input type="checkbox"' + (filterState.account === a ? ' checked' : '') +
+          ' onchange="setAccountFilter(\'' + a + '\',this.checked,this)" style="cursor:pointer;">' +
+          a.charAt(0).toUpperCase() + a.slice(1) + '</label>';
+      }).join('') + '</div>';
+  } else if (col === 'category') {
+    var cats = ['Food & Drink','Transport','Housing','Bills & Utilities','Entertainment','Shopping','Health','Personal Care','Other'];
+    content.innerHTML = '<div class="fw-semibold small mb-2">Filter by Category</div>' +
+      '<div id="fpCategoryList" style="max-height:200px;overflow-y:auto;">' +
+      cats.map(function(c) {
+        return '<label class="d-flex align-items-center gap-2 py-1" style="cursor:pointer;font-size:13px;">' +
+          '<input type="checkbox"' + (filterState.category === c ? ' checked' : '') +
+          ' onchange="setCategoryFilter(\'' + c.replace(/'/g,"\\'") + '\',this.checked,this)" style="cursor:pointer;">' +
+          c + '</label>';
+      }).join('') + '</div>';
+  }
+}
 
 function setTypeFilter(type, btn) {
-  currentTypeFilter = type;
-  document.querySelectorAll('.type-pill').forEach(function(b) {
-    b.classList.toggle('active', b === btn);
+  filterState.type = type;
+  document.querySelectorAll('#filterPanelContent .type-pill').forEach(function(b) { b.classList.toggle('active', b === btn); });
+  applyFilter();
+}
+function setAccountFilter(acc, checked, el) {
+  filterState.account = checked ? acc : '';
+  if (checked) document.querySelectorAll('#fpAccountList input[type=checkbox]').forEach(function(cb) { if (cb !== el) cb.checked = false; });
+  applyFilter();
+}
+function setCategoryFilter(cat, checked, el) {
+  filterState.category = checked ? cat : '';
+  if (checked) document.querySelectorAll('#fpCategoryList input[type=checkbox]').forEach(function(cb) { if (cb !== el) cb.checked = false; });
+  applyFilter();
+}
+function clearColumnFilter() {
+  if (!activeFilterCol) return;
+  if (activeFilterCol === 'date') { filterState.dateFrom = ''; filterState.dateTo = ''; }
+  else if (activeFilterCol === 'description') { filterState.search = ''; }
+  else if (activeFilterCol === 'amount') { filterState.type = 'all'; }
+  else if (activeFilterCol === 'account') { filterState.account = ''; }
+  else if (activeFilterCol === 'category') { filterState.category = ''; }
+  renderFilterPanel(activeFilterCol);
+  applyFilter();
+}
+function closeFilterPanel() {
+  document.getElementById('filterPanel').classList.add('d-none');
+  activeFilterCol = null;
+}
+document.addEventListener('click', function(e) {
+  var panel = document.getElementById('filterPanel');
+  if (!panel.classList.contains('d-none') && !panel.contains(e.target) && !e.target.closest('.col-filter-btn')) closeFilterPanel();
+});
+
+function updateFilterIndicators() {
+  var map = { date: filterState.dateFrom || filterState.dateTo, description: filterState.search, amount: filterState.type !== 'all', account: filterState.account, category: filterState.category };
+  Object.keys(map).forEach(function(col) {
+    var btn = document.querySelector('.col-filter-btn[data-col="' + col + '"]');
+    if (btn) btn.classList.toggle('active', !!map[col]);
   });
+  var anyActive = filterState.search || filterState.account || filterState.category || filterState.dateFrom || filterState.dateTo || filterState.type !== 'all';
+  var cb = document.getElementById('clearBtn');
+  cb.style.display = anyActive ? '' : 'none';
+  cb.style.opacity = '1';
+}
+
+function applyFilter() {
+  updateFilterIndicators();
   filterTransactions();
 }
 
 function filterTransactions() {
-  const search = document.getElementById('searchInput').value.toLowerCase();
-  const account = document.getElementById('accountFilter').value.toLowerCase();
-  const category = document.getElementById('categoryFilter').value;
-  const dateFrom = document.getElementById('dateFrom').value;
-  const dateTo = document.getElementById('dateTo').value;
-  const rows = document.querySelectorAll('#txBody tr.tx-row');
-  let visible = 0;
-
-  rows.forEach(row => {
-    const desc = row.dataset.description || '';
-    const rowAccount = row.dataset.account || '';
-    const date = row.dataset.date || '';
-    const cat = row.dataset.category || '';
-    const amount = parseFloat(row.dataset.amount || '0');
-    const expandRow = document.getElementById('expand-' + row.dataset.id);
-
-    const matchSearch = !search || desc.includes(search);
-    const matchAccount = !account || rowAccount === account;
-    const matchCategory = !category || cat === category;
-    const matchFrom = !dateFrom || date >= dateFrom;
-    const matchTo = !dateTo || date <= dateTo;
-    const matchType = currentTypeFilter === 'all' ||
-      (currentTypeFilter === 'expenses' && amount < 0) ||
-      (currentTypeFilter === 'income' && amount >= 0);
-    const show = matchSearch && matchAccount && matchCategory && matchFrom && matchTo && matchType;
-
+  var rows = document.querySelectorAll('#txBody tr.tx-row');
+  var visible = 0;
+  rows.forEach(function(row) {
+    var desc = row.dataset.description || '';
+    var acc = row.dataset.account || '';
+    var date = row.dataset.date || '';
+    var cat = row.dataset.category || '';
+    var amount = parseFloat(row.dataset.amount || '0');
+    var expandRow = document.getElementById('expand-' + row.dataset.id);
+    var show =
+      (!filterState.search || desc.includes(filterState.search)) &&
+      (!filterState.account || acc === filterState.account) &&
+      (!filterState.category || cat === filterState.category) &&
+      (!filterState.dateFrom || date >= filterState.dateFrom) &&
+      (!filterState.dateTo || date <= filterState.dateTo) &&
+      (filterState.type === 'all' || (filterState.type === 'expenses' && amount < 0) || (filterState.type === 'income' && amount >= 0));
     row.style.display = show ? '' : 'none';
     if (expandRow) expandRow.style.display = show ? '' : 'none';
     if (show) visible++;
   });
-
-  let total = 0;
-  document.querySelectorAll('#txBody tr.tx-row').forEach(row => {
+  var total = 0;
+  document.querySelectorAll('#txBody tr.tx-row').forEach(function(row) {
     if (row.style.display === 'none') return;
     total += Math.abs(parseFloat(row.dataset.amount || '0'));
   });
   document.getElementById('countBadge').textContent = visible + ' transactions · £' + total.toFixed(2) + ' total';
-
-  // Show/hide clear button based on whether any filter is active
-  const anyActive = search || account || category || dateFrom || dateTo || currentTypeFilter !== 'all';
-  document.getElementById('clearBtn').style.opacity = anyActive ? '1' : '0.4';
-
   renderCategoryTotals();
 }
 
 function renderCategoryTotals() {
-  const box = document.getElementById('categoryTotals');
-  const rows = document.querySelectorAll('#txBody tr.tx-row');
-  const totals = {};
-  rows.forEach(row => {
+  var box = document.getElementById('categoryTotals');
+  var totals = {};
+  document.querySelectorAll('#txBody tr.tx-row').forEach(function(row) {
     if (row.style.display === 'none') return;
-    const amount = parseFloat(row.dataset.amount || '0');
+    var amount = parseFloat(row.dataset.amount || '0');
     if (amount >= 0) return;
-    const cat = row.dataset.category || 'Other';
+    var cat = row.dataset.category || 'Other';
     totals[cat] = (totals[cat] || 0) + Math.abs(amount);
   });
-  const cats = Object.keys(totals);
+  var cats = Object.keys(totals);
   if (cats.length === 0) { box.style.display = 'none'; return; }
-  cats.sort((a, b) => totals[b] - totals[a]);
+  cats.sort(function(a,b) { return totals[b] - totals[a]; });
   box.style.display = '';
-  box.innerHTML = '<div class="small fw-semibold text-muted mb-2">Spending by category</div>' +
-    '<div style="display:flex;flex-wrap:wrap;gap:8px;">' +
-    cats.map(c => '<span style="background:#f0f0f0;border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;">' +
-      c + ' <span style="color:#555;">£' + totals[c].toFixed(2) + '</span></span>').join('') +
-    '</div>';
+  box.innerHTML = '<div class="small fw-semibold text-muted mb-2">Spending by category</div><div style="display:flex;flex-wrap:wrap;gap:8px;">' +
+    cats.map(function(c) { return '<span style="background:#f0f0f0;border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;">' + c + ' <span style="color:#555;">£' + totals[c].toFixed(2) + '</span></span>'; }).join('') + '</div>';
 }
 
 function clearFilters() {
-  document.getElementById('searchInput').value = '';
-  document.getElementById('accountFilter').value = '';
-  document.getElementById('categoryFilter').value = '';
-  document.getElementById('dateFrom').value = '';
-  document.getElementById('dateTo').value = '';
-  currentTypeFilter = 'all';
-  document.querySelectorAll('.type-pill').forEach(function(b) {
-    b.classList.toggle('active', b.id === 'typeAll');
-  });
+  filterState = { search: '', account: '', category: '', dateFrom: '', dateTo: '', type: 'all' };
+  updateFilterIndicators();
   filterTransactions();
 }
 
-document.getElementById('searchInput').addEventListener('input', filterTransactions);
-document.getElementById('accountFilter').addEventListener('change', filterTransactions);
-document.getElementById('categoryFilter').addEventListener('change', filterTransactions);
-document.getElementById('dateFrom').addEventListener('change', filterTransactions);
-document.getElementById('dateTo').addEventListener('change', filterTransactions);
 renderCategoryTotals();
 (function() {
-  let total = 0;
-  document.querySelectorAll('#txBody tr.tx-row').forEach(row => {
-    total += Math.abs(parseFloat(row.dataset.amount || '0'));
-  });
-  const count = document.querySelectorAll('#txBody tr.tx-row').length;
+  var total = 0;
+  document.querySelectorAll('#txBody tr.tx-row').forEach(function(row) { total += Math.abs(parseFloat(row.dataset.amount || '0')); });
+  var count = document.querySelectorAll('#txBody tr.tx-row').length;
   document.getElementById('countBadge').textContent = count + ' transactions · £' + total.toFixed(2) + ' total';
-  document.getElementById('clearBtn').style.opacity = '0.4';
 })();
 
 if (window.location.search.includes('msg=')) {
