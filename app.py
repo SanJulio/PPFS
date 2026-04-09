@@ -618,7 +618,7 @@ def apply_auto_items(user_id, items):
             add_transaction(item['due_date'], item['name'], item['amount'], item['account'], user_id, type=tx_type, category=category)
             update_account_balance(item['account'], item['amount'], user_id)
         except Exception as e:
-            logger.debug(f"Auto-apply item error ({item.get('name')}): {e}")
+            logger.error(f"Auto-apply item error ({item.get('name')}): {e}")
 
     # Update last_applied for each unique item_id — separate connections so a transaction
     # error above doesn't block these from committing
@@ -1028,7 +1028,11 @@ def home():
 @login_required
 def auto_apply():
     from flask import request as _req
+    if _req.json is None:
+        logger.error("auto_apply: request.json is None (bad Content-Type?)")
+        return {"error": "Invalid request"}, 400
     if _req.json.get("csrf_token") != session.get("csrf_token"):
+        logger.error("auto_apply: CSRF mismatch for user %s (session token: %s)", current_user.id, bool(session.get("csrf_token")))
         return {"error": "Invalid CSRF token"}, 403
 
     items = _req.json.get("items", [])

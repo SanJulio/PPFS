@@ -1256,10 +1256,18 @@ function submitAutoApply() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ csrf_token: HOME_CSRF, items: items })
-  }).then(function() {
-    window.location.reload();
+  }).then(function(resp) {
+    if (!resp.ok) {
+      resp.json().then(function(data) {
+        alert('Failed to apply items: ' + (data.error || resp.status) + '. Try logging out and back in.');
+      }).catch(function() {
+        alert('Failed to apply items (status ' + resp.status + '). Try logging out and back in.');
+      });
+    } else {
+      window.location.reload();
+    }
   }).catch(function() {
-    window.location.reload();
+    alert('Network error — check your connection and try again.');
   });
 }
 </script>
