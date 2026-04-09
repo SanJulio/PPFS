@@ -357,7 +357,7 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
 <div class="mb-4 d-flex justify-content-between align-items-start" id="home">
   <div>
     <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="PPFS Logo" style="height:50px; object-fit:contain;" class="mb-2"></a>
-    <div class="text-muted">📊 Track your money as you go</div>
+    <div class="text-muted">Know exactly where you stand, every day</div>
   </div>
   <a href="/calendar" class="text-decoration-none mt-1" title="Calendar">
     <div style="width:36px;text-align:center;border:2px solid #ccc;border-radius:6px;overflow:hidden;line-height:1;">
@@ -583,11 +583,11 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
   <div class="d-flex justify-content-between align-items-start mb-1">
     <h5 class="mb-0">Current Cycle</h5>
     {% if days_to_payday == 1 %}
-    <span class="badge-soft" style="background:#d1fae5;color:#065f46;font-size:12px;">Payday tomorrow</span>
+    <span class="fw-bold" style="background:#d1fae5;color:#065f46;font-size:14px;border-radius:10px;padding:6px 14px;">🎉 Payday tomorrow</span>
     {% elif days_to_payday == 0 %}
-    <span class="badge-soft" style="background:#d1fae5;color:#065f46;font-size:12px;">Payday today 🎉</span>
+    <span class="fw-bold" style="background:#d1fae5;color:#065f46;font-size:14px;border-radius:10px;padding:6px 14px;">🎉 Payday today!</span>
     {% else %}
-    <span class="badge-soft" style="background:#f0f0f0;color:#555;font-size:12px;">{{ days_to_payday }}d to payday</span>
+    <span class="fw-bold" style="background:#f0f0f0;color:#111;font-size:14px;border-radius:10px;padding:6px 14px;">{{ days_to_payday }} days to payday</span>
     {% endif %}
   </div>
   <div class="text-muted small mb-3">{{ cycle_start_date.strftime('%-d %b') }} – {{ cycle_end_date.strftime('%-d %b') }}</div>

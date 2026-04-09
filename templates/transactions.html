@@ -24,7 +24,7 @@ body { background: #f2f4f7; padding-bottom: 110px; }
 .card { border-radius: 18px; border: none; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
 .money { font-variant-numeric: tabular-nums; }
 .ellipsis {
-  max-width: 120px;
+  max-width: 180px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -96,7 +96,7 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
   <div class="card p-3 mb-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h5 class="mb-0">Recent Transactions</h5>
-      <span class="badge-soft" id="countBadge">{{ transactions|length }} shown</span>
+      <span class="badge-soft" id="countBadge">{{ transactions|length }} transactions</span>
     </div>
 
     <div class="table-responsive">
@@ -122,19 +122,21 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
             </td>
           </tr>
           {% endif %}
+          {% set cat_emojis = {'Food': '🍔', 'Food & Drink': '🍔', 'Transport': '🚗', 'Bills': '🏠', 'Bills & Utilities': '🏠', 'Entertainment': '🎬', 'Shopping': '🛍️', 'Health': '💊', 'Income': '💰', 'Savings': '🏦', 'Other': '📦'} %}
           {% for t in transactions %}
+          {% set cat = t.category or 'Other' %}
           <tr class="tx-row" data-id="{{ t.id }}" data-description="{{ t.description|lower }}"
             data-account="{{ t.account|lower }}" data-date="{{ t.date }}"
-            data-category="{{ t.category or 'Other' }}" data-amount="{{ t.amount }}"
+            data-category="{{ cat }}" data-amount="{{ t.amount }}"
             onclick="toggleTx(this.dataset.id)">
             <td><span id="arrow-{{ t.id }}" class="fw-bold" style="font-size:13px; color:#111">+</span></td>
-            <td class="text-muted small">{{ t.date }}</td>
+            <td class="text-muted small" style="white-space:nowrap;">{{ t.date | dateformat }}</td>
             <td><span class="ellipsis d-inline-block">{{ t.description }}</span></td>
             <td class="text-end money fw-semibold {% if t.amount < 0 %}text-danger{% else %}text-success{% endif %}">
               {% if t.amount < 0 %}-£{{ "%.2f"|format(t.amount|abs) }}{% else %}+£{{ "%.2f"|format(t.amount) }}{% endif %}
             </td>
             <td><span class="badge text-bg-light">{{ t.account }}</span></td>
-            <td><span class="badge text-bg-light">{{ t.category or 'Other' }}</span></td>
+            <td><span class="badge text-bg-light">{{ cat_emojis.get(cat, '📦') }} {{ cat }}</span></td>
           </tr>
           <tr class="expand-row d-none" id="expand-{{ t.id }}">
             <td colspan="5" class="py-2 px-3">
@@ -253,7 +255,12 @@ function filterTransactions() {
     if (show) visible++;
   });
 
-  document.getElementById('countBadge').textContent = visible + ' shown';
+  let total = 0;
+  document.querySelectorAll('#txBody tr.tx-row').forEach(row => {
+    if (row.style.display === 'none') return;
+    total += Math.abs(parseFloat(row.dataset.amount || '0'));
+  });
+  document.getElementById('countBadge').textContent = visible + ' transactions · £' + total.toFixed(2) + ' total';
   renderCategoryTotals();
 }
 
@@ -292,6 +299,14 @@ document.getElementById('categoryFilter').addEventListener('change', filterTrans
 document.getElementById('dateFrom').addEventListener('change', filterTransactions);
 document.getElementById('dateTo').addEventListener('change', filterTransactions);
 renderCategoryTotals();
+(function() {
+  let total = 0;
+  document.querySelectorAll('#txBody tr.tx-row').forEach(row => {
+    total += Math.abs(parseFloat(row.dataset.amount || '0'));
+  });
+  const count = document.querySelectorAll('#txBody tr.tx-row').length;
+  document.getElementById('countBadge').textContent = count + ' transactions · £' + total.toFixed(2) + ' total';
+})();
 
 if (window.location.search.includes('msg=')) {
   const url = new URL(window.location);

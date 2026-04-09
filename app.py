@@ -113,6 +113,15 @@ class PostgresSessionInterface(SessionInterface):
 # --- FLASK APP SETUP ---
 app = Flask(__name__)
 
+@app.template_filter('dateformat')
+def dateformat_filter(value):
+    """Convert YYYY-MM-DD string to '9 Apr 2026' format."""
+    try:
+        from datetime import datetime as _dt
+        return _dt.strptime(str(value), '%Y-%m-%d').strftime('%-d %b %Y')
+    except Exception:
+        return value
+
 import secrets
 
 # Generate a CSRF token for every new session — embedded as a hidden field in all forms
@@ -1178,7 +1187,7 @@ def actions():
     cursor.close()
     release_db(db)
 
-    return render_template("actions.html", accounts=accounts, investments=investments, message=request.args.get("msg", ""))
+    return render_template("actions.html", accounts=accounts, investments=investments, message=request.args.get("msg", ""), today=date.today().isoformat())
 
 # --- FLOW PAGE ---
 # Shows each account's monthly cash flow: bills paid, bills still to pay,
@@ -1437,6 +1446,7 @@ def add_expense():
     amount_raw = (request.form.get("amount") or "").strip()
     account = (request.form.get("account") or "").strip()
     category = (request.form.get("category") or "Other").strip()
+    date_raw = (request.form.get("date") or "").strip()
 
     if not description or not amount_raw or not account:
         return redirect(url_for("home", msg="Missing fields. Try again."))
@@ -1447,9 +1457,13 @@ def add_expense():
 
     amount = -abs(amount)
 
-    today_str = date.today().isoformat()
+    try:
+        from datetime import datetime as _dt
+        tx_date = _dt.strptime(date_raw, '%Y-%m-%d').date().isoformat() if date_raw else date.today().isoformat()
+    except ValueError:
+        tx_date = date.today().isoformat()
 
-    add_transaction(today_str, description, amount, account, current_user.id, category=category)
+    add_transaction(tx_date, description, amount, account, current_user.id, category=category)
     update_account_balance(account, amount, current_user.id)
     bust_forecast_cache(current_user.id)
     track('action.add_expense')
@@ -1466,6 +1480,7 @@ def add_income():
     description = (request.form.get("description") or "").strip()
     amount_raw = (request.form.get("amount") or "").strip()
     account = (request.form.get("account") or "").strip()
+    date_raw = (request.form.get("date") or "").strip()
 
     if not description or not amount_raw or not account:
         return redirect(url_for("home", msg="Missing fields. Try again."))
@@ -1476,9 +1491,13 @@ def add_income():
 
     amount = abs(amount)
 
-    today_str = date.today().isoformat()
+    try:
+        from datetime import datetime as _dt
+        tx_date = _dt.strptime(date_raw, '%Y-%m-%d').date().isoformat() if date_raw else date.today().isoformat()
+    except ValueError:
+        tx_date = date.today().isoformat()
 
-    add_transaction(today_str, description, amount, account, current_user.id)
+    add_transaction(tx_date, description, amount, account, current_user.id)
     update_account_balance(account, amount, current_user.id)
     bust_forecast_cache(current_user.id)
     track('action.add_income')
