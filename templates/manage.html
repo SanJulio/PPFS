@@ -167,6 +167,15 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             </tr>
             {% endfor %}
           </tbody>
+          {% if accounts %}
+          <tfoot>
+            <tr style="border-top:2px solid #dee2e6;">
+              <td class="fw-bold small" colspan="2">Total balance</td>
+              <td class="text-end fw-bold money">£{{ "%.2f"|format(accounts|sum(attribute='balance')) }}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+          {% endif %}
         </table>
       </div>
 
@@ -290,6 +299,15 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             </tr>
             {% endfor %}
           </tbody>
+          {% if bills %}
+          <tfoot>
+            <tr style="border-top:2px solid #dee2e6;">
+              <td class="fw-bold small">Total</td>
+              <td class="text-end fw-bold money">£{{ "%.2f"|format(bills|sum(attribute='amount')) }}</td>
+              <td colspan="2" class="text-end text-muted small">per occurrence</td>
+            </tr>
+          </tfoot>
+          {% endif %}
         </table>
       </div>
 
@@ -418,6 +436,15 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             </tr>
             {% endfor %}
           </tbody>
+          {% if income %}
+          <tfoot>
+            <tr style="border-top:2px solid #dee2e6;">
+              <td class="fw-bold small">Total</td>
+              <td class="text-end fw-bold money">£{{ "%.2f"|format(income|sum(attribute='amount')) }}</td>
+              <td colspan="2" class="text-end text-muted small">per occurrence</td>
+            </tr>
+          </tfoot>
+          {% endif %}
         </table>
       </div>
 
