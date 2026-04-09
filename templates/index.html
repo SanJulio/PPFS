@@ -519,11 +519,15 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
             <span class="amount-private text-danger">−£{{ "%.2f"|format(overview.future_bills) }}</span>
           </div>
           {% if overview.future_income > 0 %}
-          <div class="d-flex justify-content-between py-1 border-bottom text-muted" style="font-size:11px;">
-            <span>Income still due (not included)</span>
-            <span class="amount-private">+£{{ "%.2f"|format(overview.future_income) }}</span>
+          <div class="d-flex justify-content-between py-1 border-bottom">
+            <span>Income still due</span>
+            <span class="amount-private text-success">+£{{ "%.2f"|format(overview.future_income) }}</span>
           </div>
           {% endif %}
+          <div class="d-flex justify-content-between py-1 fw-semibold">
+            <span>End of cycle</span>
+            <span class="amount-private">£{{ "%.2f"|format(overview.spending_balance - overview.future_bills + overview.future_income) }}</span>
+          </div>
         </div>
       </div>
     </div>
