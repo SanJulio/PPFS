@@ -658,71 +658,64 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
   </div>
 </div>
 
+  <!-- Can I afford this — floating button + modal -->
+  <button onclick="document.getElementById('affordModal').style.display='flex'" class="btn btn-outline-dark w-100 mb-3 rounded-4 py-2 fw-semibold" style="font-size:14px;">💬 Can I afford this?</button>
+
+  <div id="affordModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:20px;">
+    <div class="card p-4" style="max-width:480px; width:100%; border-radius:24px 24px 24px 24px;">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0 fw-bold">Can I afford this?</h5>
+        <button onclick="document.getElementById('affordModal').style.display='none'" class="btn btn-sm btn-outline-secondary rounded-3">✕</button>
+      </div>
+      <div class="mb-2 text-muted small">Based on your projected balance on the selected date.</div>
+      <div class="row g-2 mb-3">
+        <div class="col">
+          <input id="snapshotAffordInput" class="form-control" inputmode="decimal"
+            placeholder="Amount (e.g. 200)" style="border-radius:12px !important; font-size:15px !important;">
+        </div>
+        <div class="col-auto">
+          <select id="snapshotAffordAccount" class="form-select"
+            style="border-radius:12px !important; font-size:13px !important; padding:10px 12px !important;">
+            {% for b in balances %}
+            {% if b.type in ['current', 'cash'] %}
+            <option value="{{ b.name }}">{{ b.name }}</option>
+            {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <button onclick="checkSnapshotAfford()" class="btn btn-dark w-100 py-2 rounded-3 mb-2">Check</button>
+      <div id="snapshotAffordResult"></div>
+    </div>
+  </div>
+
   <div class="card p-3 mb-4" id="snapshot">
   <div class="d-flex align-items-center justify-content-between mb-3">
-    <h5 class="mb-0">📅 Financial Position</h5>
-    <span class="badge-soft" id="snapshotDayLabel">Day 30</span>
+    <h5 class="mb-0">Future Balances</h5>
+    <select id="snapshotAccFilter" class="form-select form-select-sm" style="width:auto; border-radius:10px !important; font-size:13px !important;">
+      <option value="__all__">All accounts</option>
+      {% for b in balances %}
+      <option value="{{ b.name }}">{{ b.name }}</option>
+      {% endfor %}
+    </select>
   </div>
 
-  <!-- Slider + date input -->
-  <div class="d-flex align-items-center gap-2 mb-3">
-    <input type="range" id="snapshotSlider" min="1" max="90" value="30"
-      class="form-range flex-grow-1" style="accent-color:#111;">
-    <input type="date" id="snapshotDateInput" class="form-control"
-      style="width:150px; border-radius:10px !important; font-size:13px !important; padding:8px 10px !important;">
-  </div>
-
-  <!-- Account filter pills -->
-  <div class="d-flex flex-wrap gap-2 mb-3" id="snapshotPills">
-    <button onclick="toggleSnapshotAll()" id="snapshotPillAll"
-      class="btn btn-sm btn-dark rounded-pill" style="font-size:12px;">All accounts</button>
-    {% for b in balances %}
-    <button onclick="toggleSnapshotPill('{{ b.name }}')"
-      data-acc="{{ b.name }}"
-      class="btn btn-sm btn-outline-secondary rounded-pill snap-pill" style="font-size:12px;">{{ b.name }}</button>
-    {% endfor %}
-  </div>
+  <input type="date" id="snapshotDateInput" class="form-control mb-3"
+    style="border-radius:10px !important; font-size:13px !important; padding:8px 10px !important;">
 
   <!-- Snapshot results -->
   <div id="snapshotResults" style="min-height:60px;">
-    <div class="text-muted small text-center py-2">Move the slider to project your finances</div>
+    <div class="text-muted small text-center py-2">Select a date to project your finances</div>
   </div>
-
-  <!-- Integrated afford check -->
-  <hr class="my-3">
-  <div class="fw-semibold mb-2" style="font-size:14px;">Can I afford this on that date?</div>
-  <div class="row g-2 mb-2">
-    <div class="col">
-      <input id="snapshotAffordInput" class="form-control" inputmode="decimal"
-        placeholder="e.g. 200" style="border-radius:12px !important; font-size:15px !important;">
-    </div>
-    <div class="col-auto">
-      <select id="snapshotAffordAccount" class="form-select"
-        style="border-radius:12px !important; font-size:13px !important; padding:10px 12px !important;">
-        {% for b in balances %}
-        {% if b.type in ['current', 'cash'] %}
-        <option value="{{ b.name }}">{{ b.name }}</option>
-        {% endif %}
-        {% endfor %}
-      </select>
-    </div>
-    <div class="col-auto">
-      <button onclick="checkSnapshotAfford()" class="btn btn-dark rounded-3 px-4" style="height:100%;">Check</button>
-    </div>
-  </div>
-  <div id="snapshotAffordResult"></div>
 </div>
 
 <script>
 (function() {
   var snapshotData = null;
-  var selectedAccounts = null;
   var debounceTimer = null;
-  var slider = document.getElementById('snapshotSlider');
-  var dayLabel = document.getElementById('snapshotDayLabel');
   var dateInput = document.getElementById('snapshotDateInput');
+  var accFilter = document.getElementById('snapshotAccFilter');
   var resultsEl = document.getElementById('snapshotResults');
-  var affordResult = document.getElementById('snapshotAffordResult');
 
   function daysFromToday(days) {
     var d = new Date();
@@ -736,22 +729,22 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
     return Math.max(1, Math.min(90, Math.round((target - today) / 86400000)));
   }
 
-  // Set min/max on date input
+  function formatDate(iso) {
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var d = new Date(iso + 'T00:00:00');
+    return d.getDate() + ' ' + months[d.getMonth()];
+  }
+
   dateInput.min = daysFromToday(1);
   dateInput.max = daysFromToday(90);
   dateInput.value = daysFromToday(30);
 
   function fetchSnapshot() {
-    var days = slider.value;
-    dayLabel.textContent = 'Day ' + days;
+    var days = dateToDays(dateInput.value);
     resultsEl.innerHTML = '<div class="text-muted small text-center py-2">Loading...</div>';
-    affordResult.innerHTML = '';
     fetch('/api/snapshot?days=' + days)
       .then(function(r) { return r.json(); })
-      .then(function(data) {
-        snapshotData = data;
-        renderSnapshot();
-      })
+      .then(function(data) { snapshotData = data; renderSnapshot(); })
       .catch(function() {
         resultsEl.innerHTML = '<div class="text-danger small text-center py-2">Failed to load</div>';
       });
@@ -761,183 +754,119 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
     if (!snapshotData) return;
     var accounts = snapshotData.accounts;
     var accs = Object.keys(accounts);
-    if (selectedAccounts && selectedAccounts.length > 0) {
-      accs = accs.filter(function(a) { return selectedAccounts.indexOf(a) >= 0; });
-    }
+    var selected = accFilter.value;
+    if (selected !== '__all__') accs = accs.filter(function(a) { return a === selected; });
 
     var cards = accs.map(function(name) {
       var a = accounts[name];
+      var todayBal = a.balance_on_date - a.change;
       var chg = a.change;
       var chgStr = (chg >= 0 ? '+' : '') + '£' + Math.abs(chg).toFixed(2);
       var chgColor = chg >= 0 ? '#065f46' : '#991b1b';
       var chgBg = chg >= 0 ? '#d1fae5' : '#fde8e8';
       var balStyle = a.balance_on_date < 0 ? 'color:#991b1b;' : '';
+      var safeId = name.replace(/[^a-zA-Z0-9]/g, '_');
 
-      // Merge income and bills for this account, sorted by date
-      var accEvents = []
+      var events = []
         .concat(snapshotData.income_arriving.filter(function(i) { return i.account === name; }).map(function(i) { return {type:'income', item:i}; }))
         .concat(snapshotData.bills_due.filter(function(i) { return i.account === name; }).map(function(i) { return {type:'bill', item:i}; }))
-        .sort(function(a, b) { return a.item.iso < b.item.iso ? -1 : a.item.iso > b.item.iso ? 1 : 0; });
+        .sort(function(x, y) { return x.item.iso < y.item.iso ? -1 : x.item.iso > y.item.iso ? 1 : 0; });
 
-      var eventRows = accEvents.map(function(e) {
+      var running = todayBal;
+      var flowLines = '<div style="font-size:13px;padding:5px 0;border-bottom:1px solid #f0f0f0;color:#111;">Today: <strong>£' + running.toFixed(2) + '</strong></div>';
+      events.forEach(function(e) {
         var isIncome = e.type === 'income';
-        var color = isIncome ? '#047857' : '#991b1b';
-        var icon = isIncome ? '💰' : '📋';
-        var sign = isIncome ? '+' : '−';
-        return '<div class="d-flex justify-content-between" style="font-size:12px;color:' + color + ';padding:2px 0;">' +
-          '<span>' + icon + ' ' + e.item.name + '</span>' +
-          '<span class="fw-semibold">' + sign + '£' + e.item.amount.toFixed(2) + ' · ' + e.item.date + '</span>' +
+        var amt = e.item.amount;
+        running += isIncome ? amt : -amt;
+        var sign = isIncome ? '+' : '-';
+        var color = isIncome ? '#065f46' : '#991b1b';
+        flowLines += '<div style="font-size:13px;padding:5px 0;border-bottom:1px solid #f0f0f0;">' +
+          '<span style="color:' + color + ';font-weight:600;">' + sign + '£' + amt.toFixed(2) + '</span>' +
+          ' <span style="color:#555;">(' + e.item.name + ')</span>' +
+          ' <span style="color:#888;">→</span>' +
+          ' <span style="font-weight:600;color:#111;">£' + running.toFixed(2) + '</span>' +
+          ' <span style="color:#aaa;font-size:11px;">' + formatDate(e.item.iso) + '</span>' +
         '</div>';
-      }).join('');
+      });
 
-      var breakdown = eventRows
-        ? '<div class="mt-2 pt-2 border-top">' + eventRows + '</div>'
-        : '';
+      var txToggle = events.length > 0
+        ? '<div class="mt-2 pt-2" style="border-top:1px solid #f0f0f0;">' +
+            '<button id="txBtn_' + safeId + '" onclick="window.toggleTxFlow(\'' + safeId + '\')" style="background:none;border:none;color:#888;font-size:12px;padding:0;cursor:pointer;">▶ See transactions</button>' +
+            '<div id="txFlow_' + safeId + '" style="display:none;margin-top:8px;">' + flowLines + '</div>' +
+          '</div>'
+        : '<div style="font-size:12px;color:#aaa;margin-top:8px;">No transactions in this period</div>';
 
       return '<div class="border rounded-4 p-3 bg-white mb-2">' +
-        '<div class="d-flex justify-content-between align-items-center">' +
+        '<div onclick="window.toggleAccCard(\'' + safeId + '\')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">' +
           '<div>' +
-            '<div class="fw-semibold" style="font-size:14px;">' + name + '</div>' +
-            '<div class="text-muted" style="font-size:11px;">' + a.type + '</div>' +
+            '<div style="font-weight:600;font-size:14px;">' + name + '</div>' +
+            '<div style="color:#aaa;font-size:11px;">' + a.type + '</div>' +
           '</div>' +
-          '<div class="text-end">' +
-            '<div class="fw-bold money" style="font-size:18px;' + balStyle + '">£' + a.balance_on_date.toFixed(2) + '</div>' +
-            '<span class="rounded-pill px-2" style="font-size:11px;font-weight:600;background:' + chgBg + ';color:' + chgColor + ';">' + chgStr + ' from today</span>' +
+          '<div style="text-align:right;">' +
+            '<div style="font-weight:700;font-size:18px;' + balStyle + '">£' + a.balance_on_date.toFixed(2) + '</div>' +
+            '<span style="font-size:11px;font-weight:600;background:' + chgBg + ';color:' + chgColor + ';border-radius:999px;padding:2px 8px;">' + chgStr + '</span>' +
           '</div>' +
         '</div>' +
-        breakdown +
+        '<div id="accBody_' + safeId + '" style="display:none;">' + txToggle + '</div>' +
       '</div>';
     }).join('');
 
     resultsEl.innerHTML = accs.length === 0
-      ? '<div class="text-muted small text-center py-2">No accounts selected</div>'
+      ? '<div class="text-muted small text-center py-2">No accounts found</div>'
       : cards;
   }
 
-  window.toggleSnapshotPill = function(accName) {
-    if (!selectedAccounts) selectedAccounts = [];
-    var idx = selectedAccounts.indexOf(accName);
-    if (idx >= 0) selectedAccounts.splice(idx, 1);
-    else selectedAccounts.push(accName);
-    if (selectedAccounts.length === 0) selectedAccounts = null;
-    updatePillStyles();
-    renderSnapshot();
+  window.toggleAccCard = function(safeId) {
+    var body = document.getElementById('accBody_' + safeId);
+    if (body) body.style.display = body.style.display === 'none' ? 'block' : 'none';
   };
 
-  window.toggleSnapshotAll = function() {
-    selectedAccounts = null;
-    updatePillStyles();
-    renderSnapshot();
+  window.toggleTxFlow = function(safeId) {
+    var flow = document.getElementById('txFlow_' + safeId);
+    var btn = document.getElementById('txBtn_' + safeId);
+    if (!flow) return;
+    var expanded = flow.style.display !== 'none';
+    flow.style.display = expanded ? 'none' : 'block';
+    if (btn) btn.textContent = (expanded ? '▶' : '▼') + ' See transactions';
   };
-
-  function updatePillStyles() {
-    var allBtn = document.getElementById('snapshotPillAll');
-    var pills = document.querySelectorAll('.snap-pill');
-    if (!selectedAccounts) {
-      allBtn.className = 'btn btn-sm btn-dark rounded-pill';
-      pills.forEach(function(p) { p.className = 'btn btn-sm btn-outline-secondary rounded-pill snap-pill'; });
-    } else {
-      allBtn.className = 'btn btn-sm btn-outline-secondary rounded-pill';
-      pills.forEach(function(p) {
-        var active = selectedAccounts.indexOf(p.dataset.acc) >= 0;
-        p.className = 'btn btn-sm ' + (active ? 'btn-dark' : 'btn-outline-secondary') + ' rounded-pill snap-pill';
-      });
-    }
-  }
 
   window.checkSnapshotAfford = function() {
-    if (!snapshotData) { affordResult.innerHTML = '<div class="text-muted small">Load a date first</div>'; return; }
+    var affordResult = document.getElementById('snapshotAffordResult');
+    if (!snapshotData) { affordResult.innerHTML = '<div class="text-muted small">Select a date first</div>'; return; }
     var amount = parseFloat(document.getElementById('snapshotAffordInput').value);
     if (!amount || amount <= 0) { affordResult.innerHTML = '<div class="text-danger small">Enter a valid amount</div>'; return; }
     var accName = document.getElementById('snapshotAffordAccount').value;
     var acc = snapshotData.accounts[accName];
-    if (!acc) { affordResult.innerHTML = '<div class="text-danger small">Account not found in snapshot</div>'; return; }
-
+    if (!acc) { affordResult.innerHTML = '<div class="text-danger small">Account not found</div>'; return; }
     var after = acc.balance_on_date - amount;
     var safe = after >= 0;
     var tight = safe && after < 200;
-
     var html;
     if (safe) {
-      html = '<div class="rounded-4 p-3" style="background:' + (tight ? '#fff3cd' : '#d1fae5') + ';">' +
-        '<div class="fw-bold" style="color:' + (tight ? '#856404' : '#065f46') + ';">' + (tight ? '⚠️ Tight but possible' : '✅ Yes, you can afford it') + ' — ' + accName + '</div>' +
-        '<div class="small mt-1" style="color:' + (tight ? '#856404' : '#065f46') + ';">Leaves £' + after.toFixed(2) + ' on ' + snapshotData.date + '</div>' +
+      html = '<div class="rounded-4 p-3 mt-2" style="background:' + (tight ? '#fff3cd' : '#d1fae5') + ';">' +
+        '<div class="fw-bold" style="color:' + (tight ? '#856404' : '#065f46') + ';">' + (tight ? '⚠️ Tight but possible' : '✅ Yes, you can afford it') + '</div>' +
+        '<div class="small mt-1" style="color:' + (tight ? '#856404' : '#065f46') + ';">Leaves £' + after.toFixed(2) + ' in ' + accName + ' on ' + snapshotData.date + '</div>' +
         '</div>';
     } else {
-      html = '<div class="rounded-4 p-3" style="background:#fde8e8;">' +
-        '<div class="fw-bold" style="color:#991b1b;">❌ Not safe on that date — ' + accName + '</div>' +
-        '<div class="small mt-1" style="color:#991b1b;">You\'d be £' + Math.abs(after).toFixed(2) + ' short</div>' +
+      html = '<div class="rounded-4 p-3 mt-2" style="background:#fde8e8;">' +
+        '<div class="fw-bold" style="color:#991b1b;">❌ Not safe — ' + accName + '</div>' +
+        '<div class="small mt-1" style="color:#991b1b;">You\'d be £' + Math.abs(after).toFixed(2) + ' short on ' + snapshotData.date + '</div>' +
         '</div>';
     }
     affordResult.innerHTML = html;
   };
 
-  slider.addEventListener('input', function() {
-    dayLabel.textContent = 'Day ' + slider.value;
-    dateInput.value = daysFromToday(slider.value);
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(fetchSnapshot, 400);
-  });
+  accFilter.addEventListener('change', renderSnapshot);
 
   dateInput.addEventListener('change', function() {
-    var days = dateToDays(dateInput.value);
-    slider.value = days;
-    dayLabel.textContent = 'Day ' + days;
-    fetchSnapshot();
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(fetchSnapshot, 300);
   });
 
   fetchSnapshot();
 })();
 </script>
   
-  <div class="card p-3 mb-4" id="accounts">
-  <div class="d-flex justify-content-between align-items-center mb-2">
-    <h5 class="mb-0">Active account balances</h5>
-    <span class="badge-soft">{{ balances|length }} accounts</span>
-  </div>
-
-  <div class="table-responsive">
-    <table class="table table-sm align-middle mb-0 table-wide">
-      <thead>
-        <tr>
-          <th>Account</th>
-          <th class="text-end">Balance</th>
-          <th class="text-end">Type</th>
-          <th class="text-end">In Overview</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in balances %}
-          <tr>
-            <td>
-              <span class="ellipsis d-inline-block">{{ row.name }}</span>
-            </td>
-            <td class="text-end money">
-              £{{ "%.2f"|format(row.balance) }}
-              {% if row.balance <= 0 %}<span class="badge ms-1" style="background:#fde8e8;color:#991b1b;font-size:10px;">🔴 At risk</span>
-              {% elif row.balance <= 100 %}<span class="badge ms-1" style="background:#ffe8cc;color:#7c3c00;font-size:10px;">🟠 Low</span>
-              {% elif row.balance <= 500 %}<span class="badge ms-1" style="background:#fff3cd;color:#856404;font-size:10px;">🟡 Tight</span>
-              {% endif %}
-            </td>
-            <td class="text-end">
-              <span class="badge {% if row.type == 'current' %}text-bg-primary{% elif row.type == 'savings' %}text-bg-success{% elif row.type == 'cash' %}text-bg-warning{% else %}text-bg-light{% endif %}">{{ row.type }}</span>
-            </td>
-            <td class="text-end">
-              <form method="POST" action="/toggle-account-overview" class="d-inline">
-                <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
-                <input type="hidden" name="account_id" value="{{ row.id }}">
-                <button type="submit" class="btn btn-sm rounded-3 px-2
-                  {% if row.include_in_overview %}btn-dark{% else %}btn-outline-secondary{% endif %}">
-                  {% if row.include_in_overview %}✓{% else %}−{% endif %}
-                </button>
-              </form>
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
 
 </div>
 <nav class="navbar fixed-bottom bg-white border-top">
