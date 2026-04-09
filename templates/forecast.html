@@ -71,6 +71,7 @@ body { background: #f2f4f7; padding-bottom: 110px; }
   data-initial='{{ initial_balances }}'
   data-upcoming='{{ upcoming }}'
   data-history='{{ hist_snapshots }}'
+  data-savings-rates='{{ savings_rates }}'
   style="display:none">
 </div>
 <script>var CSRF_TOKEN = "{{ session['csrf_token'] }}";</script>
@@ -144,14 +145,19 @@ body { background: #f2f4f7; padding-bottom: 110px; }
     <div class="card p-3 mb-4">
       <h6 class="fw-bold mb-1">💡 What if I spent less?</h6>
       <p class="text-muted small mb-3">See how your balances change if you reduce daily spending.</p>
-      <div class="d-flex align-items-center gap-2 mb-3">
+      <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
         <span class="small fw-semibold text-nowrap">Save extra</span>
-        <div class="input-group input-group-sm" style="max-width:120px;">
+        <div class="input-group input-group-sm" style="max-width:110px;">
           <span class="input-group-text" style="border-radius:10px 0 0 10px;">£</span>
           <input type="number" id="whatIfAmount" class="form-control" min="0" step="1" value="5" style="border-radius:0 10px 10px 0 !important;">
         </div>
-        <span class="small fw-semibold text-nowrap">per day</span>
-        <button onclick="applyWhatIf()" class="btn btn-dark btn-sm rounded-3 ms-auto">Apply</button>
+        <span class="small fw-semibold text-nowrap">per</span>
+        <select id="whatIfPeriod" class="form-select form-select-sm rounded-3" style="max-width:100px; font-size:13px; padding:6px 10px !important;">
+          <option value="1">Day</option>
+          <option value="7">Week</option>
+          <option value="30">Month</option>
+        </select>
+        <button onclick="applyWhatIf()" class="btn btn-dark btn-sm rounded-3">Apply</button>
         <button onclick="resetWhatIf()" class="btn btn-outline-secondary btn-sm rounded-3" id="whatIfResetBtn" style="display:none;">Reset</button>
       </div>
       <div id="whatIfResult" class="small text-muted"></div>
@@ -218,6 +224,7 @@ var accountTypes = JSON.parse(el.getAttribute('data-types'));
 var initialBalances = JSON.parse(el.getAttribute('data-initial') || '{}');
 var upcomingItems = JSON.parse(el.getAttribute('data-upcoming') || '[]');
 var histSnapshots = JSON.parse(el.getAttribute('data-history') || '[]');
+var savingsRates = JSON.parse(el.getAttribute('data-savings-rates') || '{}');
 var TODAY_ISO = '{{ today }}';
 
 var COLORS = [
@@ -737,6 +744,11 @@ function toggleBreakdown(uid, btn) {
 if (accountNames.length > 0) { renderChart(); renderSavingsGrowth(); }
 
 // ── Savings growth ───────────────────────────────────────────────────────────
+function applyInterest(balance, annualRatePct, days) {
+  if (!annualRatePct || annualRatePct <= 0) return balance;
+  var dailyRate = Math.pow(1 + annualRatePct / 100, 1 / 365) - 1;
+  return balance * Math.pow(1 + dailyRate, days);
+}
 function renderSavingsGrowth() {
   var savingsAccounts = accountNames.filter(function(n) { return accountTypes[n] === 'savings'; });
   var card = document.getElementById('savingsGrowthCard');
@@ -745,26 +757,30 @@ function renderSavingsGrowth() {
   card.style.display = 'block';
   var today = new Date(TODAY_ISO);
   var snap30 = snapshots.find(function(s) { return Math.round((new Date(s.date) - today) / 86400000) >= 30; }) || snapshots[snapshots.length - 1];
-  var snap60 = snapshots.find(function(s) { return Math.round((new Date(s.date) - today) / 86400000) >= 60; }) || snapshots[snapshots.length - 1];
   var snap90 = snapshots[snapshots.length - 1];
   var html = '<div class="row g-2">';
   savingsAccounts.forEach(function(acc) {
     var colorIdx = accountNames.indexOf(acc);
     var color = COLORS[colorIdx % COLORS.length];
     var now = initialBalances[acc] !== undefined ? initialBalances[acc] : (snapshots[0][acc] || 0);
-    var v30 = snap30[acc] || 0;
-    var v60 = snap60[acc] || 0;
-    var v90 = snap90[acc] || 0;
+    var rate = savingsRates[acc] || 0;
+    // Forecast balance (from simulation) + interest on top
+    var v30base = snap30[acc] || 0;
+    var v90base = snap90[acc] || 0;
+    var v30 = applyInterest(v30base, rate, 30);
+    var v90 = applyInterest(v90base, rate, 90);
     var growth90 = v90 - now;
+    var interestNote = rate > 0 ? ' <span style="color:#059669; font-size:11px;">(' + rate.toFixed(2) + '% p.a. interest included)</span>' : ' <span style="font-size:11px; color:#aaa;">No rate set — <a href="/manage">add one</a></span>';
     html += '<div class="col-12">' +
       '<div style="padding:12px; background:#f8f9fa; border-radius:12px;">' +
-        '<div class="d-flex align-items-center gap-2 mb-2">' +
+        '<div class="d-flex align-items-center gap-2 mb-1">' +
           '<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:' + color + ';"></span>' +
           '<span class="fw-semibold" style="font-size:14px;">' + escHtml(acc) + '</span>' +
           '<span class="ms-auto small ' + (growth90 >= 0 ? 'text-success' : 'text-danger') + ' fw-semibold">' +
             (growth90 >= 0 ? '+' : '') + '£' + growth90.toFixed(2) + ' over 90 days' +
           '</span>' +
         '</div>' +
+        '<div class="mb-2" style="font-size:12px;">' + interestNote + '</div>' +
         '<div class="row g-2 text-center">' +
           '<div class="col-4"><div class="small text-muted">Now</div><div class="fw-bold">£' + now.toFixed(2) + '</div></div>' +
           '<div class="col-4"><div class="small text-muted">30 days</div><div class="fw-bold">£' + v30.toFixed(2) + '</div></div>' +
@@ -780,8 +796,10 @@ function renderSavingsGrowth() {
 // ── What if? ────────────────────────────────────────────────────────────────
 var originalSnapshots = null;
 function applyWhatIf() {
-  var dailySaving = parseFloat(document.getElementById('whatIfAmount').value) || 0;
-  if (dailySaving <= 0) return;
+  var amount = parseFloat(document.getElementById('whatIfAmount').value) || 0;
+  var periodDays = parseInt(document.getElementById('whatIfPeriod').value) || 1;
+  if (amount <= 0) return;
+  var dailySaving = amount / periodDays;
   if (!originalSnapshots) originalSnapshots = JSON.parse(JSON.stringify(snapshots));
 
   var currentAccounts = accountNames.filter(function(n) { return accountTypes[n] === 'current' || accountTypes[n] === 'cash'; });
@@ -802,9 +820,10 @@ function applyWhatIf() {
   renderChart();
   renderSavingsGrowth();
 
-  var saving90 = dailySaving * 90;
+  var periodLabel = periodDays === 1 ? 'day' : periodDays === 7 ? 'week' : 'month';
+  var saving90 = (dailySaving * 90).toFixed(2);
   document.getElementById('whatIfResult').innerHTML =
-    '<span style="color:#065f46; font-weight:600;">✅ Saving £' + dailySaving.toFixed(2) + '/day adds £' + saving90.toFixed(2) + ' over 90 days</span>';
+    '<span style="color:#065f46; font-weight:600;">✅ Saving £' + amount.toFixed(2) + '/' + periodLabel + ' adds £' + saving90 + ' over 90 days</span>';
   document.getElementById('whatIfResetBtn').style.display = '';
 }
 function resetWhatIf() {

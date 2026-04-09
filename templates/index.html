@@ -678,7 +678,7 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
     </div>
     <div class="d-flex justify-content-between small text-muted mt-1">
       <span></span>
-      <span>£{{ "%.2f"|format(overview.safe_spending) }} left to spend</span>
+      <span>£{{ "%.2f"|format(overview.safe_spending) }} safe to spend</span>
     </div>
   </div>
   {% endif %}
@@ -733,6 +733,11 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
             {% endfor %}
           </select>
         </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label small fw-semibold mb-1">On date</label>
+        <input type="date" id="affordDateInput" class="form-control"
+          style="border-radius:12px !important; font-size:14px !important; padding:10px !important;">
       </div>
       <button onclick="checkSnapshotAfford()" class="btn btn-dark w-100 py-2 rounded-3 mb-2">Check</button>
       <div id="snapshotAffordResult"></div>
@@ -882,29 +887,53 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
 
   window.checkSnapshotAfford = function() {
     var affordResult = document.getElementById('snapshotAffordResult');
-    if (!snapshotData) { affordResult.innerHTML = '<div class="text-muted small">Select a date first</div>'; return; }
     var amount = parseFloat(document.getElementById('snapshotAffordInput').value);
     if (!amount || amount <= 0) { affordResult.innerHTML = '<div class="text-danger small">Enter a valid amount</div>'; return; }
     var accName = document.getElementById('snapshotAffordAccount').value;
-    var acc = snapshotData.accounts[accName];
-    if (!acc) { affordResult.innerHTML = '<div class="text-danger small">Account not found</div>'; return; }
-    var after = acc.balance_on_date - amount;
-    var safe = after >= 0;
-    var tight = safe && after < 200;
-    var html;
-    if (safe) {
-      html = '<div class="rounded-4 p-3 mt-2" style="background:' + (tight ? '#fff3cd' : '#d1fae5') + ';">' +
-        '<div class="fw-bold" style="color:' + (tight ? '#856404' : '#065f46') + ';">' + (tight ? '⚠️ Tight but possible' : '✅ Yes, you can afford it') + '</div>' +
-        '<div class="small mt-1" style="color:' + (tight ? '#856404' : '#065f46') + ';">Leaves £' + after.toFixed(2) + ' in ' + accName + ' on ' + snapshotData.date + '</div>' +
-        '</div>';
-    } else {
-      html = '<div class="rounded-4 p-3 mt-2" style="background:#fde8e8;">' +
-        '<div class="fw-bold" style="color:#991b1b;">❌ Not safe — ' + accName + '</div>' +
-        '<div class="small mt-1" style="color:#991b1b;">You\'d be £' + Math.abs(after).toFixed(2) + ' short on ' + snapshotData.date + '</div>' +
-        '</div>';
+    var affordDate = document.getElementById('affordDateInput').value;
+    var days = affordDate ? dateToDays(affordDate) : (snapshotData ? dateToDays(dateInput.value) : 30);
+
+    affordResult.innerHTML = '<div class="text-muted small">Checking...</div>';
+
+    function showAffordResult(data) {
+      var acc = data.accounts[accName];
+      if (!acc) { affordResult.innerHTML = '<div class="text-danger small">Account not found</div>'; return; }
+      var after = acc.balance_on_date - amount;
+      var safe = after >= 0;
+      var tight = safe && after < 200;
+      if (safe) {
+        affordResult.innerHTML = '<div class="rounded-4 p-3 mt-2" style="background:' + (tight ? '#fff3cd' : '#d1fae5') + ';">' +
+          '<div class="fw-bold" style="color:' + (tight ? '#856404' : '#065f46') + ';">' + (tight ? '⚠️ Tight but possible' : '✅ Yes, you can afford it') + '</div>' +
+          '<div class="small mt-1" style="color:' + (tight ? '#856404' : '#065f46') + ';">Leaves £' + after.toFixed(2) + ' in ' + accName + ' on ' + data.date + '</div>' +
+          '</div>';
+      } else {
+        affordResult.innerHTML = '<div class="rounded-4 p-3 mt-2" style="background:#fde8e8;">' +
+          '<div class="fw-bold" style="color:#991b1b;">❌ Not safe — ' + accName + '</div>' +
+          '<div class="small mt-1" style="color:#991b1b;">You\'d be £' + Math.abs(after).toFixed(2) + ' short on ' + data.date + '</div>' +
+          '</div>';
+      }
     }
-    affordResult.innerHTML = html;
+
+    // If we already have data for this date, use it; otherwise fetch
+    if (snapshotData && (!affordDate || days === dateToDays(dateInput.value))) {
+      showAffordResult(snapshotData);
+    } else {
+      fetch('/api/snapshot?days=' + days)
+        .then(function(r) { return r.json(); })
+        .then(function(data) { showAffordResult(data); })
+        .catch(function() { affordResult.innerHTML = '<div class="text-danger small">Failed to load</div>'; });
+    }
   };
+
+  // Set affordDateInput defaults
+  (function() {
+    var affordDateEl = document.getElementById('affordDateInput');
+    if (affordDateEl) {
+      affordDateEl.min = daysFromToday(1);
+      affordDateEl.max = daysFromToday(90);
+      affordDateEl.value = daysFromToday(30);
+    }
+  })();
 
   accFilter.addEventListener('change', renderSnapshot);
 

@@ -158,15 +158,23 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
                 <form method="POST" action="/transactions/undo" class="d-inline">
                   <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
                   <input type="hidden" name="tx_id" value="{{ t.id }}">
-                  <button type="submit" class="btn btn-outline-danger btn-sm rounded-3 px-3"
-                    onclick="return confirm('Reverse this transaction?')">
-                    ↩ Undo
+                  <button type="submit" class="btn btn-outline-warning btn-sm rounded-3 px-3"
+                    onclick="return confirm('Reverse this transaction? This will adjust the account balance.')">
+                    ↩ Reverse
                   </button>
                 </form>
                 <button class="btn btn-outline-secondary btn-sm rounded-3 px-3"
                   data-id="{{ t.id }}" onclick="toggleEdit(this.dataset.id); event.stopPropagation()">
                   ✏️ Edit
                 </button>
+                <form method="POST" action="/transactions/delete" class="d-inline">
+                  <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+                  <input type="hidden" name="tx_id" value="{{ t.id }}">
+                  <button type="submit" class="btn btn-outline-secondary text-danger btn-sm rounded-3 px-3"
+                    onclick="return confirm('Delete this transaction? The account balance will NOT be adjusted.')">
+                    🗑 Delete
+                  </button>
+                </form>
               </div>
               <div id="edit-{{ t.id }}" class="d-none mt-3">
                 <form method="POST" action="/transactions/edit">

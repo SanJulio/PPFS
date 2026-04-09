@@ -963,33 +963,6 @@ def home():
     this_week_spent = float(r[0] or 0)
     this_week_count = int(r[1] or 0)
 
-    # Net worth trend — approximate monthly balance by walking backwards from current total
-    nw_trend = []
-    try:
-        from dateutil.relativedelta import relativedelta as _rdelta
-        current_nw = sum(float(accounts[a]['balance']) for a in accounts if accounts[a].get('active'))
-        running = current_nw
-        today_d = date.today()
-        for i in range(0, 4):
-            m_start = today_d.replace(day=1) - _rdelta(months=i)
-            m_end = today_d if i == 0 else (m_start + _rdelta(months=1)).replace(day=1) - timedelta(days=1)
-            if USE_POSTGRES:
-                cursor.execute(
-                    "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = %s AND date >= %s AND date <= %s AND type != 'transfer'",
-                    (current_user.id, m_start.isoformat(), m_end.isoformat())
-                )
-            else:
-                cursor.execute(
-                    "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = ? AND date >= ? AND date <= ? AND type != 'transfer'",
-                    (current_user.id, m_start.isoformat(), m_end.isoformat())
-                )
-            net = float(cursor.fetchone()[0] or 0)
-            nw_trend.insert(0, {'month': m_start.strftime('%b'), 'value': round(running, 2)})
-            running -= net
-    except Exception as _e:
-        logger.debug(f"nw_trend error: {_e}")
-        nw_trend = []
-
     cursor.close()
     release_db(db)
 
@@ -1006,6 +979,38 @@ def home():
         }
 
     overview = calculate_financial_overview(accounts)
+
+    # Net worth trend — approximate monthly balance by walking backwards from current total
+    nw_trend = []
+    try:
+        from dateutil.relativedelta import relativedelta as _rdelta
+        current_nw = sum(float(accounts[a]['balance']) for a in accounts if accounts[a].get('active'))
+        running = current_nw
+        today_d = date.today()
+        _nw_db = get_db()
+        _nw_cur = _nw_db.cursor()
+        for i in range(0, 4):
+            m_start = today_d.replace(day=1) - _rdelta(months=i)
+            m_end = today_d if i == 0 else (m_start + _rdelta(months=1)).replace(day=1) - timedelta(days=1)
+            if USE_POSTGRES:
+                _nw_cur.execute(
+                    "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = %s AND date >= %s AND date <= %s AND type != 'transfer'",
+                    (current_user.id, m_start.isoformat(), m_end.isoformat())
+                )
+            else:
+                _nw_cur.execute(
+                    "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = ? AND date >= ? AND date <= ? AND type != 'transfer'",
+                    (current_user.id, m_start.isoformat(), m_end.isoformat())
+                )
+            net = float(_nw_cur.fetchone()[0] or 0)
+            nw_trend.insert(0, {'month': m_start.strftime('%b'), 'value': round(running, 2)})
+            running -= net
+        _nw_cur.close()
+        release_db(_nw_db)
+    except Exception as _e:
+        logger.debug(f"nw_trend error: {_e}")
+        nw_trend = []
+
     cycle_start_day = get_budget_cycle_start(current_user.id)
     cycle_start_date, cycle_end_date = get_cycle_dates(cycle_start_day)
     monthly = calculate_monthly_spending(cycle_start_date, cycle_end_date)
@@ -1829,6 +1834,26 @@ def transaction_undo():
     return redirect(url_for("transactions", msg="Transaction reversed."))
 
 
+# --- DELETE TRANSACTION ---
+# Removes a transaction record only — does NOT touch account balances
+@app.post("/transactions/delete")
+@login_required
+def transaction_delete():
+    if request.form.get("csrf_token") != session.get("csrf_token"):
+        return redirect(url_for("transactions"))
+    tx_id = request.form.get("tx_id")
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("DELETE FROM transactions WHERE id = %s AND user_id = %s", (tx_id, current_user.id))
+    else:
+        cursor.execute("DELETE FROM transactions WHERE id = ? AND user_id = ?", (tx_id, current_user.id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+    return redirect(url_for("transactions", msg="Transaction deleted."))
+
+
 # --- EDIT TRANSACTION ---
 # Updates a transaction's description, amount, and account
 # Calculates the diff between old and new amount and adjusts the account balance accordingly
@@ -2365,13 +2390,24 @@ def settings_edit_account():
     except ValueError:
         return redirect(url_for("manage", msg="Invalid balance."))
 
+    savings_rate_raw = request.form.get("savings_rate", "").strip()
+    try:
+        savings_rate = max(0.0, min(100.0, float(savings_rate_raw))) if savings_rate_raw else 0.0
+    except ValueError:
+        savings_rate = 0.0
+
     db = get_db()
     cursor = db.cursor()
-    if USE_POSTGRES:
-        cursor.execute("UPDATE accounts SET name=%s, type=%s, balance=%s WHERE id=%s AND user_id=%s", (name, acc_type, balance, account_id, current_user.id))
-    else:
-        cursor.execute("UPDATE accounts SET name=?, type=?, balance=? WHERE id=? AND user_id=?", (name, acc_type, balance, account_id, current_user.id))
-    db.commit()
+    try:
+        if USE_POSTGRES:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS savings_rate DECIMAL(5,2) DEFAULT 0")
+            cursor.execute("UPDATE accounts SET name=%s, type=%s, balance=%s, savings_rate=%s WHERE id=%s AND user_id=%s", (name, acc_type, balance, savings_rate, account_id, current_user.id))
+        else:
+            cursor.execute("UPDATE accounts SET name=?, type=?, balance=? WHERE id=? AND user_id=?", (name, acc_type, balance, account_id, current_user.id))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.debug(f"edit_account error: {e}")
     cursor.close()
     release_db(db)
     return redirect(url_for("manage", msg="Account updated."))
@@ -2863,18 +2899,24 @@ def forecast():
                 initial_balances=cached_data.get("initial_balances", "{}"),
                 upcoming=cached_data.get("upcoming", "[]"),
                 hist_snapshots=cached_data.get("hist_snapshots", "[]"),
+                savings_rates=cached_data.get("savings_rates", "{}"),
                 message=request.args.get("msg", ""),
                 today=today.isoformat()
             )
 
     accounts_rows = get_active_accounts(current_user.id)
     accounts = {}
+    savings_rates = {}
     for r in accounts_rows:
         accounts[r["name"]] = {
             "balance": float(r["balance"]),
             "type": r["type"],
             "active": True
         }
+        try:
+            savings_rates[r["name"]] = float(r["savings_rate"] or 0)
+        except (KeyError, TypeError):
+            savings_rates[r["name"]] = 0.0
 
     db = get_db()
     cursor = db.cursor()
@@ -3104,6 +3146,7 @@ def forecast():
     upcoming_items.sort(key=lambda x: x["date"])
     upcoming_json = json.dumps(upcoming_items)
     hist_snapshots_json = json.dumps(hist_snapshots)
+    savings_rates_json = json.dumps(savings_rates)
 
     # store in cache
     forecast_cache[cache_key] = (time.time(), {
@@ -3112,7 +3155,8 @@ def forecast():
         "account_types": account_types_json,
         "initial_balances": initial_balances_json,
         "upcoming": upcoming_json,
-        "hist_snapshots": hist_snapshots_json
+        "hist_snapshots": hist_snapshots_json,
+        "savings_rates": savings_rates_json
     })
 
     return render_template(
@@ -3123,6 +3167,7 @@ def forecast():
         initial_balances=initial_balances_json,
         upcoming=upcoming_json,
         hist_snapshots=hist_snapshots_json,
+        savings_rates=savings_rates_json,
         message=request.args.get("msg", ""),
         today=today.isoformat()
     )

@@ -157,6 +157,17 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                     <div class="col-12">
                       <input class="form-control form-control-sm" name="balance" value="{{ '%.2f'|format(a.balance) }}" placeholder="Balance" required>
                     </div>
+                    {% if a.type == 'savings' %}
+                    <div class="col-12">
+                      <div class="d-flex align-items-center gap-2">
+                        <input class="form-control form-control-sm" name="savings_rate" type="number" min="0" max="100" step="0.01"
+                          value="{{ '%.2f'|format(a.savings_rate) if a.savings_rate is defined and a.savings_rate else '0.00' }}"
+                          placeholder="Annual interest rate (%)">
+                        <span class="text-muted small text-nowrap">% per year</span>
+                      </div>
+                      <div class="text-muted" style="font-size:11px; margin-top:3px;">Annual savings rate — used to project interest growth in the forecast</div>
+                    </div>
+                    {% endif %}
                     <div class="col-12 d-flex gap-2">
                       <button class="btn btn-sm btn-dark">Save</button>
                       <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleEdit('account-{{ a.id }}')">Cancel</button>
