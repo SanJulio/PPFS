@@ -38,6 +38,8 @@ body { background: #f2f4f7; padding-bottom: 110px; }
   font-weight: 600;
   font-size: 12px;
 }
+.type-pill { background:#e9ecef; color:#555; border:none; }
+.type-pill.active { background:#111; color:#fff; border:none; }
 tbody tr.tx-row { cursor: pointer; }
 tbody tr.tx-row:hover { background: #f8f9fa; }
 .expand-row td { background: #f8f9fa; border-top: none !important; }
@@ -70,45 +72,59 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
     </div>
   </div>
 
-  <!-- Search and filter -->
-  <div class="card p-3 mb-3">
-    <div class="row g-2">
-      <div class="col-12 col-sm-4">
-        <input type="text" id="searchInput" class="form-control search-input w-100"
-          placeholder="🔍 Search description or account...">
-      </div>
-      <div class="col-12 col-sm-3">
-        <select id="categoryFilter" class="form-select search-input w-100" style="padding:10px 14px; font-size:14px;">
-          <option value="">All categories</option>
-          <option>Food & Drink</option>
-          <option>Transport</option>
-          <option>Housing</option>
-          <option>Bills & Utilities</option>
-          <option>Entertainment</option>
-          <option>Shopping</option>
-          <option>Health</option>
-          <option>Personal Care</option>
-          <option>Other</option>
-        </select>
-      </div>
-      <div class="col-6 col-sm-2">
-        <input type="text" id="dateFrom" class="form-control search-input w-100" placeholder="From" onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'">
-      </div>
-      <div class="col-6 col-sm-2">
-        <input type="text" id="dateTo" class="form-control search-input w-100" placeholder="To" onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'">
-      </div>
-      <div class="col-12 col-sm-1">
-        <button onclick="clearFilters()" class="btn btn-outline-secondary w-100 rounded-3" style="padding:10px">✕</button>
-      </div>
-    </div>
-  </div>
-
   <div id="categoryTotals" class="card p-3 mb-3" style="display:none;"></div>
 
   <div class="card p-3 mb-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
       <h5 class="mb-0">Recent Transactions</h5>
       <span class="badge-soft" id="countBadge">{{ transactions|length }} transactions</span>
+    </div>
+
+    <!-- Filters -->
+    <div class="mb-3 pb-3" style="border-bottom:1px solid #f0f0f0;">
+      <!-- Type pills -->
+      <div class="d-flex gap-2 mb-2 flex-wrap">
+        <button class="btn btn-sm rounded-pill fw-semibold type-pill active" id="typeAll" onclick="setTypeFilter('all', this)" style="font-size:13px; padding:5px 14px;">All</button>
+        <button class="btn btn-sm rounded-pill fw-semibold type-pill" id="typeExpenses" onclick="setTypeFilter('expenses', this)" style="font-size:13px; padding:5px 14px;">Expenses</button>
+        <button class="btn btn-sm rounded-pill fw-semibold type-pill" id="typeIncome" onclick="setTypeFilter('income', this)" style="font-size:13px; padding:5px 14px;">Income</button>
+        <button onclick="clearFilters()" class="btn btn-sm btn-outline-secondary rounded-pill ms-auto" style="font-size:12px; padding:5px 12px;" id="clearBtn">Clear ✕</button>
+      </div>
+      <!-- Row 2: text search + account + category + dates -->
+      <div class="row g-2">
+        <div class="col-12 col-sm-4">
+          <input type="text" id="searchInput" class="form-control search-input w-100"
+            placeholder="🔍 Description..." style="font-size:13px; padding:8px 12px;">
+        </div>
+        <div class="col-6 col-sm-2">
+          <select id="accountFilter" class="form-select search-input w-100" style="font-size:13px; padding:8px 12px;">
+            <option value="">All accounts</option>
+          </select>
+        </div>
+        <div class="col-6 col-sm-2">
+          <select id="categoryFilter" class="form-select search-input w-100" style="font-size:13px; padding:8px 12px;">
+            <option value="">All categories</option>
+            <option>Food &amp; Drink</option>
+            <option>Transport</option>
+            <option>Housing</option>
+            <option>Bills &amp; Utilities</option>
+            <option>Entertainment</option>
+            <option>Shopping</option>
+            <option>Health</option>
+            <option>Personal Care</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="col-6 col-sm-2">
+          <input type="text" id="dateFrom" class="form-control search-input w-100"
+            placeholder="From" style="font-size:13px; padding:8px 12px;"
+            onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'">
+        </div>
+        <div class="col-6 col-sm-2">
+          <input type="text" id="dateTo" class="form-control search-input w-100"
+            placeholder="To" style="font-size:13px; padding:8px 12px;"
+            onfocus="(this.type='date')" onblur="if(!this.value)this.type='text'">
+        </div>
+      </div>
     </div>
 
     <div class="table-responsive">
@@ -357,8 +373,35 @@ function toggleEdit(id) {
   editRow.classList.toggle('d-none');
 }
 
+// ── Populate account dropdown from actual transaction data ───────────────────
+(function() {
+  var seen = {};
+  var sel = document.getElementById('accountFilter');
+  document.querySelectorAll('#txBody tr.tx-row').forEach(function(row) {
+    var acc = row.dataset.account || '';
+    if (acc && !seen[acc]) {
+      seen[acc] = true;
+      var opt = document.createElement('option');
+      opt.value = acc;
+      opt.textContent = acc.charAt(0).toUpperCase() + acc.slice(1);
+      sel.appendChild(opt);
+    }
+  });
+})();
+
+var currentTypeFilter = 'all';
+
+function setTypeFilter(type, btn) {
+  currentTypeFilter = type;
+  document.querySelectorAll('.type-pill').forEach(function(b) {
+    b.classList.toggle('active', b === btn);
+  });
+  filterTransactions();
+}
+
 function filterTransactions() {
   const search = document.getElementById('searchInput').value.toLowerCase();
+  const account = document.getElementById('accountFilter').value.toLowerCase();
   const category = document.getElementById('categoryFilter').value;
   const dateFrom = document.getElementById('dateFrom').value;
   const dateTo = document.getElementById('dateTo').value;
@@ -367,16 +410,21 @@ function filterTransactions() {
 
   rows.forEach(row => {
     const desc = row.dataset.description || '';
-    const account = row.dataset.account || '';
+    const rowAccount = row.dataset.account || '';
     const date = row.dataset.date || '';
     const cat = row.dataset.category || '';
+    const amount = parseFloat(row.dataset.amount || '0');
     const expandRow = document.getElementById('expand-' + row.dataset.id);
 
-    const matchSearch = !search || desc.includes(search) || account.includes(search);
+    const matchSearch = !search || desc.includes(search);
+    const matchAccount = !account || rowAccount === account;
     const matchCategory = !category || cat === category;
     const matchFrom = !dateFrom || date >= dateFrom;
     const matchTo = !dateTo || date <= dateTo;
-    const show = matchSearch && matchCategory && matchFrom && matchTo;
+    const matchType = currentTypeFilter === 'all' ||
+      (currentTypeFilter === 'expenses' && amount < 0) ||
+      (currentTypeFilter === 'income' && amount >= 0);
+    const show = matchSearch && matchAccount && matchCategory && matchFrom && matchTo && matchType;
 
     row.style.display = show ? '' : 'none';
     if (expandRow) expandRow.style.display = show ? '' : 'none';
@@ -389,6 +437,11 @@ function filterTransactions() {
     total += Math.abs(parseFloat(row.dataset.amount || '0'));
   });
   document.getElementById('countBadge').textContent = visible + ' transactions · £' + total.toFixed(2) + ' total';
+
+  // Show/hide clear button based on whether any filter is active
+  const anyActive = search || account || category || dateFrom || dateTo || currentTypeFilter !== 'all';
+  document.getElementById('clearBtn').style.opacity = anyActive ? '1' : '0.4';
+
   renderCategoryTotals();
 }
 
@@ -399,7 +452,7 @@ function renderCategoryTotals() {
   rows.forEach(row => {
     if (row.style.display === 'none') return;
     const amount = parseFloat(row.dataset.amount || '0');
-    if (amount >= 0) return; // only expenses
+    if (amount >= 0) return;
     const cat = row.dataset.category || 'Other';
     totals[cat] = (totals[cat] || 0) + Math.abs(amount);
   });
@@ -416,13 +469,19 @@ function renderCategoryTotals() {
 
 function clearFilters() {
   document.getElementById('searchInput').value = '';
+  document.getElementById('accountFilter').value = '';
   document.getElementById('categoryFilter').value = '';
   document.getElementById('dateFrom').value = '';
   document.getElementById('dateTo').value = '';
+  currentTypeFilter = 'all';
+  document.querySelectorAll('.type-pill').forEach(function(b) {
+    b.classList.toggle('active', b.id === 'typeAll');
+  });
   filterTransactions();
 }
 
 document.getElementById('searchInput').addEventListener('input', filterTransactions);
+document.getElementById('accountFilter').addEventListener('change', filterTransactions);
 document.getElementById('categoryFilter').addEventListener('change', filterTransactions);
 document.getElementById('dateFrom').addEventListener('change', filterTransactions);
 document.getElementById('dateTo').addEventListener('change', filterTransactions);
@@ -434,6 +493,7 @@ renderCategoryTotals();
   });
   const count = document.querySelectorAll('#txBody tr.tx-row').length;
   document.getElementById('countBadge').textContent = count + ' transactions · £' + total.toFixed(2) + ' total';
+  document.getElementById('clearBtn').style.opacity = '0.4';
 })();
 
 if (window.location.search.includes('msg=')) {
