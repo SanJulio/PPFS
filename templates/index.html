@@ -510,14 +510,20 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
       </div>
       <div id="tile-safe" class="d-none mt-2 px-1">
         <div class="small text-muted py-1">
-          Available <span class="amount-private">£{{ "%.2f"|format(overview.spending_balance) }}</span>
+          <div class="d-flex justify-content-between py-1 border-bottom">
+            <span>Current balance</span>
+            <span class="amount-private">£{{ "%.2f"|format(overview.spending_balance) }}</span>
+          </div>
+          <div class="d-flex justify-content-between py-1 border-bottom">
+            <span>Bills remaining</span>
+            <span class="amount-private text-danger">−£{{ "%.2f"|format(overview.future_bills) }}</span>
+          </div>
           {% if overview.future_income > 0 %}
-          + Income due <span class="amount-private">£{{ "%.2f"|format(overview.future_income) }}</span>
-          {% for inc in overview.future_income_list %}
-          <div class="ps-2">↳ {{ inc.name }} £{{ "%.2f"|format(inc.amount) }} (day {{ inc.day }})</div>
-          {% endfor %}
+          <div class="d-flex justify-content-between py-1 border-bottom text-muted" style="font-size:11px;">
+            <span>Income still due (not included)</span>
+            <span class="amount-private">+£{{ "%.2f"|format(overview.future_income) }}</span>
+          </div>
           {% endif %}
-          − Bills left <span class="amount-private">£{{ "%.2f"|format(overview.future_bills) }}</span>
         </div>
       </div>
     </div>

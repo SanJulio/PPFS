@@ -759,7 +759,7 @@ def calculate_financial_overview(accounts):
     except Exception as e:
         logger.debug(f"Could not load future income for overview: {e}")
 
-    safe_spending = spending_balance - spending_future_bills + future_income
+    safe_spending = spending_balance - spending_future_bills
     net_worth = spending_balance + savings_balance
 
     return {
