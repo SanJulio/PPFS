@@ -297,7 +297,10 @@ body.privacy-invisible .amounts-visible .amount-private {
 </div>
 {% endif %}
 
-<script>var HOME_CSRF = "{{ session['csrf_token'] }}";</script>
+<script>
+var HOME_CSRF = "{{ session['csrf_token'] }}";
+var PENDING_ITEMS = {{ pending_items | tojson | safe }};
+</script>
 
 <!-- Quick-add modal -->
 <div id="quickAddModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:10001; align-items:flex-end; justify-content:center;">
@@ -398,7 +401,7 @@ body.privacy-invisible .amounts-visible .amount-private {
         <div class="d-flex align-items-center justify-content-between py-2" style="border-bottom:1px solid #f0f0f0;">
           <div class="d-flex align-items-center gap-2">
             <input type="checkbox" class="auto-apply-check form-check-input mt-0" checked
-              data-item='{{ item | tojson }}'>
+              data-idx="{{ loop.index0 }}">
             <div>
               <div class="fw-semibold small">{{ item.name }}</div>
               <div class="text-muted" style="font-size:12px;">{{ item.account }} · {{ item.due_date }}</div>
@@ -1234,14 +1237,15 @@ function submitAutoApply() {
   var checks = document.querySelectorAll('.auto-apply-check:checked');
   var items = [];
   checks.forEach(function(cb) {
-    try { items.push(JSON.parse(cb.dataset.item)); } catch(e) {}
+    var idx = parseInt(cb.dataset.idx, 10);
+    if (!isNaN(idx) && PENDING_ITEMS[idx]) items.push(PENDING_ITEMS[idx]);
   });
   if (items.length === 0) { closeAutoApplyModal(); return; }
   fetch('/auto-apply', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ csrf_token: HOME_CSRF, items: items })
-  }).then(function() {
+  }).then(function(r) {
     window.location.reload();
   }).catch(function() {
     window.location.reload();
