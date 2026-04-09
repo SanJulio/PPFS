@@ -488,53 +488,52 @@ def run_auto_apply_backfill(user_id):
 
     yesterday_str = yesterday.isoformat()
 
+    cursor.close()
+    release_db(db)
+
+    # Use the shared helpers so we get the correct user_id scoping and no dependency on auto_generated
     for bill in bills:
         if bill.get('day') is None:
             continue
         for d in _get_occurrences_between(bill, backfill_start, yesterday):
             try:
-                if USE_POSTGRES:
-                    cursor.execute(
-                        "INSERT INTO transactions (date, description, amount, account, type, user_id, category, auto_generated) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-                        (d.isoformat(), bill['name'], -abs(float(bill['amount'])), bill['account'], 'bill', user_id, 'Bills', 1)
-                    )
-                else:
-                    cursor.execute(
-                        "INSERT INTO transactions (date, description, amount, account, type, user_id, category, auto_generated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                        (d.isoformat(), bill['name'], -abs(float(bill['amount'])), bill['account'], 'bill', user_id, 'Bills', 1)
-                    )
+                add_transaction(d.isoformat(), bill['name'], -abs(float(bill['amount'])), bill['account'], user_id, type='bill', category='Bills')
             except Exception as e:
                 logger.debug(f"Backfill bill insert error: {e}")
-        if USE_POSTGRES:
-            cursor.execute("UPDATE scheduled_expenses SET last_applied = %s WHERE id = %s", (yesterday_str, bill['id']))
-        else:
-            cursor.execute("UPDATE scheduled_expenses SET last_applied = ? WHERE id = ?", (yesterday_str, bill['id']))
+        # Update last_applied in a fresh connection
+        try:
+            _db = get_db()
+            _c = _db.cursor()
+            if USE_POSTGRES:
+                _c.execute("UPDATE scheduled_expenses SET last_applied = %s WHERE id = %s", (yesterday_str, bill['id']))
+            else:
+                _c.execute("UPDATE scheduled_expenses SET last_applied = ? WHERE id = ?", (yesterday_str, bill['id']))
+            _db.commit()
+            _c.close()
+            release_db(_db)
+        except Exception as e:
+            logger.debug(f"Backfill bill last_applied error: {e}")
 
     for inc in income_items:
         if inc.get('day') is None:
             continue
         for d in _get_occurrences_between(inc, backfill_start, yesterday):
             try:
-                if USE_POSTGRES:
-                    cursor.execute(
-                        "INSERT INTO transactions (date, description, amount, account, type, user_id, category, auto_generated) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-                        (d.isoformat(), inc['name'], abs(float(inc['amount'])), inc['account'], 'income', user_id, 'Income', 1)
-                    )
-                else:
-                    cursor.execute(
-                        "INSERT INTO transactions (date, description, amount, account, type, user_id, category, auto_generated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                        (d.isoformat(), inc['name'], abs(float(inc['amount'])), inc['account'], 'income', user_id, 'Income', 1)
-                    )
+                add_transaction(d.isoformat(), inc['name'], abs(float(inc['amount'])), inc['account'], user_id, type='income', category='Income')
             except Exception as e:
                 logger.debug(f"Backfill income insert error: {e}")
-        if USE_POSTGRES:
-            cursor.execute("UPDATE income SET last_applied = %s WHERE id = %s", (yesterday_str, inc['id']))
-        else:
-            cursor.execute("UPDATE income SET last_applied = ? WHERE id = ?", (yesterday_str, inc['id']))
-
-    db.commit()
-    cursor.close()
-    release_db(db)
+        try:
+            _db = get_db()
+            _c = _db.cursor()
+            if USE_POSTGRES:
+                _c.execute("UPDATE income SET last_applied = %s WHERE id = %s", (yesterday_str, inc['id']))
+            else:
+                _c.execute("UPDATE income SET last_applied = ? WHERE id = ?", (yesterday_str, inc['id']))
+            _db.commit()
+            _c.close()
+            release_db(_db)
+        except Exception as e:
+            logger.debug(f"Backfill income last_applied error: {e}")
 
 
 def get_pending_auto_apply_items(user_id):
@@ -605,57 +604,43 @@ def get_pending_auto_apply_items(user_id):
 
 
 def apply_auto_items(user_id, items):
-    """Apply a list of pending items: insert transactions, update balances, update last_applied."""
+    """Apply a list of pending items: insert transactions, update balances, update last_applied.
+    Uses the shared add_transaction / update_account_balance helpers so each operation
+    is in its own committed connection — a failure on one item doesn't abort the rest."""
     from datetime import date as _date
 
     today_str = _date.today().isoformat()
-    db = get_db()
-    cursor = db.cursor()
 
     for item in items:
         try:
             tx_type = 'bill' if item['type'] == 'bill' else 'income'
             category = 'Bills' if item['type'] == 'bill' else 'Income'
-            if USE_POSTGRES:
-                cursor.execute(
-                    "INSERT INTO transactions (date, description, amount, account, type, user_id, category, auto_generated) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-                    (item['due_date'], item['name'], item['amount'], item['account'], tx_type, user_id, category, 1)
-                )
-                cursor.execute(
-                    "UPDATE accounts SET balance = balance + %s WHERE name = %s AND id IN (SELECT id FROM accounts WHERE name = %s LIMIT 1)",
-                    (item['amount'], item['account'], item['account'])
-                )
-            else:
-                cursor.execute(
-                    "INSERT INTO transactions (date, description, amount, account, type, user_id, category, auto_generated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (item['due_date'], item['name'], item['amount'], item['account'], tx_type, user_id, category, 1)
-                )
-                cursor.execute(
-                    "UPDATE accounts SET balance = balance + ? WHERE name = ?",
-                    (item['amount'], item['account'])
-                )
+            add_transaction(item['due_date'], item['name'], item['amount'], item['account'], user_id, type=tx_type, category=category)
+            update_account_balance(item['account'], item['amount'], user_id)
         except Exception as e:
-            logger.debug(f"Auto-apply item error: {e}")
+            logger.debug(f"Auto-apply item error ({item.get('name')}): {e}")
 
-    # Update last_applied for each unique item_id
+    # Update last_applied for each unique item_id — separate connections so a transaction
+    # error above doesn't block these from committing
     applied_bills = {i['item_id'] for i in items if i['type'] == 'bill'}
     applied_income = {i['item_id'] for i in items if i['type'] == 'income'}
 
-    for item_id in applied_bills:
-        if USE_POSTGRES:
-            cursor.execute("UPDATE scheduled_expenses SET last_applied = %s WHERE id = %s", (today_str, item_id))
-        else:
-            cursor.execute("UPDATE scheduled_expenses SET last_applied = ? WHERE id = ?", (today_str, item_id))
-
-    for item_id in applied_income:
-        if USE_POSTGRES:
-            cursor.execute("UPDATE income SET last_applied = %s WHERE id = %s", (today_str, item_id))
-        else:
-            cursor.execute("UPDATE income SET last_applied = ? WHERE id = ?", (today_str, item_id))
-
-    db.commit()
-    cursor.close()
-    release_db(db)
+    if applied_bills or applied_income:
+        db = get_db()
+        cursor = db.cursor()
+        for item_id in applied_bills:
+            if USE_POSTGRES:
+                cursor.execute("UPDATE scheduled_expenses SET last_applied = %s WHERE id = %s", (today_str, item_id))
+            else:
+                cursor.execute("UPDATE scheduled_expenses SET last_applied = ? WHERE id = ?", (today_str, item_id))
+        for item_id in applied_income:
+            if USE_POSTGRES:
+                cursor.execute("UPDATE income SET last_applied = %s WHERE id = %s", (today_str, item_id))
+            else:
+                cursor.execute("UPDATE income SET last_applied = ? WHERE id = ?", (today_str, item_id))
+        db.commit()
+        cursor.close()
+        release_db(db)
 
 
 def get_auto_apply_settings(user_id):
