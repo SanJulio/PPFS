@@ -297,9 +297,10 @@ body.privacy-invisible .amounts-visible .amount-private {
 </div>
 {% endif %}
 
+<script type="application/json" id="pendingItemsData">{{ pending_items | tojson | safe }}</script>
 <script>
 var HOME_CSRF = "{{ session['csrf_token'] }}";
-var PENDING_ITEMS = {{ pending_items | tojson | safe }};
+var PENDING_ITEMS = JSON.parse(document.getElementById('pendingItemsData').textContent || '[]');
 </script>
 
 <!-- Quick-add modal -->
