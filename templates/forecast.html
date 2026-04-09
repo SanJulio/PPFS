@@ -133,6 +133,29 @@ body { background: #f2f4f7; padding-bottom: 110px; }
     </div>
 
     <div id="accountSummary"></div>
+
+    <!-- Savings growth card -->
+    <div id="savingsGrowthCard" class="card p-3 mb-3" style="display:none;">
+      <h6 class="fw-bold mb-3">📈 Savings Growth</h6>
+      <div id="savingsGrowthContent"></div>
+    </div>
+
+    <!-- What if? card -->
+    <div class="card p-3 mb-4">
+      <h6 class="fw-bold mb-1">💡 What if I spent less?</h6>
+      <p class="text-muted small mb-3">See how your balances change if you reduce daily spending.</p>
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <span class="small fw-semibold text-nowrap">Save extra</span>
+        <div class="input-group input-group-sm" style="max-width:120px;">
+          <span class="input-group-text" style="border-radius:10px 0 0 10px;">£</span>
+          <input type="number" id="whatIfAmount" class="form-control" min="0" step="1" value="5" style="border-radius:0 10px 10px 0 !important;">
+        </div>
+        <span class="small fw-semibold text-nowrap">per day</span>
+        <button onclick="applyWhatIf()" class="btn btn-dark btn-sm rounded-3 ms-auto">Apply</button>
+        <button onclick="resetWhatIf()" class="btn btn-outline-secondary btn-sm rounded-3" id="whatIfResetBtn" style="display:none;">Reset</button>
+      </div>
+      <div id="whatIfResult" class="small text-muted"></div>
+    </div>
   </div>
 
   <!-- V2 -->
@@ -711,7 +734,89 @@ function toggleBreakdown(uid, btn) {
   }
 }
 
-if (accountNames.length > 0) { renderChart(); }
+if (accountNames.length > 0) { renderChart(); renderSavingsGrowth(); }
+
+// ── Savings growth ───────────────────────────────────────────────────────────
+function renderSavingsGrowth() {
+  var savingsAccounts = accountNames.filter(function(n) { return accountTypes[n] === 'savings'; });
+  var card = document.getElementById('savingsGrowthCard');
+  var content = document.getElementById('savingsGrowthContent');
+  if (savingsAccounts.length === 0 || snapshots.length === 0) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  var today = new Date(TODAY_ISO);
+  var snap30 = snapshots.find(function(s) { return Math.round((new Date(s.date) - today) / 86400000) >= 30; }) || snapshots[snapshots.length - 1];
+  var snap60 = snapshots.find(function(s) { return Math.round((new Date(s.date) - today) / 86400000) >= 60; }) || snapshots[snapshots.length - 1];
+  var snap90 = snapshots[snapshots.length - 1];
+  var html = '<div class="row g-2">';
+  savingsAccounts.forEach(function(acc) {
+    var colorIdx = accountNames.indexOf(acc);
+    var color = COLORS[colorIdx % COLORS.length];
+    var now = initialBalances[acc] !== undefined ? initialBalances[acc] : (snapshots[0][acc] || 0);
+    var v30 = snap30[acc] || 0;
+    var v60 = snap60[acc] || 0;
+    var v90 = snap90[acc] || 0;
+    var growth90 = v90 - now;
+    html += '<div class="col-12">' +
+      '<div style="padding:12px; background:#f8f9fa; border-radius:12px;">' +
+        '<div class="d-flex align-items-center gap-2 mb-2">' +
+          '<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:' + color + ';"></span>' +
+          '<span class="fw-semibold" style="font-size:14px;">' + escHtml(acc) + '</span>' +
+          '<span class="ms-auto small ' + (growth90 >= 0 ? 'text-success' : 'text-danger') + ' fw-semibold">' +
+            (growth90 >= 0 ? '+' : '') + '£' + growth90.toFixed(2) + ' over 90 days' +
+          '</span>' +
+        '</div>' +
+        '<div class="row g-2 text-center">' +
+          '<div class="col-4"><div class="small text-muted">Now</div><div class="fw-bold">£' + now.toFixed(2) + '</div></div>' +
+          '<div class="col-4"><div class="small text-muted">30 days</div><div class="fw-bold">£' + v30.toFixed(2) + '</div></div>' +
+          '<div class="col-4"><div class="small text-muted">90 days</div><div class="fw-bold">£' + v90.toFixed(2) + '</div></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  });
+  html += '</div>';
+  content.innerHTML = html;
+}
+
+// ── What if? ────────────────────────────────────────────────────────────────
+var originalSnapshots = null;
+function applyWhatIf() {
+  var dailySaving = parseFloat(document.getElementById('whatIfAmount').value) || 0;
+  if (dailySaving <= 0) return;
+  if (!originalSnapshots) originalSnapshots = JSON.parse(JSON.stringify(snapshots));
+
+  var currentAccounts = accountNames.filter(function(n) { return accountTypes[n] === 'current' || accountTypes[n] === 'cash'; });
+  var today = new Date(TODAY_ISO);
+
+  snapshots = originalSnapshots.map(function(s) {
+    var copy = Object.assign({}, s);
+    var dayDiff = Math.max(0, Math.round((new Date(s.date) - today) / 86400000));
+    var totalSaving = dailySaving * dayDiff;
+    currentAccounts.forEach(function(acc) {
+      if (copy[acc] !== undefined) {
+        copy[acc] = copy[acc] + totalSaving;
+      }
+    });
+    return copy;
+  });
+
+  renderChart();
+  renderSavingsGrowth();
+
+  var saving90 = dailySaving * 90;
+  document.getElementById('whatIfResult').innerHTML =
+    '<span style="color:#065f46; font-weight:600;">✅ Saving £' + dailySaving.toFixed(2) + '/day adds £' + saving90.toFixed(2) + ' over 90 days</span>';
+  document.getElementById('whatIfResetBtn').style.display = '';
+}
+function resetWhatIf() {
+  if (originalSnapshots) {
+    snapshots = originalSnapshots;
+    originalSnapshots = null;
+  }
+  renderChart();
+  renderSavingsGrowth();
+  document.getElementById('whatIfResult').innerHTML = '';
+  document.getElementById('whatIfResetBtn').style.display = 'none';
+}
 
 // Clean ?refresh=1 and ?msg= from URL bar without triggering a reload
 if (window.location.search) {

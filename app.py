@@ -945,6 +945,51 @@ def home():
     r = cursor.fetchone()
     today_spent = float(r[0] or 0)
     today_count = int(r[1] or 0)
+
+    from datetime import timedelta
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    week_start_str = week_start.isoformat()
+    if USE_POSTGRES:
+        cursor.execute(
+            "SELECT COALESCE(SUM(ABS(amount)), 0), COUNT(*) FROM transactions WHERE user_id = %s AND date >= %s AND date <= %s AND amount < 0 AND type != 'transfer'",
+            (current_user.id, week_start_str, today_str)
+        )
+    else:
+        cursor.execute(
+            "SELECT COALESCE(SUM(ABS(amount)), 0), COUNT(*) FROM transactions WHERE user_id = ? AND date >= ? AND date <= ? AND amount < 0 AND type != 'transfer'",
+            (current_user.id, week_start_str, today_str)
+        )
+    r = cursor.fetchone()
+    this_week_spent = float(r[0] or 0)
+    this_week_count = int(r[1] or 0)
+
+    # Net worth trend — approximate monthly balance by walking backwards from current total
+    nw_trend = []
+    try:
+        from dateutil.relativedelta import relativedelta as _rdelta
+        current_nw = sum(float(accounts[a]['balance']) for a in accounts if accounts[a].get('active'))
+        running = current_nw
+        today_d = date.today()
+        for i in range(0, 4):
+            m_start = today_d.replace(day=1) - _rdelta(months=i)
+            m_end = today_d if i == 0 else (m_start + _rdelta(months=1)).replace(day=1) - timedelta(days=1)
+            if USE_POSTGRES:
+                cursor.execute(
+                    "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = %s AND date >= %s AND date <= %s AND type != 'transfer'",
+                    (current_user.id, m_start.isoformat(), m_end.isoformat())
+                )
+            else:
+                cursor.execute(
+                    "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = ? AND date >= ? AND date <= ? AND type != 'transfer'",
+                    (current_user.id, m_start.isoformat(), m_end.isoformat())
+                )
+            net = float(cursor.fetchone()[0] or 0)
+            nw_trend.insert(0, {'month': m_start.strftime('%b'), 'value': round(running, 2)})
+            running -= net
+    except Exception as _e:
+        logger.debug(f"nw_trend error: {_e}")
+        nw_trend = []
+
     cursor.close()
     release_db(db)
 
@@ -1036,6 +1081,9 @@ def home():
         user_verified=verified,
         today_spent=today_spent,
         today_count=today_count,
+        this_week_spent=this_week_spent,
+        this_week_count=this_week_count,
+        nw_trend=nw_trend,
         pending_items=pending_items,
         cycle_start_date=cycle_start_date,
         cycle_end_date=cycle_end_date,
@@ -1166,6 +1214,34 @@ def transactions():
         "transactions.html",
         transactions=tx
     )
+
+# --- BULK CATEGORIZE ---
+@app.post("/transactions/bulk-categorize")
+@login_required
+def bulk_categorize():
+    if request.form.get('csrf_token') != session.get('csrf_token'):
+        return redirect(url_for('transactions'))
+    tx_ids = request.form.getlist('tx_ids')
+    category = request.form.get('category', '').strip()
+    if not tx_ids or not category:
+        return redirect(url_for('transactions'))
+    from database import get_db, USE_POSTGRES, release_db
+    db = get_db()
+    cursor = db.cursor()
+    for raw_id in tx_ids:
+        try:
+            tid = int(raw_id)
+        except (ValueError, TypeError):
+            continue
+        if USE_POSTGRES:
+            cursor.execute("UPDATE transactions SET category = %s WHERE id = %s AND user_id = %s", (category, tid, current_user.id))
+        else:
+            cursor.execute("UPDATE transactions SET category = ? WHERE id = ? AND user_id = ?", (category, tid, current_user.id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+    return redirect(url_for('transactions', msg='Categories updated'))
+
 
 # --- ACTIONS PAGE ---
 # Shows forms to add expenses, income, transfers, and investment updates
@@ -2090,12 +2166,30 @@ def settings():
     is_pro = user_is_pro()
     auto_apply_enabled, auto_apply_confirm = get_auto_apply_settings(current_user.id)
     budget_cycle_start = get_budget_cycle_start(current_user.id)
+    # Notification digest preference (column added on first save if missing)
+    notification_digest = 'off'
+    try:
+        from database import get_db, USE_POSTGRES, release_db
+        _db = get_db()
+        _cur = _db.cursor()
+        if USE_POSTGRES:
+            _cur.execute("SELECT notification_digest FROM users WHERE id = %s", (current_user.id,))
+        else:
+            _cur.execute("SELECT notification_digest FROM users WHERE id = ?", (current_user.id,))
+        _row = _cur.fetchone()
+        if _row and _row[0]:
+            notification_digest = _row[0]
+        _cur.close()
+        release_db(_db)
+    except Exception:
+        pass
     return render_template("settings.html",
         is_pro=is_pro,
         message=request.args.get("msg", ""),
         auto_apply_enabled=auto_apply_enabled,
         auto_apply_confirm=auto_apply_confirm,
         budget_cycle_start=budget_cycle_start,
+        notification_digest=notification_digest,
     )
 
 
@@ -2141,6 +2235,33 @@ def settings_save_automation():
     cursor.close()
     release_db(db)
     return redirect(url_for("settings", msg="Automation settings saved."))
+
+
+@app.post("/settings/save-notifications")
+@login_required
+def settings_save_notifications():
+    from database import get_db, USE_POSTGRES, release_db
+    if request.form.get("csrf_token") != session.get("csrf_token"):
+        return redirect(url_for("settings"))
+    digest = request.form.get("notification_digest", "off")
+    if digest not in ("off", "weekly", "monthly"):
+        digest = "off"
+    db = get_db()
+    cursor = db.cursor()
+    try:
+        if USE_POSTGRES:
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_digest VARCHAR(10) DEFAULT 'off'")
+            cursor.execute("UPDATE users SET notification_digest = %s WHERE id = %s", (digest, current_user.id))
+        else:
+            cursor.execute("UPDATE users SET notification_digest = ? WHERE id = ?", (digest, current_user.id))
+        db.commit()
+    except Exception as e:
+        logger.debug(f"save_notifications error: {e}")
+        db.rollback()
+    cursor.close()
+    release_db(db)
+    return redirect(url_for("settings", msg="Notification preferences saved."))
+
 
 @app.get("/manage")
 @login_required

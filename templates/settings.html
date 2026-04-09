@@ -87,7 +87,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   <div class="settings-tabs mb-4">
     <button class="tab-btn active" onclick="showTab('billing')">⭐ Plan</button>
     <button class="tab-btn" onclick="showTab('display')">🖥️ Display</button>
-    <button class="tab-btn" onclick="showTab('danger')">⚠️ Danger</button>
+    <button class="tab-btn" onclick="showTab('danger')">🔄 Reset</button>
   </div>
 
   <!-- TAB: BILLING / PLAN -->
@@ -180,8 +180,18 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     </div>
 
     <div class="card p-4 mb-4">
-      <h5 class="mb-1">Automation</h5>
-      <p class="text-muted small mb-4">Control how scheduled bills and income are applied to your accounts.</p>
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <h5 class="mb-0">Automation</h5>
+        <button type="button" onclick="toggleExplainer()" class="btn btn-sm text-muted p-0" style="font-size:13px; text-decoration:underline; background:none; border:none;">What does this mean?</button>
+      </div>
+      <p class="text-muted small mb-2">Control how scheduled bills and income are applied to your accounts.</p>
+
+      <div id="automationExplainer" style="display:none;" class="rounded-4 p-3 mb-4" style="background:#f8f9fa;">
+        <div class="small text-muted" style="background:#f0f2f5; border-radius:12px; padding:14px; line-height:1.7;">
+          <strong>Auto-apply</strong> means Spendara automatically logs your scheduled bills and income as transactions when they're due — so your account balances stay up to date without you having to do it manually.<br><br>
+          <strong>Ask for confirmation</strong> means before anything is applied, you'll see a review banner on the home page. You can approve or dismiss it. If this is off, items are applied silently in the background.
+        </div>
+      </div>
 
       <form method="POST" action="/settings/save-automation">
         <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
@@ -213,6 +223,25 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         </div>
 
         <button type="submit" class="btn btn-dark w-100 mt-4">Save automation settings</button>
+      </form>
+    </div>
+
+    <div class="card p-4 mb-4">
+      <h5 class="mb-1">Notifications</h5>
+      <p class="text-muted small mb-4">Get an email summary of your spending sent to your inbox.</p>
+      <form method="POST" action="/settings/save-notifications">
+        <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+        <div class="d-flex gap-2 mb-4">
+          {% for opt, label in [('off','Off'), ('weekly','Weekly'), ('monthly','Monthly')] %}
+          <button type="button" onclick="setDigest('{{ opt }}')"
+            id="digest-{{ opt }}"
+            class="btn btn-sm rounded-pill px-4 fw-semibold"
+            style="min-width:80px;">{{ label }}</button>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="notification_digest" id="digestInput" value="{{ notification_digest }}">
+        <div class="text-muted small mb-3" id="digestDesc"></div>
+        <button type="submit" class="btn btn-dark w-100">Save</button>
       </form>
     </div>
   </div>
@@ -335,6 +364,31 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 </nav>
 
 <script>
+var DIGEST_DESCS = {
+  'off': 'No emails sent.',
+  'weekly': 'A spending summary will be sent every Monday morning.',
+  'monthly': 'A spending summary will be sent on the 1st of each month.'
+};
+function setDigest(val) {
+  document.getElementById('digestInput').value = val;
+  ['off','weekly','monthly'].forEach(function(v) {
+    var btn = document.getElementById('digest-' + v);
+    btn.style.background = v === val ? '#111' : '#e9ecef';
+    btn.style.color = v === val ? 'white' : '#555';
+    btn.style.border = 'none';
+  });
+  document.getElementById('digestDesc').textContent = DIGEST_DESCS[val] || '';
+}
+(function() {
+  var cur = document.getElementById('digestInput');
+  if (cur) setDigest(cur.value || 'off');
+})();
+
+function toggleExplainer() {
+  var el = document.getElementById('automationExplainer');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
 function showTab(name, btn) {
   document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
