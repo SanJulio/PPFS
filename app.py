@@ -1187,7 +1187,10 @@ def actions():
     cursor.close()
     release_db(db)
 
-    return render_template("actions.html", accounts=accounts, investments=investments, message=request.args.get("msg", ""), today=date.today().isoformat())
+    from models import get_recent_transactions
+    all_tx = get_recent_transactions(current_user.id)
+    recent_tx = all_tx[:5]
+    return render_template("actions.html", accounts=accounts, investments=investments, message=request.args.get("msg", ""), today=date.today().isoformat(), recent_tx=recent_tx)
 
 # --- FLOW PAGE ---
 # Shows each account's monthly cash flow: bills paid, bills still to pay,

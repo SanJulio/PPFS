@@ -83,7 +83,12 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           </div>
       <div class="mb-3">
         <label class="form-label">Amount (£)</label>
-        <input class="form-control" name="amount" inputmode="decimal" placeholder="0.00" required>
+        <input class="form-control" name="amount" id="expenseAmount" inputmode="decimal" placeholder="0.00" required>
+        <div class="d-flex gap-2 mt-2">
+          {% for amt in [5, 10, 20, 50] %}
+          <button type="button" class="btn btn-outline-secondary btn-sm rounded-3 flex-fill" onclick="document.getElementById('expenseAmount').value='{{ amt }}.00'">£{{ amt }}</button>
+          {% endfor %}
+        </div>
       </div>
       <div class="mb-3">
         <label class="form-label">Date</label>
@@ -124,7 +129,12 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         </div>
       <div class="mb-3">
         <label class="form-label">Amount (£)</label>
-        <input class="form-control" name="amount" inputmode="decimal" placeholder="0.00" required>
+        <input class="form-control" name="amount" id="incomeAmount" inputmode="decimal" placeholder="0.00" required>
+        <div class="d-flex gap-2 mt-2">
+          {% for amt in [5, 10, 20, 50] %}
+          <button type="button" class="btn btn-outline-secondary btn-sm rounded-3 flex-fill" onclick="document.getElementById('incomeAmount').value='{{ amt }}.00'">£{{ amt }}</button>
+          {% endfor %}
+        </div>
       </div>
       <div class="mb-3">
         <label class="form-label">Date</label>
@@ -199,6 +209,27 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   {% endif %}
 
 </div>
+
+{% if recent_tx %}
+<div class="card p-3 mb-4">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h5 class="mb-0">Recent</h5>
+    <a href="/transactions" class="text-muted small text-decoration-none">See all →</a>
+  </div>
+  {% set cat_emojis = {'Food': '🍔', 'Food & Drink': '🍔', 'Transport': '🚗', 'Bills': '🏠', 'Bills & Utilities': '🏠', 'Entertainment': '🎬', 'Shopping': '🛍️', 'Health': '💊', 'Income': '💰', 'Savings': '🏦', 'Other': '📦'} %}
+  {% for t in recent_tx %}
+  <div class="d-flex justify-content-between align-items-center py-2 {% if not loop.last %}border-bottom{% endif %}">
+    <div>
+      <div class="fw-semibold small">{{ cat_emojis.get(t.category or 'Other', '📦') }} {{ t.description }}</div>
+      <div class="text-muted" style="font-size:11px;">{{ t.account }} · {{ t.date | dateformat }}</div>
+    </div>
+    <span class="fw-semibold small {% if t.amount < 0 %}text-danger{% else %}text-success{% endif %}">
+      {% if t.amount < 0 %}-£{{ "%.2f"|format(t.amount|abs) }}{% else %}+£{{ "%.2f"|format(t.amount) }}{% endif %}
+    </span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 
 <!-- CALCULATOR MODAL -->
 <div class="modal fade" id="calcModal" tabindex="-1">
