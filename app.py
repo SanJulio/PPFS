@@ -125,7 +125,7 @@ def set_csrf_token():
 @app.before_request
 def check_csrf():
     if request.method == 'POST':
-        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply']
+        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid']
         if request.path not in exempt:
             token = request.form.get('csrf_token')
             if not token or token != session.get('csrf_token'):
@@ -670,6 +670,7 @@ def get_auto_apply_settings(user_id):
 # - savings balance
 # - net worth (spending + savings)
 def calculate_financial_overview(accounts):
+    from datetime import date
     today = datetime.today()
     current_day = today.day
 
@@ -709,10 +710,20 @@ def calculate_financial_overview(accounts):
             if expense.get("month") != current_month:
                 continue
         if expense["day"] > current_day:
+            # Skip if already marked as paid this cycle
+            last_applied = expense.get("last_applied")
+            if last_applied:
+                import calendar as _cal2
+                days_in_month = _cal2.monthrange(today.year, today.month)[1]
+                due_day = min(expense["day"], days_in_month)
+                due_str = date(today.year, today.month, due_day).isoformat()
+                if last_applied >= due_str:
+                    continue
             acc = expense["account"]
             if acc in accounts and accounts[acc]["type"] in spending_types:
                 spending_future_bills += expense["amount"]
                 future_bills_list.append({
+                    "id": expense["id"],
                     "name": expense["name"],
                     "amount": expense["amount"],
                     "day": expense["day"],
@@ -1055,6 +1066,45 @@ def auto_apply():
             continue
 
     apply_auto_items(current_user.id, safe_items)
+    return {"ok": True}
+
+
+@app.post("/mark-bill-paid")
+@login_required
+def mark_bill_paid():
+    from flask import request as _req
+    from datetime import date as _date
+    import calendar as _cal
+    if _req.json is None or _req.json.get("csrf_token") != session.get("csrf_token"):
+        return {"error": "Invalid CSRF token"}, 403
+    try:
+        bill_id = int(_req.json["bill_id"])
+        name = str(_req.json["name"])
+        amount = float(_req.json["amount"])
+        account = str(_req.json["account"])
+        day = int(_req.json["day"])
+    except (KeyError, ValueError, TypeError):
+        return {"error": "Invalid request"}, 400
+
+    today = _date.today()
+    days_in_month = _cal.monthrange(today.year, today.month)[1]
+    due_day = min(day, days_in_month)
+    due_date_str = _date(today.year, today.month, due_day).isoformat()
+
+    add_transaction(today.isoformat(), name, -abs(amount), account, current_user.id, type='bill', category='Bills')
+    update_account_balance(account, -abs(amount), current_user.id)
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE scheduled_expenses SET last_applied = %s WHERE id = %s AND user_id = %s",
+                       (due_date_str, bill_id, current_user.id))
+    else:
+        cursor.execute("UPDATE scheduled_expenses SET last_applied = ? WHERE id = ? AND user_id = ?",
+                       (due_date_str, bill_id, current_user.id))
+    db.commit()
+    cursor.close()
+    release_db(db)
     return {"ok": True}
 
 

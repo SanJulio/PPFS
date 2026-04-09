@@ -489,7 +489,13 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
       </div>
       <div id="tile-bills" class="d-none mt-2 px-1">
         {% for b in overview.future_bills_list %}
-        <div class="d-flex justify-content-between small py-1 border-bottom">
+        <div class="d-flex justify-content-between small py-1 border-bottom bill-pay-row"
+             style="cursor:pointer;"
+             data-bill-id="{{ b.id }}"
+             data-name="{{ b.name|e }}"
+             data-amount="{{ b.amount }}"
+             data-account="{{ b.account|e }}"
+             data-day="{{ b.day }}">
           <span>{{ b.name }} <span class="text-muted">(day {{ b.day }})</span></span>
           <span class="fw-semibold text-danger amount-private">£{{ "%.2f"|format(b.amount) }}</span>
         </div>
@@ -1240,6 +1246,32 @@ function closeOnboarding() {
     }
   }, { passive: true });
 })();
+
+// --- Mark bill as paid ---
+document.addEventListener('click', function(e) {
+  var row = e.target.closest('.bill-pay-row');
+  if (!row) return;
+  var name = row.dataset.name;
+  var amount = parseFloat(row.dataset.amount);
+  if (!confirm('Mark "' + name + '" (£' + amount.toFixed(2) + ') as paid?')) return;
+  fetch('/mark-bill-paid', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      csrf_token: HOME_CSRF,
+      bill_id: parseInt(row.dataset.billId, 10),
+      name: name,
+      amount: amount,
+      account: row.dataset.account,
+      day: parseInt(row.dataset.day, 10)
+    })
+  }).then(function(resp) {
+    if (resp.ok) { window.location.reload(); }
+    else { alert('Could not mark as paid. Please try again.'); }
+  }).catch(function() {
+    alert('Network error — please try again.');
+  });
+});
 
 // --- Auto-apply modal ---
 function openAutoApplyModal() {
