@@ -22,7 +22,8 @@ html { scroll-behavior: smooth; scroll-padding-bottom: 110px; }
 .navbar small { font-size: 11px; }
 .navbar a { display:flex; flex-direction:column; align-items:center; }
 .fixed-bottom { position: fixed !important; bottom: 0; left: 0; right: 0; z-index: 9999; }
-body { background: #f2f4f7; padding-bottom: 140px; }
+body { background: #f2f4f7; padding-bottom: 140px; padding-top: 56px; }
+.top-bar { position:fixed;top:0;left:0;right:0;height:52px;background:#fff;border-bottom:1px solid #eee;z-index:1039;display:flex;align-items:center;justify-content:space-between;padding:0 14px; }
 :root { --brand: #6366f1; }
 .nav-active { color: var(--brand) !important; }
 .nav-active small { font-weight: 700; }
@@ -68,10 +69,14 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
 </style>
 </head>
 <body>
+<div class="top-bar">
+  <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:32px;object-fit:contain;"></a>
+  <button id="profileBtn" onclick="openProfilePanel()" data-avatar="{{ current_user.avatar or '' }}" style="width:36px;height:36px;border-radius:50%;background:var(--brand,#5b5ef4);color:#fff;border:none;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;">{% if current_user.avatar %}{{ current_user.avatar }}{% else %}{%- set _pn = current_user.display_name or current_user.email.split('@')[0] %}{%- set _pp = _pn.replace('.', ' ').replace('_', ' ').split() -%}{{ (_pp[0][0] + (_pp[1][0] if _pp|length > 1 else '')) | upper }}{% endif %}</button>
+</div>
+
 <div class="container py-4">
 
   <div class="mb-4">
-    <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="PPFS Logo" style="height:50px; object-fit:contain;" class="mb-2 d-block"></a>
     <h1 class="display-6 fw-bold">Transactions</h1>
     <div class="text-muted">All entries</div>
   </div>
@@ -555,8 +560,6 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
 
 <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>
 
-<!-- Profile Panel Button -->
-<button id="profileBtn" onclick="openProfilePanel()" data-avatar="{{ current_user.avatar or '' }}" style="position:fixed;top:14px;right:14px;z-index:1040;width:38px;height:38px;border-radius:50%;background:var(--brand,#5b5ef4);color:#fff;border:none;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;">{% if current_user.avatar %}{{ current_user.avatar }}{% else %}{%- set _pn = current_user.display_name or current_user.email.split('@')[0] %}{%- set _pp = _pn.replace('.', ' ').replace('_', ' ').split() -%}{{ (_pp[0][0] + (_pp[1][0] if _pp|length > 1 else '')) | upper }}{% endif %}</button>
 <!-- Profile Panel Overlay -->
 <div id="profileOverlay" onclick="closeProfilePanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:1041;"></div>
 <!-- Profile Panel -->

@@ -59,7 +59,9 @@ html {
 body {
     background: #f2f4f7;
     padding-bottom: 140px;
+    padding-top: 56px;
 }
+.top-bar { position:fixed;top:0;left:0;right:0;height:52px;background:#fff;border-bottom:1px solid #eee;z-index:1039;display:flex;align-items:center;justify-content:space-between;padding:0 14px; }
 :root { --brand: #6366f1; }
 .nav-active { color: var(--brand) !important; }
 .nav-active small { font-weight: 700; }
@@ -137,6 +139,19 @@ body.privacy-invisible .amounts-visible .amount-private {
 </style>
 </head>
 <body>
+<!-- Top bar -->
+<div class="top-bar">
+  <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:32px;object-fit:contain;"></a>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <a href="/calendar" class="text-decoration-none" title="Calendar">
+      <div style="width:32px;text-align:center;border:2px solid #ccc;border-radius:6px;overflow:hidden;line-height:1;">
+        <div style="background:#dc3545;color:#fff;font-size:8px;font-weight:700;padding:2px 0;letter-spacing:0.5px;" id="cal-month"></div>
+        <div style="font-size:14px;font-weight:700;color:#333;padding:2px 0;" id="cal-day"></div>
+      </div>
+    </a>
+    <button id="profileBtn" onclick="openProfilePanel()" data-avatar="{{ current_user.avatar or '' }}" style="width:36px;height:36px;border-radius:50%;background:var(--brand,#5b5ef4);color:#fff;border:none;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;">{% if current_user.avatar %}{{ current_user.avatar }}{% else %}{%- set _pn = current_user.display_name or current_user.email.split('@')[0] %}{%- set _pp = _pn.replace('.', ' ').replace('_', ' ').split() -%}{{ (_pp[0][0] + (_pp[1][0] if _pp|length > 1 else '')) | upper }}{% endif %}</button>
+  </div>
+</div>
 
 <!-- ONBOARDING MODAL -->
 {% if show_onboarding %}
@@ -372,17 +387,10 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
 <button onclick="openQuickAdd()" style="position:fixed; bottom:85px; right:20px; z-index:9998; width:54px; height:54px; border-radius:50%; background:#111; color:#fff; border:none; font-size:26px; box-shadow:0 4px 14px rgba(0,0,0,0.25); cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1;">+</button>
 
 <div class="container py-4">
-<div class="mb-4 d-flex justify-content-between align-items-start" id="home">
+<div class="mb-4" id="home">
   <div>
-    <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="PPFS Logo" style="height:50px; object-fit:contain;" class="mb-2"></a>
-    <div id="home-greeting" class="text-muted" data-email="{{ current_user.email }}">Know exactly where you stand, every day</div>
+    <div id="home-greeting" class="fw-bold" style="font-size:20px;" data-email="{{ current_user.email }}">Know exactly where you stand, every day</div>
   </div>
-  <a href="/calendar" class="text-decoration-none mt-1" title="Calendar">
-    <div style="width:36px;text-align:center;border:2px solid #ccc;border-radius:6px;overflow:hidden;line-height:1;">
-      <div style="background:#dc3545;color:#fff;font-size:9px;font-weight:700;padding:2px 0;letter-spacing:0.5px;" id="cal-month"></div>
-      <div style="font-size:16px;font-weight:700;color:#333;padding:2px 0;" id="cal-day"></div>
-    </div>
-  </a>
   <script>
     (function(){
       var d = new Date();
@@ -1496,8 +1504,6 @@ function submitAutoApply() {
 </script>
 <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>
 
-<!-- Profile Panel Button -->
-<button id="profileBtn" onclick="openProfilePanel()" data-avatar="{{ current_user.avatar or '' }}" style="position:fixed;top:14px;right:14px;z-index:1040;width:38px;height:38px;border-radius:50%;background:var(--brand,#5b5ef4);color:#fff;border:none;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;">{% if current_user.avatar %}{{ current_user.avatar }}{% else %}{%- set _pn = current_user.display_name or current_user.email.split('@')[0] %}{%- set _pp = _pn.replace('.', ' ').replace('_', ' ').split() -%}{{ (_pp[0][0] + (_pp[1][0] if _pp|length > 1 else '')) | upper }}{% endif %}</button>
 <!-- Profile Panel Overlay -->
 <div id="profileOverlay" onclick="closeProfilePanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:1041;"></div>
 <!-- Profile Panel -->
