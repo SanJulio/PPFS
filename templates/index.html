@@ -325,22 +325,31 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
       <button onclick="quickFill(20, 'Groceries', 'Food & Drink')" class="btn btn-outline-secondary btn-sm rounded-pill" style="font-size:12px;">🛒 £20</button>
       <button onclick="quickFill(50, 'Fuel', 'Transport')" class="btn btn-outline-secondary btn-sm rounded-pill" style="font-size:12px;">⛽ £50</button>
     </div>
-    <!-- Expense / Income toggle -->
+    <!-- Expense / Income / Transfer toggle -->
     <div class="d-flex gap-2 mb-3">
       <button id="qa-expense-btn" onclick="setQaType('expense')" class="btn btn-dark btn-sm rounded-3 flex-fill" style="font-size:13px;">💸 Expense</button>
       <button id="qa-income-btn" onclick="setQaType('income')" class="btn btn-outline-secondary btn-sm rounded-3 flex-fill" style="font-size:13px;">💰 Income</button>
+      <button id="qa-transfer-btn" onclick="setQaType('transfer')" class="btn btn-outline-secondary btn-sm rounded-3 flex-fill" style="font-size:13px;">↔ Transfer</button>
     </div>
     <div class="mb-3">
       <label class="form-label fw-semibold" style="font-size:13px;">Amount (£) *</label>
       <input id="qa-amount" class="form-control" inputmode="decimal" placeholder="0.00" style="font-size:22px; font-weight:700; text-align:center;">
     </div>
-    <div class="mb-3">
+    <div id="qa-description-row" class="mb-3">
       <label class="form-label fw-semibold" style="font-size:13px;">Description (optional)</label>
       <input id="qa-description" class="form-control" placeholder="e.g. Coffee" style="font-size:15px;">
     </div>
     <div class="mb-3">
-      <label class="form-label fw-semibold" style="font-size:13px;">Account *</label>
+      <label id="qa-account-label" class="form-label fw-semibold" style="font-size:13px;">Account *</label>
       <select id="qa-account" class="form-select" style="font-size:15px;">
+        {% for acc in accounts %}
+        <option value="{{ acc }}">{{ acc }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div id="qa-to-account-row" class="mb-3" style="display:none;">
+      <label class="form-label fw-semibold" style="font-size:13px;">To account *</label>
+      <select id="qa-to-account" class="form-select" style="font-size:15px;">
         {% for acc in accounts %}
         <option value="{{ acc }}">{{ acc }}</option>
         {% endfor %}
@@ -1144,15 +1153,34 @@ function setQaType(type) {
   qaType = type;
   var expBtn = document.getElementById('qa-expense-btn');
   var incBtn = document.getElementById('qa-income-btn');
+  var trfBtn = document.getElementById('qa-transfer-btn');
   var catRow = document.getElementById('qa-category-row');
+  var toRow = document.getElementById('qa-to-account-row');
+  var descRow = document.getElementById('qa-description-row');
+  var accLabel = document.getElementById('qa-account-label');
+
+  expBtn.className = 'btn btn-outline-secondary btn-sm rounded-3 flex-fill';
+  incBtn.className = 'btn btn-outline-secondary btn-sm rounded-3 flex-fill';
+  trfBtn.className = 'btn btn-outline-secondary btn-sm rounded-3 flex-fill';
+
   if (type === 'expense') {
     expBtn.className = 'btn btn-dark btn-sm rounded-3 flex-fill';
-    incBtn.className = 'btn btn-outline-secondary btn-sm rounded-3 flex-fill';
     catRow.style.display = 'block';
-  } else {
+    toRow.style.display = 'none';
+    descRow.style.display = 'block';
+    accLabel.textContent = 'Account *';
+  } else if (type === 'income') {
     incBtn.className = 'btn btn-success btn-sm rounded-3 flex-fill';
-    expBtn.className = 'btn btn-outline-secondary btn-sm rounded-3 flex-fill';
     catRow.style.display = 'none';
+    toRow.style.display = 'none';
+    descRow.style.display = 'block';
+    accLabel.textContent = 'Account *';
+  } else {
+    trfBtn.className = 'btn btn-primary btn-sm rounded-3 flex-fill';
+    catRow.style.display = 'none';
+    toRow.style.display = 'block';
+    descRow.style.display = 'none';
+    accLabel.textContent = 'From account *';
   }
 }
 
@@ -1169,6 +1197,25 @@ function submitQuickAdd() {
     errEl.style.display = 'block';
     return;
   }
+
+  // Transfer: submit as a regular form POST to /transfer
+  if (qaType === 'transfer') {
+    var toAccount = document.getElementById('qa-to-account').value;
+    if (account === toAccount) {
+      errEl.textContent = 'From and To accounts must be different.';
+      errEl.style.display = 'block';
+      return;
+    }
+    var f = document.createElement('form');
+    f.method = 'POST'; f.action = '/transfer';
+    [['csrf_token', HOME_CSRF], ['from_account', account], ['to_account', toAccount], ['amount', amount]].forEach(function(p) {
+      var i = document.createElement('input'); i.type = 'hidden'; i.name = p[0]; i.value = p[1]; f.appendChild(i);
+    });
+    document.body.appendChild(f);
+    f.submit();
+    return;
+  }
+
   errEl.style.display = 'none';
   btn.disabled = true;
   btn.textContent = 'Adding...';
