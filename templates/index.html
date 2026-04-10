@@ -41,6 +41,9 @@ html {
     display:flex;
     flex-direction:column;
     align-items:center;
+    min-height:44px;
+    justify-content:center;
+    padding:4px 8px;
 }
 
 .fixed-bottom {
@@ -53,8 +56,11 @@ html {
 
 body {
     background: #f2f4f7;
-    padding-bottom: 110px;
+    padding-bottom: 140px;
 }
+:root { --brand: #6366f1; }
+.nav-active { color: var(--brand) !important; }
+.nav-active small { font-weight: 700; }
 
 .card {
     border-radius: 18px;
@@ -473,8 +479,8 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
       <div id="tile-available" class="d-none mt-2 px-1">
         {% for a in overview.spending_accounts %}
         <div class="d-flex justify-content-between small py-1 border-bottom">
-          <span>{{ a.name }}</span>
-          <span class="fw-semibold amount-private">£{{ "%.2f"|format(a.balance) }}</span>
+          <span>{% if a.balance < 0 %}⚠️ {% endif %}{{ a.name }}</span>
+          <span class="fw-semibold amount-private {% if a.balance < 0 %}text-danger{% endif %}">£{{ "%.2f"|format(a.balance) }}</span>
         </div>
         {% endfor %}
       </div>
@@ -636,6 +642,29 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
       </div>
     </div>
 
+    {% if monthly.income_received > 0 %}
+    <div class="col-4">
+      <div class="p-3 bg-white rounded-4 shadow-sm text-center tile" onclick="toggleTile('income-cycle')">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="text-muted small">Income</div>
+          <span id="arrow-income-cycle" class="fw-bold" style="font-size:13px;color:#111">+</span>
+        </div>
+        <div class="fs-5 fw-bold text-success amount-private">£{{ "%.2f"|format(monthly.income_received) }}</div>
+      </div>
+      <div id="tile-income-cycle" class="d-none mt-2 px-1">
+        {% for t in monthly.income_list %}
+        <div class="d-flex justify-content-between small py-1 border-bottom">
+          <span>{{ t.description }}</span>
+          <span class="fw-semibold text-success amount-private">£{{ "%.2f"|format(t.amount) }}</span>
+        </div>
+        {% endfor %}
+        {% if not monthly.income_list %}
+        <div class="small text-muted py-1">No income this cycle yet</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
     <div class="col-4">
       <div class="p-3 bg-dark text-white rounded-4 text-center tile" onclick="toggleTile('outflow')">
         <div class="d-flex justify-content-between align-items-center">
@@ -709,7 +738,7 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
   {% endif %}
 
   <!-- Can I afford this — floating button + modal -->
-  <button onclick="document.getElementById('affordModal').style.display='flex'" class="btn btn-outline-dark w-100 mb-3 rounded-4 py-2 fw-semibold" style="font-size:14px;">💬 Can I afford this?</button>
+  <button onclick="document.getElementById('affordModal').style.display='flex'" class="btn w-100 mb-3 rounded-4 py-3 fw-bold" style="background:var(--brand);color:#fff;font-size:15px;letter-spacing:0.01em;box-shadow:0 4px 12px rgba(99,102,241,0.3);">💬 Can I afford this?</button>
 
   <div id="affordModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:20px;">
     <div class="card p-4" style="max-width:480px; width:100%; border-radius:24px 24px 24px 24px;">
@@ -950,28 +979,28 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
 </div>
 <nav class="navbar fixed-bottom bg-white border-top">
   <div class="container-fluid d-flex justify-content-around text-center">
-    <a href="/" class="text-decoration-none text-dark">
-      <div style="font-size:20px">🏠</div>
+    <a href="/" class="text-decoration-none nav-active">
+      <div style="font-size:22px">🏠</div>
       <small>Home</small>
     </a>
     <a href="/actions" class="text-decoration-none text-dark">
-      <div style="font-size:20px">⚡</div>
+      <div style="font-size:22px">⚡</div>
       <small>Actions</small>
     </a>
     <a href="/forecast" class="text-decoration-none text-dark">
-      <div style="font-size:20px">📈</div>
+      <div style="font-size:22px">📈</div>
       <small>Forecast</small>
     </a>
     <a href="/transactions" class="text-decoration-none text-dark">
-      <div style="font-size:20px">📜</div>
+      <div style="font-size:22px">📜</div>
       <small>Transactions</small>
     </a>
     <a href="/manage" class="text-decoration-none text-dark">
-      <div style="font-size:20px">🎛️</div>
+      <div style="font-size:22px">🎛️</div>
       <small>Manage</small>
     </a>
     <a href="/settings" class="text-decoration-none text-dark">
-      <div style="font-size:20px">⚙️</div>
+      <div style="font-size:22px">⚙️</div>
       <small>Settings</small>
     </a>
   </div>

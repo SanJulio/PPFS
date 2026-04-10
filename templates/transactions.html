@@ -21,15 +21,23 @@ html { scroll-behavior: smooth; scroll-padding-bottom: 110px; }
 .navbar small { font-size: 11px; }
 .navbar a { display:flex; flex-direction:column; align-items:center; }
 .fixed-bottom { position: fixed !important; bottom: 0; left: 0; right: 0; z-index: 9999; }
-body { background: #f2f4f7; padding-bottom: 110px; }
+body { background: #f2f4f7; padding-bottom: 140px; }
+:root { --brand: #6366f1; }
+.nav-active { color: var(--brand) !important; }
+.nav-active small { font-weight: 700; }
+.navbar a { min-height:44px; justify-content:center; padding:4px 8px; }
 .card { border-radius: 18px; border: none; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
 .money { font-variant-numeric: tabular-nums; }
 .ellipsis {
-  max-width: 180px;
+  max-width: 220px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+tbody tr.tx-income td:first-child { box-shadow: inset 3px 0 0 #198754; }
+tbody tr.tx-expense td:first-child { box-shadow: inset 3px 0 0 rgba(220,53,69,0.5); }
+#bulkBar { animation: slideUp 0.2s ease; }
+@keyframes slideUp { from { transform:translateX(-50%) translateY(20px); opacity:0; } to { transform:translateX(-50%) translateY(0); opacity:1; } }
 .badge-soft {
   background: rgba(0,0,0,0.06);
   color: #111;
@@ -48,7 +56,7 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
 .search-input:focus { outline: none; border-color: #111; box-shadow: none; }
 .col-filter-btn { background:none; border:none; padding:2px 4px; font-size:11px; color:#bbb; cursor:pointer; border-radius:5px; line-height:1; vertical-align:middle; }
 .col-filter-btn:hover { background:#f0f0f0; color:#555; }
-.col-filter-btn.active { color:#111; background:#e0e7ff; }
+.col-filter-btn.active { color:var(--brand); background:#e0e7ff; }
 #filterPanel { position:fixed; z-index:9992; background:#fff; border-radius:14px; box-shadow:0 8px 28px rgba(0,0,0,0.18); padding:14px; width:min(260px,calc(100vw - 24px)); border:1px solid rgba(0,0,0,0.07); }
 </style>
 </head>
@@ -114,7 +122,7 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
           {% set cat_emojis = {'Food': '🍔', 'Food & Drink': '🍔', 'Transport': '🚗', 'Bills': '🏠', 'Bills & Utilities': '🏠', 'Entertainment': '🎬', 'Shopping': '🛍️', 'Health': '💊', 'Income': '💰', 'Savings': '🏦', 'Other': '📦'} %}
           {% for t in transactions %}
           {% set cat = t.category or 'Other' %}
-          <tr class="tx-row" data-id="{{ t.id }}" data-description="{{ t.description|lower }}"
+          <tr class="tx-row {% if t.amount >= 0 %}tx-income{% else %}tx-expense{% endif %}" data-id="{{ t.id }}" data-description="{{ t.description|lower }}"
             data-account="{{ t.account|lower }}" data-date="{{ t.date }}"
             data-category="{{ cat }}" data-amount="{{ t.amount }}"
             onclick="toggleTx(this.dataset.id)">
@@ -220,30 +228,29 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
 <nav class="navbar fixed-bottom bg-white border-top">
   <div class="container-fluid d-flex justify-content-around text-center">
     <a href="/" class="text-decoration-none text-dark">
-      <div style="font-size:20px">🏠</div>
+      <div style="font-size:22px">🏠</div>
       <small>Home</small>
     </a>
     <a href="/actions" class="text-decoration-none text-dark">
-      <div style="font-size:20px">⚡</div>
+      <div style="font-size:22px">⚡</div>
       <small>Actions</small>
     </a>
     <a href="/forecast" class="text-decoration-none text-dark">
-      <div style="font-size:20px">📈</div>
+      <div style="font-size:22px">📈</div>
       <small>Forecast</small>
     </a>
-    <a href="/transactions" class="text-decoration-none text-dark">
-      <div style="font-size:20px">📜</div>
+    <a href="/transactions" class="text-decoration-none nav-active">
+      <div style="font-size:22px">📜</div>
       <small>Transactions</small>
     </a>
     <a href="/manage" class="text-decoration-none text-dark">
-      <div style="font-size:20px">🎛️</div>
+      <div style="font-size:22px">🎛️</div>
       <small>Manage</small>
     </a>
     <a href="/settings" class="text-decoration-none text-dark">
-      <div style="font-size:20px">⚙️</div>
+      <div style="font-size:22px">⚙️</div>
       <small>Settings</small>
     </a>
-    
   </div>
 </nav>
 

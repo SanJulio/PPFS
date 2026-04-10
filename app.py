@@ -901,12 +901,45 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
             normal += amount
             normal_list.append({"description": description, "amount": amount, "date": tx_date, "account": account})
 
+    # Query income received this cycle
+    income_received = 0.0
+    income_list = []
+    try:
+        if USE_POSTGRES:
+            cursor2 = db.cursor() if not db.closed else get_db().cursor()
+            db2 = get_db()
+            cursor2 = db2.cursor()
+            cursor2.execute(
+                "SELECT amount, description, date, account FROM transactions WHERE date::date >= %s AND date::date <= %s AND user_id = %s AND amount > 0 AND type != 'transfer'",
+                (cycle_start_date.isoformat(), cycle_end_date.isoformat(), current_user.id)
+            )
+        else:
+            db2 = get_db()
+            cursor2 = db2.cursor()
+            cursor2.execute(
+                "SELECT amount, description, date, account FROM transactions WHERE date >= ? AND date <= ? AND user_id = ? AND amount > 0 AND type != 'transfer'",
+                (cycle_start_date.isoformat(), cycle_end_date.isoformat(), current_user.id)
+            )
+        for r2 in cursor2.fetchall():
+            if USE_POSTGRES:
+                amt = float(r2[0]); desc2 = r2[1]; d2 = r2[2]; acc2 = r2[3]
+            else:
+                amt = float(r2["amount"]); desc2 = r2["description"]; d2 = r2["date"]; acc2 = r2["account"]
+            income_received += amt
+            income_list.append({"description": desc2, "amount": amt, "date": d2, "account": acc2})
+        cursor2.close()
+        release_db(db2)
+    except Exception:
+        pass
+
     return {
         "normal": normal,
         "scheduled": scheduled,
         "total": normal + scheduled,
         "normal_list": normal_list,
         "bills_list": bills_list,
+        "income_received": income_received,
+        "income_list": income_list,
     }
 
 # =============================================================================
@@ -1581,7 +1614,7 @@ def add_income():
     except ValueError:
         tx_date = date.today().isoformat()
 
-    add_transaction(tx_date, description, amount, account, current_user.id)
+    add_transaction(tx_date, description, amount, account, current_user.id, type='income', category='Income')
     update_account_balance(account, amount, current_user.id)
     bust_forecast_cache(current_user.id)
     track('action.add_income')
@@ -2237,7 +2270,7 @@ def settings_save_cycle():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg="Budget cycle updated."))
+    return redirect(url_for("settings", msg="Budget cycle updated.", tab="display"))
 
 
 @app.post("/settings/save-automation")
@@ -2259,7 +2292,7 @@ def settings_save_automation():
     db.commit()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg="Automation settings saved."))
+    return redirect(url_for("settings", msg="Automation settings saved.", tab="display"))
 
 
 @app.post("/settings/save-notifications")
@@ -2285,7 +2318,7 @@ def settings_save_notifications():
         db.rollback()
     cursor.close()
     release_db(db)
-    return redirect(url_for("settings", msg="Notification preferences saved."))
+    return redirect(url_for("settings", msg="Notification preferences saved.", tab="display"))
 
 
 @app.get("/manage")

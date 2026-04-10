@@ -20,7 +20,11 @@ html { scroll-behavior: smooth; scroll-padding-bottom: 110px; }
 .navbar small { font-size: 11px; }
 .navbar a { display:flex; flex-direction:column; align-items:center; }
 .fixed-bottom { position: fixed !important; bottom: 0; left: 0; right: 0; z-index: 9999; }
-body { background: #f2f4f7; padding-bottom: 110px; }
+body { background: #f2f4f7; padding-bottom: 140px; }
+:root { --brand: #6366f1; }
+.nav-active { color: var(--brand) !important; }
+.nav-active small { font-weight: 700; }
+.navbar a { min-height:44px; justify-content:center; padding:4px 8px; }
 .card { border-radius: 18px; border: none; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
 .money { font-variant-numeric: tabular-nums; }
 .form-label { font-weight: 600; }
@@ -56,7 +60,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   transition: all 0.15s ease;
 }
 .tab-btn.active {
-  background: #111;
+  background: var(--brand);
   color: white;
 }
 .tab-section { display: none; }
@@ -782,27 +786,27 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 <nav class="navbar fixed-bottom bg-white border-top">
   <div class="container-fluid d-flex justify-content-around text-center">
     <a href="/" class="text-decoration-none text-dark">
-      <div style="font-size:20px">🏠</div>
+      <div style="font-size:22px">🏠</div>
       <small>Home</small>
     </a>
     <a href="/actions" class="text-decoration-none text-dark">
-      <div style="font-size:20px">⚡</div>
+      <div style="font-size:22px">⚡</div>
       <small>Actions</small>
     </a>
     <a href="/forecast" class="text-decoration-none text-dark">
-      <div style="font-size:20px">📈</div>
+      <div style="font-size:22px">📈</div>
       <small>Forecast</small>
     </a>
     <a href="/transactions" class="text-decoration-none text-dark">
-      <div style="font-size:20px">📜</div>
+      <div style="font-size:22px">📜</div>
       <small>Transactions</small>
     </a>
-    <a href="/manage" class="text-decoration-none text-dark fw-bold">
-      <div style="font-size:20px">🎛️</div>
+    <a href="/manage" class="text-decoration-none nav-active">
+      <div style="font-size:22px">🎛️</div>
       <small>Manage</small>
     </a>
     <a href="/settings" class="text-decoration-none text-dark">
-      <div style="font-size:20px">⚙️</div>
+      <div style="font-size:22px">⚙️</div>
       <small>Settings</small>
     </a>
   </div>

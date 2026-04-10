@@ -25,7 +25,11 @@ html { scroll-behavior: smooth; scroll-padding-bottom: 110px; }
 .navbar small { font-size: 11px; }
 .navbar a { display:flex; flex-direction:column; align-items:center; }
 .fixed-bottom { position: fixed !important; bottom: 0; left: 0; right: 0; z-index: 9999; }
-body { background: #f2f4f7; padding-bottom: 110px; }
+body { background: #f2f4f7; padding-bottom: 140px; }
+:root { --brand: #6366f1; }
+.nav-active { color: var(--brand) !important; }
+.nav-active small { font-weight: 700; }
+.navbar a { min-height:44px; justify-content:center; padding:4px 8px; }
 .card { border-radius: 18px; border: none; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
 .money { font-variant-numeric: tabular-nums; }
 .badge-soft {
@@ -37,29 +41,12 @@ body { background: #f2f4f7; padding-bottom: 110px; }
   font-size: 12px;
 }
 .btn-filter { border-radius: 999px; font-size: 13px; padding: 6px 16px; }
-.btn-filter.active { background: #111; color: white; border-color: #111; }
+.btn-filter.active { background: var(--brand); color: white; border-color: var(--brand); }
 #dayPanel { transition: opacity 0.15s; }
 .day-item { display:flex; align-items:center; justify-content:space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; gap: 12px; }
 .day-item:last-child { border-bottom: none; }
 .chart-hint { font-size: 11px; color: #aaa; text-align: center; margin-top: 6px; }
 
-/* V2 chart */
-#v2Section { display:none; }
-#v2Section.active { display:block; }
-.v2-card { background:#111; border-radius:18px; overflow:hidden; padding:16px; margin-bottom:12px; }
-.v2-toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
-.v2-range-btn { background:rgba(255,255,255,0.08); color:#ccc; border:none; border-radius:6px; font-size:12px; font-weight:600; padding:5px 12px; cursor:pointer; transition:background 0.15s; }
-.v2-range-btn:hover, .v2-range-btn.active { background:#fff; color:#111; }
-.v2-legend { display:flex; gap:12px; flex-wrap:wrap; }
-.v2-legend-item { display:flex; align-items:center; gap:5px; font-size:12px; color:#aaa; }
-.v2-legend-dot { width:10px; height:10px; border-radius:3px; flex-shrink:0; }
-#v2ChartMain { width:100%; height:300px; }
-#v2ChartVolume { width:100%; height:80px; margin-top:4px; }
-.v2-crosshair-box { background:#1a1a1a; border:1px solid #333; border-radius:10px; padding:10px 14px; font-size:12px; color:#eee; min-width:160px; pointer-events:none; }
-.v2-crosshair-row { display:flex; justify-content:space-between; gap:16px; margin-bottom:3px; }
-.v2-crosshair-row:last-child { margin-bottom:0; }
-.v2-netvale { font-size:15px; font-weight:700; color:#fff; margin-bottom:6px; }
-.v2-event-dot { width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:4px; }
 </style>
 </head>
 <body>
@@ -109,13 +96,6 @@ body { background: #f2f4f7; padding-bottom: 110px; }
     <a href="/manage" class="btn btn-dark btn-sm rounded-3 px-4">Go to Manage</a>
   </div>
 
-  <!-- V1/V2 toggle -->
-  <div class="d-flex align-items-center gap-2 mb-3">
-    <button class="btn btn-outline-secondary btn-sm rounded-3 active" id="btnV1" onclick="switchView('v1')" style="font-size:12px;">Chart v1</button>
-    <button class="btn btn-outline-secondary btn-sm rounded-3" id="btnV2" onclick="switchView('v2')" style="font-size:12px;">✨ Chart v2 — Beta</button>
-  </div>
-
-  <!-- V1 -->
   <div id="v1Section">
     <div class="card p-3 mb-3" id="forecastChartCard">
       <div style="position:relative; height:280px; max-height:40vh;">
@@ -137,7 +117,7 @@ body { background: #f2f4f7; padding-bottom: 110px; }
 
     <!-- Savings growth card -->
     <div id="savingsGrowthCard" class="card p-3 mb-3" style="display:none;">
-      <h6 class="fw-bold mb-3">📈 Savings Growth</h6>
+      <h6 class="fw-bold mb-3">💰 Your Savings in 90 Days</h6>
       <div id="savingsGrowthContent"></div>
     </div>
 
@@ -164,53 +144,33 @@ body { background: #f2f4f7; padding-bottom: 110px; }
     </div>
   </div>
 
-  <!-- V2 -->
-  <div id="v2Section">
-    <div class="v2-card">
-      <div class="v2-toolbar">
-        <div class="v2-range-btn active" id="v2r-2w" onclick="v2SetRange('2w', this)">2W</div>
-        <div class="v2-range-btn" id="v2r-1m" onclick="v2SetRange('1m', this)">1M</div>
-        <div class="v2-range-btn" id="v2r-3m" onclick="v2SetRange('3m', this)">3M</div>
-        <div class="v2-range-btn" id="v2r-all" onclick="v2SetRange('all', this)">ALL</div>
-        <div style="flex:1"></div>
-        <div class="v2-legend" id="v2Legend"></div>
-      </div>
-      <div id="v2ChartMain"></div>
-      <div id="v2ChartVolume"></div>
-    </div>
-
-    <!-- V2 day detail panel -->
-    <div id="v2DayPanel" class="card p-3 mb-4" style="display:none;">
-      <div id="v2DayPanelContent"></div>
-    </div>
-  </div>
 
 </div>
 
 <nav class="navbar fixed-bottom bg-white border-top">
   <div class="container-fluid d-flex justify-content-around text-center">
     <a href="/" class="text-decoration-none text-dark">
-      <div style="font-size:20px">🏠</div>
+      <div style="font-size:22px">🏠</div>
       <small>Home</small>
     </a>
     <a href="/actions" class="text-decoration-none text-dark">
-      <div style="font-size:20px">⚡</div>
+      <div style="font-size:22px">⚡</div>
       <small>Actions</small>
     </a>
-    <a href="/forecast" class="text-decoration-none text-dark">
-      <div style="font-size:20px">📈</div>
+    <a href="/forecast" class="text-decoration-none nav-active">
+      <div style="font-size:22px">📈</div>
       <small>Forecast</small>
     </a>
     <a href="/transactions" class="text-decoration-none text-dark">
-      <div style="font-size:20px">📜</div>
+      <div style="font-size:22px">📜</div>
       <small>Transactions</small>
     </a>
     <a href="/manage" class="text-decoration-none text-dark">
-      <div style="font-size:20px">🎛️</div>
+      <div style="font-size:22px">🎛️</div>
       <small>Manage</small>
     </a>
     <a href="/settings" class="text-decoration-none text-dark">
-      <div style="font-size:20px">⚙️</div>
+      <div style="font-size:22px">⚙️</div>
       <small>Settings</small>
     </a>
   </div>
@@ -770,7 +730,7 @@ function renderSavingsGrowth() {
     var v30 = applyInterest(v30base, rate, 30);
     var v90 = applyInterest(v90base, rate, 90);
     var growth90 = v90 - now;
-    var interestNote = rate > 0 ? ' <span style="color:#059669; font-size:11px;">(' + rate.toFixed(2) + '% p.a. interest included)</span>' : ' <span style="font-size:11px; color:#aaa;">No rate set — <a href="/manage">add one</a></span>';
+    var interestNote = rate > 0 ? ' <span style="color:#059669; font-size:11px;">(' + rate.toFixed(2) + '% p.a. interest included)</span>' : ' <a href="/manage?tab=accounts" class="btn btn-sm rounded-3 ms-1" style="font-size:11px; padding:2px 10px; background:#f0f0ff; color:#6366f1; border:1px solid #c7d2fe;">+ Add savings rate</a>';
     html += '<div class="col-12">' +
       '<div style="padding:12px; background:#f8f9fa; border-radius:12px;">' +
         '<div class="d-flex align-items-center gap-2 mb-1">' +
@@ -845,34 +805,12 @@ if (window.location.search) {
   window.history.replaceState({}, '', url);
 }
 
-// ─── V1 / V2 toggle ──────────────────────────────────────────────────────────
-function switchView(v) {
-  var isV2 = v === 'v2';
-  document.getElementById('v1Section').style.display = isV2 ? 'none' : 'block';
-  document.getElementById('v2Section').style.display = isV2 ? 'block' : 'none';
-  document.getElementById('btnV1').classList.toggle('active', !isV2);
-  document.getElementById('btnV2').classList.toggle('active', isV2);
-  if (isV2 && !v2Initialised) { v2Init(); }
-}
-
-// ─── V2 — Lightweight Charts ─────────────────────────────────────────────────
-var v2Initialised = false;
-var v2MainChart = null;
-var v2VolChart = null;
-var v2Series = [];   // one area series per account
-var v2VolSeries = null;
-var v2CurrentRange = '2w';
-
-var V2_COLORS = [
-  '#60a5fa', '#34d399', '#fbbf24', '#f87171',
-  '#a78bfa', '#f472b6', '#22d3ee', '#ffffff'
-];
 
 function v2Init() {
-  v2Initialised = true;
-
-  var mainEl = document.getElementById('v2ChartMain');
-  var volEl  = document.getElementById('v2ChartVolume');
+  // v2 removed
+  var mainEl = null;
+  var volEl  = null;
+  if (!mainEl) return;
 
   var chartOpts = {
     layout: { background: { color: '#111' }, textColor: '#aaa' },

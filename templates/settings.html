@@ -20,7 +20,11 @@ html { scroll-behavior: smooth; scroll-padding-bottom: 110px; }
 .navbar small { font-size: 11px; }
 .navbar a { display:flex; flex-direction:column; align-items:center; }
 .fixed-bottom { position: fixed !important; bottom: 0; left: 0; right: 0; z-index: 9999; }
-body { background: #f2f4f7; padding-bottom: 110px; }
+body { background: #f2f4f7; padding-bottom: 140px; }
+:root { --brand: #6366f1; }
+.nav-active { color: var(--brand) !important; }
+.nav-active small { font-weight: 700; }
+.navbar a { min-height:44px; justify-content:center; padding:4px 8px; }
 .card { border-radius: 18px; border: none; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
 .money { font-variant-numeric: tabular-nums; }
 .form-label { font-weight: 600; }
@@ -56,7 +60,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   transition: all 0.15s ease;
 }
 .tab-btn.active {
-  background: #111;
+  background: var(--brand);
   color: white;
 }
 .tab-section { display: none; }
@@ -166,16 +170,16 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     <div class="card p-4 mb-4">
       <h5 class="mb-1">Budget Cycle</h5>
       <p class="text-muted small mb-3">Set the day your pay cycle starts. The "Current Cycle" section on the home page will use this date range.</p>
-      <form method="POST" action="/settings/save-cycle" class="d-flex align-items-center gap-3">
+      <form method="POST" action="/settings/save-cycle">
         <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
-        <div class="d-flex align-items-center gap-2 flex-grow-1">
+        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
           <label class="fw-semibold small mb-0 text-nowrap">Cycle starts on day</label>
           <input type="number" name="budget_cycle_start" min="1" max="28"
             value="{{ budget_cycle_start }}"
-            class="form-control" style="max-width:80px;">
+            class="form-control" style="max-width:90px; min-width:70px; padding:10px !important; font-size:15px !important;">
           <span class="text-muted small text-nowrap">of each month (1–28)</span>
         </div>
-        <button type="submit" class="btn btn-dark btn-sm text-nowrap">Save</button>
+        <button type="submit" class="btn btn-dark btn-sm">Save</button>
       </form>
     </div>
 
@@ -337,27 +341,27 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 <nav class="navbar fixed-bottom bg-white border-top">
   <div class="container-fluid d-flex justify-content-around text-center">
     <a href="/" class="text-decoration-none text-dark">
-      <div style="font-size:20px">🏠</div>
+      <div style="font-size:22px">🏠</div>
       <small>Home</small>
     </a>
     <a href="/actions" class="text-decoration-none text-dark">
-      <div style="font-size:20px">⚡</div>
+      <div style="font-size:22px">⚡</div>
       <small>Actions</small>
     </a>
     <a href="/forecast" class="text-decoration-none text-dark">
-      <div style="font-size:20px">📈</div>
+      <div style="font-size:22px">📈</div>
       <small>Forecast</small>
     </a>
     <a href="/transactions" class="text-decoration-none text-dark">
-      <div style="font-size:20px">📜</div>
+      <div style="font-size:22px">📜</div>
       <small>Transactions</small>
     </a>
     <a href="/manage" class="text-decoration-none text-dark">
-      <div style="font-size:20px">🎛️</div>
+      <div style="font-size:22px">🎛️</div>
       <small>Manage</small>
     </a>
-    <a href="/settings" class="text-decoration-none text-dark fw-bold">
-      <div style="font-size:20px">⚙️</div>
+    <a href="/settings" class="text-decoration-none nav-active">
+      <div style="font-size:22px">⚙️</div>
       <small>Settings</small>
     </a>
   </div>
@@ -365,7 +369,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 
 <script>
 var DIGEST_DESCS = {
-  'off': 'No emails sent.',
+  'off': 'No automated emails. You can change this any time.',
   'weekly': 'A spending summary will be sent every Monday morning.',
   'monthly': 'A spending summary will be sent on the 1st of each month.'
 };

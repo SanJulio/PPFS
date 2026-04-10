@@ -20,7 +20,11 @@ html { scroll-behavior: smooth; scroll-padding-bottom: 110px; }
 .navbar small { font-size: 11px; }
 .navbar a { display:flex; flex-direction:column; align-items:center; }
 .fixed-bottom { position: fixed !important; bottom: 0; left: 0; right: 0; z-index: 9999; }
-body { background: #f2f4f7; padding-bottom: 110px; }
+body { background: #f2f4f7; padding-bottom: 140px; }
+:root { --brand: #6366f1; }
+.nav-active { color: var(--brand) !important; }
+.nav-active small { font-weight: 700; }
+.navbar a { min-height:44px; justify-content:center; padding:4px 8px; }
 .card { border-radius: 18px; border: none; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
 h1 { font-weight: 700; }
 input, select { border-radius: 12px !important; padding: 12px !important; font-size: 16px !important; }
@@ -63,8 +67,12 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       <div class="text-muted">Add expenses, income or transfer money</div>
     </div>
     <div class="d-flex gap-2 mt-1">
-      <a href="/import" class="btn btn-outline-dark rounded-3 px-3 py-2">📥 Import</a>
-      <button class="btn btn-dark rounded-3 px-3 py-2" data-bs-toggle="modal" data-bs-target="#calcModal">🧮 Calculator</button>
+      <a href="/import" class="btn btn-outline-dark rounded-3 d-flex flex-column align-items-center px-3 py-2" style="font-size:11px; line-height:1.2;">
+        <span style="font-size:20px;">📥</span>Import
+      </a>
+      <button class="btn btn-dark rounded-3 d-flex flex-column align-items-center px-3 py-2" data-bs-toggle="modal" data-bs-target="#calcModal" style="font-size:11px; line-height:1.2;">
+        <span style="font-size:20px;">🧮</span>Calculator
+      </button>
     </div>
   </div>
 
@@ -157,14 +165,15 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     <h5 class="mb-3">Transfer Between Accounts</h5>
     <form method="POST" action="{{ url_for('transfer') }}">
       <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
-        <div class="mb-3">
-          <label class="form-label">From account</label>
-          <select class="form-select" name="from_account" required>
-            {% for a in accounts %}
-              <option value="{{ a }}">{{ a }}</option>
-            {% endfor %}
-          </select>
-        </div>
+      <div class="mb-3">
+        <label class="form-label">From account</label>
+        <select class="form-select" name="from_account" required>
+          {% for a in accounts %}
+            <option value="{{ a }}">{{ a }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="text-center text-muted small mb-3">↓ transfer to</div>
       <div class="mb-3">
         <label class="form-label">To account</label>
         <select class="form-select" name="to_account" required>
@@ -208,28 +217,28 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   </div>
   {% endif %}
 
-</div>
-
-{% if recent_tx %}
-<div class="card p-3 mb-4">
-  <div class="d-flex justify-content-between align-items-center mb-2">
-    <h5 class="mb-0">Recent</h5>
-    <a href="/transactions" class="text-muted small text-decoration-none">See all →</a>
-  </div>
-  {% set cat_emojis = {'Food': '🍔', 'Food & Drink': '🍔', 'Transport': '🚗', 'Bills': '🏠', 'Bills & Utilities': '🏠', 'Entertainment': '🎬', 'Shopping': '🛍️', 'Health': '💊', 'Income': '💰', 'Savings': '🏦', 'Other': '📦'} %}
-  {% for t in recent_tx %}
-  <div class="d-flex justify-content-between align-items-center py-2 {% if not loop.last %}border-bottom{% endif %}">
-    <div>
-      <div class="fw-semibold small">{{ cat_emojis.get(t.category or 'Other', '📦') }} {{ t.description }}</div>
-      <div class="text-muted" style="font-size:11px;">{{ t.account }} · {{ t.date | dateformat }}</div>
+  {% if recent_tx %}
+  <div class="card p-3 mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h5 class="mb-0">Recent</h5>
+      <a href="/transactions" class="text-muted small text-decoration-none">See all →</a>
     </div>
-    <span class="fw-semibold small {% if t.amount < 0 %}text-danger{% else %}text-success{% endif %}">
-      {% if t.amount < 0 %}-£{{ "%.2f"|format(t.amount|abs) }}{% else %}+£{{ "%.2f"|format(t.amount) }}{% endif %}
-    </span>
+    {% set cat_emojis = {'Food': '🍔', 'Food & Drink': '🍔', 'Transport': '🚗', 'Bills': '🏠', 'Bills & Utilities': '🏠', 'Entertainment': '🎬', 'Shopping': '🛍️', 'Health': '💊', 'Income': '💰', 'Savings': '🏦', 'Other': '📦'} %}
+    {% for t in recent_tx %}
+    <div class="d-flex justify-content-between align-items-center py-2 {% if not loop.last %}border-bottom{% endif %}">
+      <div>
+        <div class="fw-semibold small">{{ cat_emojis.get(t.category or 'Other', '📦') }} {{ t.description }}</div>
+        <div class="text-muted" style="font-size:11px;">{{ t.account }} · {{ t.date | dateformat }}</div>
+      </div>
+      <span class="fw-semibold small {% if t.amount < 0 %}text-danger{% else %}text-success{% endif %}">
+        {% if t.amount < 0 %}-£{{ "%.2f"|format(t.amount|abs) }}{% else %}+£{{ "%.2f"|format(t.amount) }}{% endif %}
+      </span>
+    </div>
+    {% endfor %}
   </div>
-  {% endfor %}
+  {% endif %}
+
 </div>
-{% endif %}
 
 <!-- CALCULATOR MODAL -->
 <div class="modal fade" id="calcModal" tabindex="-1">
@@ -289,27 +298,27 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 <nav class="navbar fixed-bottom bg-white border-top">
   <div class="container-fluid d-flex justify-content-around text-center">
     <a href="/" class="text-decoration-none text-dark">
-      <div style="font-size:20px">🏠</div>
+      <div style="font-size:22px">🏠</div>
       <small>Home</small>
     </a>
-    <a href="/actions" class="text-decoration-none text-dark">
-      <div style="font-size:20px">⚡</div>
+    <a href="/actions" class="text-decoration-none nav-active">
+      <div style="font-size:22px">⚡</div>
       <small>Actions</small>
     </a>
     <a href="/forecast" class="text-decoration-none text-dark">
-      <div style="font-size:20px">📈</div>
+      <div style="font-size:22px">📈</div>
       <small>Forecast</small>
     </a>
     <a href="/transactions" class="text-decoration-none text-dark">
-      <div style="font-size:20px">📜</div>
+      <div style="font-size:22px">📜</div>
       <small>Transactions</small>
     </a>
     <a href="/manage" class="text-decoration-none text-dark">
-      <div style="font-size:20px">🎛️</div>
+      <div style="font-size:22px">🎛️</div>
       <small>Manage</small>
     </a>
     <a href="/settings" class="text-decoration-none text-dark">
-      <div style="font-size:20px">⚙️</div>
+      <div style="font-size:22px">⚙️</div>
       <small>Settings</small>
     </a>
   </div>
