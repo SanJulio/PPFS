@@ -491,6 +491,27 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: users.avatar ---
+    # User's chosen avatar emoji (optional, shown in profile button)
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='avatar'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN avatar TEXT")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN avatar TEXT")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (avatar): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     # --- MIGRATION: users.display_name ---
     # User's chosen display name (optional, shown in profile panel)
     try:

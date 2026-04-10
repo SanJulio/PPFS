@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{ session['csrf_token'] }}">
 <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
 <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
 <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}">
@@ -555,7 +556,7 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
 <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>
 
 <!-- Profile Panel Button -->
-<button id="profileBtn" onclick="openProfilePanel()" style="position:fixed;top:14px;right:14px;z-index:1040;width:38px;height:38px;border-radius:50%;background:var(--brand,#5b5ef4);color:#fff;border:none;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;">{%- set _pn = current_user.display_name or current_user.email.split('@')[0] %}{%- set _pp = _pn.replace('.', ' ').replace('_', ' ').split() -%}{{ (_pp[0][0] + (_pp[1][0] if _pp|length > 1 else '')) | upper }}</button>
+<button id="profileBtn" onclick="openProfilePanel()" data-avatar="{{ current_user.avatar or '' }}" style="position:fixed;top:14px;right:14px;z-index:1040;width:38px;height:38px;border-radius:50%;background:var(--brand,#5b5ef4);color:#fff;border:none;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;">{% if current_user.avatar %}{{ current_user.avatar }}{% else %}{%- set _pn = current_user.display_name or current_user.email.split('@')[0] %}{%- set _pp = _pn.replace('.', ' ').replace('_', ' ').split() -%}{{ (_pp[0][0] + (_pp[1][0] if _pp|length > 1 else '')) | upper }}{% endif %}</button>
 <!-- Profile Panel Overlay -->
 <div id="profileOverlay" onclick="closeProfilePanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:1041;"></div>
 <!-- Profile Panel -->
@@ -563,7 +564,7 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
   <div style="padding:20px;background:#f8f9fa;border-bottom:1px solid #eee;">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
       <div style="min-width:0;">
-        <div style="font-size:16px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ current_user.display_name or (current_user.email.split('@')[0].split('.')[0] | capitalize) }}</div>
+        <div id="panelDisplayName" style="font-size:16px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ current_user.display_name or (current_user.email.split('@')[0].split('.')[0] | capitalize) }}</div>
         <div style="font-size:11px;color:#aaa;margin-top:2px;">#{{ '%05d' | format(current_user.id) }}</div>
         <div style="font-size:12px;color:#bbb;margin-top:1px;">{{ current_user.email }}</div>
       </div>
@@ -572,23 +573,49 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
   </div>
   <div style="flex:1;padding:4px 0;">
     <button onclick="togglePanelSection('panelPersonal')" style="width:100%;background:none;border:none;border-bottom:1px solid #f5f5f5;padding:15px 20px;text-align:left;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;color:#222;">
-      <span>👤 Personal Details</span><span style="color:#bbb;font-size:16px;">›</span>
+      <span>👤 Personal Details</span><span id="panelPersonalArrow" style="color:#bbb;font-size:16px;">›</span>
     </button>
-    <div id="panelPersonal" style="display:none;background:#fafafa;padding:16px 20px;border-bottom:1px solid #f0f0f0;font-size:13px;color:#888;">Coming in a future update</div>
+    <div id="panelPersonal" style="display:none;background:#fafafa;padding:16px 20px;border-bottom:1px solid #f0f0f0;">
+      <div style="margin-bottom:14px;">
+        <label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:5px;">Display Name</label>
+        <div style="display:flex;gap:8px;">
+          <input id="panelNameInput" type="text" value="{{ current_user.display_name or '' }}" placeholder="{{ current_user.email.split('@')[0].split('.')[0] | capitalize }}" maxlength="60" style="flex:1;font-size:13px;padding:8px 10px;border:1px solid #ddd;border-radius:8px;outline:none;">
+          <button onclick="savePanelName()" style="font-size:12px;padding:8px 12px;background:var(--brand,#5b5ef4);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">Save</button>
+        </div>
+        <div id="panelNameMsg" style="font-size:12px;margin-top:5px;display:none;"></div>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:8px;">Profile Avatar</label>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">
+          {% for emoji in ['🐻','🦊','🐼','🐨','🦁','🐯','🐸','🐧','🦋','🌸','⭐','🌙','🔥','💎','🚀','🎯','🎸','🎨','🏔️','🌊'] %}
+          <button onclick="selectAvatar('{{ emoji }}')" data-avatar="{{ emoji }}" data-selected="{{ 'true' if current_user.avatar == emoji else 'false' }}" style="font-size:22px;padding:6px;border-radius:8px;cursor:pointer;border:2px solid transparent;background:#f5f5f5;">{{ emoji }}</button>
+          {% endfor %}
+        </div>
+        <div id="panelAvatarMsg" style="font-size:12px;margin-top:8px;display:none;"></div>
+      </div>
+    </div>
     <a href="/settings" onclick="closeProfilePanel()" style="display:flex;align-items:center;justify-content:space-between;padding:15px 20px;font-size:14px;color:#222;text-decoration:none;border-bottom:1px solid #f5f5f5;">
       <span>⚙️ Settings</span><span style="color:#bbb;font-size:16px;">›</span>
     </a>
-    <div style="height:1px;background:#f0f0f0;"></div>
     <button onclick="togglePanelSection('panelFeedback')" style="width:100%;background:none;border:none;border-bottom:1px solid #f5f5f5;padding:15px 20px;text-align:left;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;color:#222;">
-      <span>💬 Send us Feedback</span><span style="color:#bbb;font-size:16px;">›</span>
+      <span>💬 Send us Feedback</span><span id="panelFeedbackArrow" style="color:#bbb;font-size:16px;">›</span>
     </button>
-    <div id="panelFeedback" style="display:none;background:#fafafa;padding:16px 20px;border-bottom:1px solid #f0f0f0;font-size:13px;color:#888;">Coming in a future update</div>
+    <div id="panelFeedback" style="display:none;background:#fafafa;padding:16px 20px;border-bottom:1px solid #f0f0f0;">
+      <textarea id="panelFeedbackText" rows="4" placeholder="Tell us what you think, what's missing, or what could be better..." maxlength="2000" style="width:100%;font-size:13px;padding:10px;border:1px solid #ddd;border-radius:8px;outline:none;resize:none;box-sizing:border-box;"></textarea>
+      <button onclick="sendFeedback()" style="margin-top:8px;width:100%;padding:10px;background:var(--brand,#5b5ef4);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Send Feedback</button>
+      <div id="panelFeedbackMsg" style="font-size:12px;margin-top:8px;display:none;"></div>
+    </div>
   </div>
   <div style="padding:16px 20px;border-top:1px solid #eee;">
     <button onclick="closeProfilePanel()" style="width:100%;background:#f0f0f0;border:none;padding:10px;border-radius:10px;font-size:14px;cursor:pointer;color:#555;font-weight:500;">Close</button>
   </div>
 </div>
+<style>
+[data-avatar][data-selected="true"] { border: 2px solid var(--brand,#5b5ef4) !important; background: #eef !important; }
+</style>
 <script>
+var PANEL_CSRF = document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').content : '';
+(function() { var btn = document.getElementById('profileBtn'); if (btn && btn.dataset.avatar) btn.style.fontSize = '20px'; })();
 function openProfilePanel() {
   document.getElementById('profilePanel').style.transform = 'translateX(0)';
   document.getElementById('profileOverlay').style.display = 'block';
@@ -599,7 +626,64 @@ function closeProfilePanel() {
 }
 function togglePanelSection(id) {
   var el = document.getElementById(id);
-  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  var open = el.style.display === 'none';
+  el.style.display = open ? 'block' : 'none';
+  var arrowId = id === 'panelPersonal' ? 'panelPersonalArrow' : 'panelFeedbackArrow';
+  var arrow = document.getElementById(arrowId);
+  if (arrow) arrow.textContent = open ? '⌄' : '›';
+}
+function savePanelName() {
+  var name = document.getElementById('panelNameInput').value.trim();
+  var msg = document.getElementById('panelNameMsg');
+  if (!name) { msg.textContent = 'Please enter a name.'; msg.style.color='#c00'; msg.style.display='block'; return; }
+  var fd = new FormData();
+  fd.append('csrf_token', PANEL_CSRF);
+  fd.append('display_name', name);
+  fetch('/profile/update-name', { method:'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok) {
+        msg.textContent = 'Saved!'; msg.style.color='#065f46'; msg.style.display='block';
+        document.getElementById('panelDisplayName').textContent = d.display_name;
+        setTimeout(function(){ msg.style.display='none'; }, 2000);
+      } else { msg.textContent = d.error || 'Error saving.'; msg.style.color='#c00'; msg.style.display='block'; }
+    });
+}
+function selectAvatar(emoji) {
+  var msg = document.getElementById('panelAvatarMsg');
+  var fd = new FormData();
+  fd.append('csrf_token', PANEL_CSRF);
+  fd.append('avatar', emoji);
+  fetch('/profile/update-avatar', { method:'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok) {
+        var btn = document.getElementById('profileBtn');
+        btn.textContent = d.avatar; btn.style.fontSize = '20px';
+        document.querySelectorAll('[data-avatar]').forEach(function(b){
+          b.dataset.selected = b.dataset.avatar === emoji ? 'true' : 'false';
+        });
+        msg.textContent = 'Avatar updated!'; msg.style.color='#065f46'; msg.style.display='block';
+        setTimeout(function(){ msg.style.display='none'; }, 2000);
+      } else { msg.textContent = d.error || 'Error saving.'; msg.style.color='#c00'; msg.style.display='block'; }
+    });
+}
+function sendFeedback() {
+  var text = document.getElementById('panelFeedbackText').value.trim();
+  var msg = document.getElementById('panelFeedbackMsg');
+  if (!text) { msg.textContent = 'Please write something first.'; msg.style.color='#c00'; msg.style.display='block'; return; }
+  var fd = new FormData();
+  fd.append('csrf_token', PANEL_CSRF);
+  fd.append('message', text);
+  fetch('/profile/send-feedback', { method:'POST', body: fd })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok) {
+        document.getElementById('panelFeedbackText').value = '';
+        msg.textContent = 'Thanks for your feedback!'; msg.style.color='#065f46'; msg.style.display='block';
+        setTimeout(function(){ msg.style.display='none'; }, 3000);
+      } else { msg.textContent = d.error || 'Could not send.'; msg.style.color='#c00'; msg.style.display='block'; }
+    });
 }
 </script>
 </body>

@@ -187,10 +187,11 @@ def unauthorized():
 # --- USER MODEL ---
 # Minimal User class required by Flask-Login — just stores id and email
 class User(UserMixin):
-    def __init__(self, id, email, display_name=None):
+    def __init__(self, id, email, display_name=None, avatar=None):
         self.id = id
         self.email = email
         self.display_name = display_name
+        self.avatar = avatar
 
 # Tells Flask-Login how to reload a user from their ID stored in the session
 @login_manager.user_loader
@@ -209,7 +210,7 @@ def load_user(user_id):
     release_db(db)
     if row:
         row = dict(zip(cols, row))
-        return User(row["id"], row["email"], row.get("display_name"))
+        return User(row["id"], row["email"], row.get("display_name"), row.get("avatar"))
     return None
 
 # Run database migrations on startup — creates tables and adds any missing columns
@@ -2214,6 +2215,80 @@ def api_snapshot():
         "income_arriving": income_arriving,
         "bills_due": bills_due
     })
+
+
+# --- PROFILE PANEL ROUTES ---
+
+@app.post("/profile/update-name")
+@login_required
+def profile_update_name():
+    from database import get_db, USE_POSTGRES, release_db
+    if request.form.get('csrf_token') != session.get('csrf_token'):
+        return jsonify({'error': 'Invalid request'}), 403
+    name = request.form.get('display_name', '').strip()
+    if not name or len(name) > 60:
+        return jsonify({'error': 'Name must be 1–60 characters'}), 400
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE users SET display_name=%s WHERE id=%s", (name, current_user.id))
+    else:
+        cursor.execute("UPDATE users SET display_name=? WHERE id=?", (name, current_user.id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+    return jsonify({'ok': True, 'display_name': name})
+
+@app.post("/profile/update-avatar")
+@login_required
+def profile_update_avatar():
+    from database import get_db, USE_POSTGRES, release_db
+    if request.form.get('csrf_token') != session.get('csrf_token'):
+        return jsonify({'error': 'Invalid request'}), 403
+    avatar = request.form.get('avatar', '').strip()
+    allowed = ['🐻','🦊','🐼','🐨','🦁','🐯','🐸','🐧','🦋','🌸','⭐','🌙','🔥','💎','🚀','🎯','🎸','🎨','🏔️','🌊']
+    if avatar not in allowed:
+        return jsonify({'error': 'Invalid avatar'}), 400
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE users SET avatar=%s WHERE id=%s", (avatar, current_user.id))
+    else:
+        cursor.execute("UPDATE users SET avatar=? WHERE id=?", (avatar, current_user.id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+    return jsonify({'ok': True, 'avatar': avatar})
+
+@app.post("/profile/send-feedback")
+@login_required
+def profile_send_feedback():
+    if request.form.get('csrf_token') != session.get('csrf_token'):
+        return jsonify({'error': 'Invalid request'}), 403
+    message = request.form.get('message', '').strip()
+    if not message or len(message) > 2000:
+        return jsonify({'error': 'Message must be 1–2000 characters'}), 400
+    import requests as _req_lib
+    BREVO_API_KEY = os.environ.get('BREVO_API_KEY', '')
+    payload = {
+        "sender": {"name": "Spendara Feedback", "email": "noreply@spendara.co.uk"},
+        "to": [{"email": "hello@spendara.co.uk"}],
+        "replyTo": {"email": current_user.email},
+        "subject": f"Feedback from {current_user.email}",
+        "textContent": f"From: {current_user.email}\nUser ID: #{current_user.id:05d}\n\n{message}"
+    }
+    try:
+        resp = _req_lib.post(
+            "https://api.brevo.com/v3/smtp/email",
+            json=payload,
+            headers={"api-key": BREVO_API_KEY, "Content-Type": "application/json"},
+            timeout=8
+        )
+        if resp.status_code in (200, 201):
+            return jsonify({'ok': True})
+        return jsonify({'error': 'Could not send, please try again'}), 500
+    except Exception:
+        return jsonify({'error': 'Could not send, please try again'}), 500
 
 
 # --- SETTINGS PAGE ---
