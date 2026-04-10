@@ -366,7 +366,7 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
 <div class="mb-4 d-flex justify-content-between align-items-start" id="home">
   <div>
     <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="PPFS Logo" style="height:50px; object-fit:contain;" class="mb-2"></a>
-    <div class="text-muted">Know exactly where you stand, every day</div>
+    <div id="home-greeting" class="text-muted">Know exactly where you stand, every day</div>
   </div>
   <a href="/calendar" class="text-decoration-none mt-1" title="Calendar">
     <div style="width:36px;text-align:center;border:2px solid #ccc;border-radius:6px;overflow:hidden;line-height:1;">
@@ -379,6 +379,12 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
       var d = new Date();
       document.getElementById('cal-month').textContent = d.toLocaleString('default',{month:'short'}).toUpperCase();
       document.getElementById('cal-day').textContent = d.getDate();
+      var raw = {{ current_user.email.split('@')[0] | tojson }};
+      var name = raw.split('.')[0].split('_')[0];
+      name = name.charAt(0).toUpperCase() + name.slice(1);
+      var h = d.getHours();
+      var g = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+      document.getElementById('home-greeting').textContent = g + ', ' + name;
     })();
   </script>
 </div>
@@ -462,6 +468,15 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
     <a href="/resend-verification" class="btn btn-sm btn-dark">Resend verification email</a>
   </div>
   {% endif %}
+
+  <!-- Home tab pills -->
+  <div class="d-flex gap-2 mb-3" id="homeTabs">
+    <button id="tabOverviewBtn" onclick="switchHomeTab('overview')" class="btn btn-sm fw-semibold rounded-pill px-4 py-2" style="background:var(--brand);color:#fff;font-size:13px;">Financial Overview</button>
+    <button id="tabFutureBtn" onclick="switchHomeTab('future')" class="btn btn-sm fw-semibold rounded-pill px-4 py-2" style="background:#e0e7ff;color:var(--brand);font-size:13px;">Future Balances</button>
+  </div>
+
+  <!-- Tab panel: Financial Overview -->
+  <div id="tabOverview">
 
   <div class="card p-3 mb-4" id="overviewCard">
   <div class="d-flex justify-content-between align-items-center mb-3">
@@ -739,6 +754,11 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
   </div>
   {% endif %}
 
+  </div><!-- /tabOverview -->
+
+  <!-- Tab panel: Future Balances -->
+  <div id="tabFuture" style="display:none;">
+
   <!-- Can I afford this — floating button + modal -->
   <button onclick="document.getElementById('affordModal').style.display='flex'" class="btn w-100 mb-3 rounded-4 py-3 fw-bold" style="background:var(--brand);color:#fff;font-size:15px;letter-spacing:0.01em;box-shadow:0 4px 12px rgba(99,102,241,0.3);">💬 Can I afford this?</button>
 
@@ -794,6 +814,8 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
     <div class="text-muted small text-center py-2">Select a date to project your finances</div>
   </div>
 </div>
+
+  </div><!-- /tabFuture -->
 
 <script>
 (function() {
@@ -1023,6 +1045,42 @@ let amountsVisible = false;
     amountsVisible = true;
     privateCards.forEach(c => c && c.classList.add('amounts-visible'));
   }
+})();
+
+// Home tab switcher
+function switchHomeTab(tab) {
+  var isOverview = tab === 'overview';
+  document.getElementById('tabOverview').style.display = isOverview ? '' : 'none';
+  document.getElementById('tabFuture').style.display = isOverview ? 'none' : '';
+  var obtn = document.getElementById('tabOverviewBtn');
+  var fbtn = document.getElementById('tabFutureBtn');
+  obtn.style.background = isOverview ? 'var(--brand)' : '#e0e7ff';
+  obtn.style.color = isOverview ? '#fff' : 'var(--brand)';
+  fbtn.style.background = isOverview ? '#e0e7ff' : 'var(--brand)';
+  fbtn.style.color = isOverview ? 'var(--brand)' : '#fff';
+}
+
+// Swipe support for home tabs
+(function(){
+  var tabs = document.getElementById('homeTabs');
+  var ov = document.getElementById('tabOverview');
+  var fu = document.getElementById('tabFuture');
+  var startX = null;
+  function onStart(e){ startX = (e.touches ? e.touches[0].clientX : e.clientX); }
+  function onEnd(e){
+    if (startX === null) return;
+    var endX = (e.changedTouches ? e.changedTouches[0].clientX : e.clientX);
+    var dx = endX - startX;
+    if (Math.abs(dx) < 40) return;
+    var curOverview = ov.style.display !== 'none';
+    if (dx < 0 && curOverview) switchHomeTab('future');
+    else if (dx > 0 && !curOverview) switchHomeTab('overview');
+    startX = null;
+  }
+  [ov, fu].forEach(function(el){
+    el.addEventListener('touchstart', onStart, {passive:true});
+    el.addEventListener('touchend', onEnd, {passive:true});
+  });
 })();
 
 function toggleAmounts() {

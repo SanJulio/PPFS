@@ -65,6 +65,10 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 }
 .tab-section { display: none; }
 .tab-section.active { display: block; }
+@media (max-width: 575px) {
+  .acc-col-type { display:none !important; }
+  .manage-actions { gap: 4px !important; }
+}
 </style>
 </head>
 <body>
@@ -120,7 +124,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <thead>
             <tr>
               <th>Name</th>
-              <th>Type</th>
+              <th class="acc-col-type">Type</th>
               <th class="text-end">Balance</th>
               <th></th>
             </tr>
@@ -129,15 +133,15 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             {% for a in accounts %}
             <tr>
               <td>{{ a.name }}</td>
-              <td><span class="badge {% if a.type == 'current' %}text-bg-primary{% elif a.type == 'savings' %}text-bg-success{% elif a.type == 'cash' %}text-bg-warning{% else %}text-bg-light{% endif %}">{{ a.type }}</span></td>
+              <td class="acc-col-type"><span class="badge {% if a.type == 'current' %}text-bg-primary{% elif a.type == 'savings' %}text-bg-success{% elif a.type == 'cash' %}text-bg-warning{% else %}text-bg-light{% endif %}">{{ a.type }}</span></td>
               <td class="text-end money">£{{ "%.2f"|format(a.balance) }}</td>
               <td class="text-end">
-                <div class="d-flex gap-3 justify-content-end">
+                <div class="d-flex gap-1 justify-content-end manage-actions">
                   <button class="btn btn-sm btn-outline-secondary" onclick="toggleEdit('account-{{ a.id }}')">Edit</button>
                   <form method="POST" action="/settings/deactivate-account" onsubmit="return confirm('Deactivate {{ a.name }}?')">
                     <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
                     <input type="hidden" name="name" value="{{ a.name }}">
-                    <button class="btn btn-sm btn-outline-secondary text-danger">Remove</button>
+                    <button class="btn btn-sm btn-outline-danger">Remove</button>
                   </form>
                 </div>
               </td>
@@ -312,51 +316,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         </table>
       </div>
 
-      <hr>
-      <div class="small fw-bold mb-2">Add New Bill</div>
-      <form method="POST" action="/settings/add-bill">
-        <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
-        <div class="mb-2">
-          <input class="form-control" name="name" placeholder="Bill name" required>
-        </div>
-        <div class="mb-2">
-          <input class="form-control" name="amount" inputmode="decimal" placeholder="Amount (£)" required>
-        </div>
-        <div class="mb-2">
-          <select class="form-select" name="frequency" onchange="toggleMonthField(this, 'add-bill-month')">
-            <option value="monthly">Monthly</option>
-            <option value="yearly">Yearly (once a year)</option>
-          </select>
-        </div>
-        <div class="mb-2">
-          <input class="form-control" name="day" inputmode="numeric" placeholder="Day of month (1-31)" required>
-        </div>
-        <div class="mb-2" id="add-bill-month" style="display:none">
-          <select class="form-select" name="month">
-            <option value="1">January</option>
-            <option value="2">February</option>
-            <option value="3">March</option>
-            <option value="4">April</option>
-            <option value="5">May</option>
-            <option value="6">June</option>
-            <option value="7">July</option>
-            <option value="8">August</option>
-            <option value="9">September</option>
-            <option value="10">October</option>
-            <option value="11">November</option>
-            <option value="12">December</option>
-          </select>
-        </div>
-        <div class="mb-3">
-          <select class="form-select" name="account" required>
-            <option value="">Select account</option>
-            {% for a in accounts %}
-              <option value="{{ a.name }}">{{ a.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <button class="btn btn-dark w-100 py-3">Add Bill</button>
-      </form>
+      <button class="btn btn-dark w-100 py-3" onclick="document.getElementById('addBillModal').style.display='flex'">+ Add Bill</button>
     </div>
   </div>
 
@@ -456,36 +416,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         </table>
       </div>
 
-      <hr>
-      <div class="small fw-bold mb-2">Add New Income Source</div>
-      <form method="POST" action="/settings/add-income">
-        <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
-        <div class="mb-2">
-          <input class="form-control" name="name" placeholder="e.g. Salary, Freelance" required>
-        </div>
-        <div class="mb-2">
-          <input class="form-control" name="amount" inputmode="decimal" placeholder="Amount (£)" required>
-        </div>
-        <div class="mb-2">
-          <select class="form-select" name="frequency" required onchange="toggleIncomeDay(this, 'add-income-day')">
-            <option value="">Select frequency</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-          </select>
-        </div>
-        <div class="mb-2" id="add-income-day" style="display:none;">
-          <input class="form-control" name="day" type="number" min="1" max="31" placeholder="Which day of the month? (e.g. 25)">
-        </div>
-        <div class="mb-3">
-          <select class="form-select" name="account" required>
-            <option value="">Select account</option>
-            {% for a in accounts %}
-              <option value="{{ a.name }}">{{ a.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <button class="btn btn-dark w-100 py-3">Add Income Source</button>
-      </form>
+      <button class="btn btn-dark w-100 py-3" onclick="document.getElementById('addIncomeModal').style.display='flex'">+ Add Income Source</button>
     </div>
   </div>
 
@@ -584,44 +515,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         </table>
       </div>
 
-      <hr>
-      <div class="small fw-bold mb-2">Add New Savings Rule</div>
-      <form method="POST" action="/settings/add-savings-rule">
-        <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
-        <div class="mb-2">
-          <input class="form-control" name="name" placeholder="Rule name" required>
-        </div>
-        <div class="mb-2">
-          <input class="form-control" name="amount" inputmode="decimal" placeholder="Amount (£)" required>
-        </div>
-        <div class="mb-2">
-          <select class="form-select" name="frequency" required>
-            <option value="monthly">Monthly</option>
-            <option value="weekly">Weekly</option>
-            <option value="daily">Daily</option>
-          </select>
-        </div>
-        <div class="mb-2">
-          <input class="form-control" name="day" inputmode="numeric" placeholder="Day of month (1-31)">
-        </div>
-        <div class="mb-2">
-          <select class="form-select" name="from_account" required>
-            <option value="">From account</option>
-            {% for a in accounts %}
-              <option value="{{ a.name }}">{{ a.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="mb-3">
-          <select class="form-select" name="to_account" required>
-            <option value="">To account</option>
-            {% for a in accounts %}
-              <option value="{{ a.name }}">{{ a.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <button class="btn btn-dark w-100 py-3">Add Savings Rule</button>
-      </form>
+      <button class="btn btn-dark w-100 py-3" onclick="document.getElementById('addSavingsRuleModal').style.display='flex'">+ Add Savings Rule</button>
     </div>
 
     <!-- Future Events -->
@@ -689,28 +583,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       <hr>
       {% endif %}
 
-      <div class="small fw-bold mb-2">Add Future Event</div>
-      <form method="POST" action="/settings/add-future-event">
-        <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
-        <div class="mb-2">
-          <input class="form-control" name="name" placeholder="Event name" required>
-        </div>
-        <div class="mb-2">
-          <input class="form-control" name="amount" inputmode="decimal" placeholder="Amount (£)" required>
-        </div>
-        <div class="mb-2">
-          <input class="form-control" name="date" type="date" required>
-        </div>
-        <div class="mb-3">
-          <select class="form-select" name="account" required>
-            <option value="">Select account</option>
-            {% for a in accounts %}
-              <option value="{{ a.name }}">{{ a.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <button class="btn btn-dark w-100 py-3">Add Event</button>
-      </form>
+      <button class="btn btn-dark w-100 py-3" onclick="document.getElementById('addFutureEventModal').style.display='flex'">+ Add Future Event</button>
     </div>
 
     <!-- Investments -->
@@ -867,6 +740,134 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
 });
 </script>
 <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>
+
+<!-- Add Bill Modal -->
+<div id="addBillModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:20px;">
+  <div class="card p-4" style="max-width:480px; width:100%; border-radius:24px 24px 24px 24px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0 fw-bold">Add Bill</h5>
+      <button onclick="document.getElementById('addBillModal').style.display='none'" class="btn btn-sm btn-outline-secondary rounded-3">✕</button>
+    </div>
+    <form method="POST" action="/settings/add-bill">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+      <div class="mb-2"><input class="form-control" name="name" placeholder="Bill name" required></div>
+      <div class="mb-2"><input class="form-control" name="amount" inputmode="decimal" placeholder="Amount (£)" required></div>
+      <div class="mb-2">
+        <select class="form-select" name="frequency" onchange="toggleMonthField(this, 'modal-bill-month')">
+          <option value="monthly">Monthly</option>
+          <option value="yearly">Yearly (once a year)</option>
+        </select>
+      </div>
+      <div class="mb-2"><input class="form-control" name="day" inputmode="numeric" placeholder="Day of month (1-31)" required></div>
+      <div class="mb-2" id="modal-bill-month" style="display:none">
+        <select class="form-select" name="month">
+          <option value="1">January</option><option value="2">February</option><option value="3">March</option>
+          <option value="4">April</option><option value="5">May</option><option value="6">June</option>
+          <option value="7">July</option><option value="8">August</option><option value="9">September</option>
+          <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+        </select>
+      </div>
+      <div class="mb-3">
+        <select class="form-select" name="account" required>
+          <option value="">Select account</option>
+          {% for a in accounts %}<option value="{{ a.name }}">{{ a.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-dark w-100 py-3">Add Bill</button>
+    </form>
+  </div>
+</div>
+
+<!-- Add Income Modal -->
+<div id="addIncomeModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:20px;">
+  <div class="card p-4" style="max-width:480px; width:100%; border-radius:24px 24px 24px 24px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0 fw-bold">Add Income Source</h5>
+      <button onclick="document.getElementById('addIncomeModal').style.display='none'" class="btn btn-sm btn-outline-secondary rounded-3">✕</button>
+    </div>
+    <form method="POST" action="/settings/add-income">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+      <div class="mb-2"><input class="form-control" name="name" placeholder="e.g. Salary, Freelance" required></div>
+      <div class="mb-2"><input class="form-control" name="amount" inputmode="decimal" placeholder="Amount (£)" required></div>
+      <div class="mb-2">
+        <select class="form-select" name="frequency" required onchange="toggleIncomeDay(this, 'modal-income-day')">
+          <option value="">Select frequency</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </div>
+      <div class="mb-2" id="modal-income-day" style="display:none;">
+        <input class="form-control" name="day" type="number" min="1" max="31" placeholder="Which day of the month? (e.g. 25)">
+      </div>
+      <div class="mb-3">
+        <select class="form-select" name="account" required>
+          <option value="">Select account</option>
+          {% for a in accounts %}<option value="{{ a.name }}">{{ a.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-dark w-100 py-3">Add Income Source</button>
+    </form>
+  </div>
+</div>
+
+<!-- Add Savings Rule Modal -->
+<div id="addSavingsRuleModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:20px;">
+  <div class="card p-4" style="max-width:480px; width:100%; border-radius:24px 24px 24px 24px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0 fw-bold">Add Savings Rule</h5>
+      <button onclick="document.getElementById('addSavingsRuleModal').style.display='none'" class="btn btn-sm btn-outline-secondary rounded-3">✕</button>
+    </div>
+    <form method="POST" action="/settings/add-savings-rule">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+      <div class="mb-2"><input class="form-control" name="name" placeholder="Rule name" required></div>
+      <div class="mb-2"><input class="form-control" name="amount" inputmode="decimal" placeholder="Amount (£)" required></div>
+      <div class="mb-2">
+        <select class="form-select" name="frequency" required>
+          <option value="monthly">Monthly</option>
+          <option value="weekly">Weekly</option>
+          <option value="daily">Daily</option>
+        </select>
+      </div>
+      <div class="mb-2"><input class="form-control" name="day" inputmode="numeric" placeholder="Day of month (1-31)"></div>
+      <div class="mb-2">
+        <select class="form-select" name="from_account" required>
+          <option value="">From account</option>
+          {% for a in accounts %}<option value="{{ a.name }}">{{ a.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <select class="form-select" name="to_account" required>
+          <option value="">To account (savings)</option>
+          {% for a in accounts %}<option value="{{ a.name }}">{{ a.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-dark w-100 py-3">Add Savings Rule</button>
+    </form>
+  </div>
+</div>
+
+<!-- Add Future Event Modal -->
+<div id="addFutureEventModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:20px;">
+  <div class="card p-4" style="max-width:480px; width:100%; border-radius:24px 24px 24px 24px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0 fw-bold">Add Future Event</h5>
+      <button onclick="document.getElementById('addFutureEventModal').style.display='none'" class="btn btn-sm btn-outline-secondary rounded-3">✕</button>
+    </div>
+    <form method="POST" action="/settings/add-future-event">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+      <div class="mb-2"><input class="form-control" name="name" placeholder="Event name" required></div>
+      <div class="mb-2"><input class="form-control" name="amount" inputmode="decimal" placeholder="Amount (£)" required></div>
+      <div class="mb-2"><input class="form-control" name="date" type="date" required></div>
+      <div class="mb-3">
+        <select class="form-select" name="account" required>
+          <option value="">Select account</option>
+          {% for a in accounts %}<option value="{{ a.name }}">{{ a.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-dark w-100 py-3">Add Event</button>
+    </form>
+  </div>
+</div>
 
 <!-- Add Account Modal -->
 <div id="addAccountModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:20px;">

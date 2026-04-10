@@ -58,6 +58,12 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
 .col-filter-btn:hover { background:#f0f0f0; color:#555; }
 .col-filter-btn.active { color:var(--brand); background:#e0e7ff; }
 #filterPanel { position:fixed; z-index:9992; background:#fff; border-radius:14px; box-shadow:0 8px 28px rgba(0,0,0,0.18); padding:14px; width:min(260px,calc(100vw - 24px)); border:1px solid rgba(0,0,0,0.07); }
+@media (max-width: 575px) {
+  .tx-col-account, .tx-col-category, .tx-col-cb { display:none !important; }
+  .tx-desc-sub { display:block !important; }
+  .ellipsis { max-width: 160px; }
+}
+.tx-desc-sub { display:none; font-size:11px; color:#888; margin-top:1px; }
 </style>
 </head>
 <body>
@@ -99,13 +105,13 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
       <table class="table table-sm align-middle mb-0" id="txTable">
         <thead>
           <tr>
-            <th style="width:32px;"><input type="checkbox" id="selectAll" onclick="toggleSelectAll(this)" title="Select all"></th>
+            <th class="tx-col-cb" style="width:32px;"><input type="checkbox" id="selectAll" onclick="toggleSelectAll(this)" title="Select all"></th>
             <th style="width:20px;"></th>
             <th style="white-space:nowrap;">Date <button class="col-filter-btn" data-col="date" onclick="toggleFilterPanel('date',this)">▾</button></th>
             <th>Description <button class="col-filter-btn" data-col="description" onclick="toggleFilterPanel('description',this)">▾</button></th>
             <th class="text-end" style="white-space:nowrap;">Amount <button class="col-filter-btn" data-col="amount" onclick="toggleFilterPanel('amount',this)">▾</button></th>
-            <th style="white-space:nowrap;">Account <button class="col-filter-btn" data-col="account" onclick="toggleFilterPanel('account',this)">▾</button></th>
-            <th style="white-space:nowrap;">Category <button class="col-filter-btn" data-col="category" onclick="toggleFilterPanel('category',this)">▾</button></th>
+            <th class="tx-col-account" style="white-space:nowrap;">Account <button class="col-filter-btn" data-col="account" onclick="toggleFilterPanel('account',this)">▾</button></th>
+            <th class="tx-col-category" style="white-space:nowrap;">Category <button class="col-filter-btn" data-col="category" onclick="toggleFilterPanel('category',this)">▾</button></th>
           </tr>
         </thead>
         <tbody id="txBody">
@@ -126,15 +132,18 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
             data-account="{{ t.account|lower }}" data-date="{{ t.date }}"
             data-category="{{ cat }}" data-amount="{{ t.amount }}"
             onclick="toggleTx(this.dataset.id)">
-            <td onclick="event.stopPropagation()"><input type="checkbox" class="tx-check" data-id="{{ t.id }}" onchange="onCheckChange()"></td>
+            <td class="tx-col-cb" onclick="event.stopPropagation()"><input type="checkbox" class="tx-check" data-id="{{ t.id }}" onchange="onCheckChange()"></td>
             <td><span id="arrow-{{ t.id }}" class="fw-bold" style="font-size:13px; color:#111">+</span></td>
             <td class="text-muted small" style="white-space:nowrap;">{{ t.date | dateformat }}</td>
-            <td><span class="ellipsis d-inline-block">{{ t.description }}</span></td>
+            <td>
+              <span class="ellipsis d-inline-block">{{ t.description }}</span>
+              <span class="tx-desc-sub">{{ t.account }}</span>
+            </td>
             <td class="text-end money fw-semibold {% if t.amount < 0 %}text-danger{% else %}text-success{% endif %}">
               {% if t.amount < 0 %}-£{{ "%.2f"|format(t.amount|abs) }}{% else %}+£{{ "%.2f"|format(t.amount) }}{% endif %}
             </td>
-            <td><span class="badge text-bg-light">{{ t.account }}</span></td>
-            <td><span class="badge text-bg-light">{{ cat_emojis.get(cat, '📦') }} {{ cat }}</span></td>
+            <td class="tx-col-account"><span class="badge text-bg-light">{{ t.account }}</span></td>
+            <td class="tx-col-category"><span class="badge text-bg-light">{{ cat_emojis.get(cat, '📦') }} {{ cat }}</span></td>
           </tr>
           <tr class="expand-row d-none" id="expand-{{ t.id }}">
             <td colspan="5" class="py-2 px-3">

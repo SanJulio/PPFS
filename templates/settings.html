@@ -105,7 +105,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <span class="badge text-bg-dark">Pro</span>
         </div>
         <p class="text-muted small mb-4">You're on Spendara Pro — unlimited accounts and full access to everything.</p>
-        <a href="/billing/portal" class="btn btn-outline-dark w-100 py-3">Manage subscription →</a>
+        <a href="/billing/portal" class="btn btn-outline-dark w-100 py-3 mb-4">Manage subscription →</a>
 
       {% else %}
         <!-- Free user -->
@@ -123,8 +123,37 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <a href="/billing/upgrade" class="btn btn-light w-100 py-3 fw-bold">Upgrade to Pro</a>
         </div>
 
-        <div class="text-muted small text-center">Secure payment via Stripe. Cancel any time from your billing portal.</div>
+        <div class="text-muted small text-center mb-4">Secure payment via Stripe. Cancel any time from your billing portal.</div>
       {% endif %}
+
+      <!-- Feature comparison -->
+      <div class="fw-semibold mb-3" style="font-size:15px;">What's included</div>
+      <div class="rounded-4 overflow-hidden" style="border:1px solid #e5e7eb;">
+        <div class="row g-0 text-center" style="background:#f9fafb; border-bottom:1px solid #e5e7eb;">
+          <div class="col-6 py-2 fw-semibold small">Feature</div>
+          <div class="col-3 py-2 fw-semibold small text-muted">Free</div>
+          <div class="col-3 py-2 fw-semibold small" style="color:var(--brand);">Pro</div>
+        </div>
+        {% set features = [
+          ('Accounts', '3 max', 'Unlimited'),
+          ('Transaction history', '✓', '✓'),
+          ('90-day forecast', '✓', '✓'),
+          ('Bills & income tracking', '✓', '✓'),
+          ('Savings rules', '✓', '✓'),
+          ('CSV import', '✓', '✓'),
+          ('Future events', '✓', '✓'),
+          ('Investments tracker', '✓', '✓'),
+          ('Weekly digest email', '✓', '✓'),
+          ('Priority support', '—', '✓'),
+        ] %}
+        {% for feat, free_val, pro_val in features %}
+        <div class="row g-0 text-center align-items-center" style="border-bottom:1px solid #f0f0f0;">
+          <div class="col-6 py-2 px-3 text-start small">{{ feat }}</div>
+          <div class="col-3 py-2 small text-muted">{{ free_val }}</div>
+          <div class="col-3 py-2 small fw-semibold" style="color:{% if pro_val == '✓' %}#198754{% elif pro_val == '—' %}#aaa{% else %}var(--brand){% endif %};">{{ pro_val }}</div>
+        </div>
+        {% endfor %}
+      </div>
 
     </div>
   </div>
