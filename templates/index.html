@@ -480,8 +480,8 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
 
   <!-- Home tab pills -->
   <div class="d-flex gap-2 mb-3" id="homeTabs">
-    <button id="tabOverviewBtn" onclick="switchHomeTab('overview')" class="btn btn-sm fw-semibold rounded-pill px-4 py-2" style="background:var(--brand);color:#fff;font-size:13px;">Financial Overview</button>
-    <button id="tabFutureBtn" onclick="switchHomeTab('future')" class="btn btn-sm fw-semibold rounded-pill px-4 py-2" style="background:#e0e7ff;color:var(--brand);font-size:13px;">Future Balances</button>
+    <button id="tabOverviewBtn" onclick="switchHomeTab('overview')" class="btn btn-sm fw-semibold rounded-pill px-4 py-2" style="background:var(--brand);color:#fff;font-size:13px;transition:background 0.35s ease,color 0.35s ease;">Financial Overview</button>
+    <button id="tabFutureBtn" onclick="switchHomeTab('future')" class="btn btn-sm fw-semibold rounded-pill px-4 py-2" style="background:#e0e7ff;color:var(--brand);font-size:13px;transition:background 0.35s ease,color 0.35s ease;">Future Balances</button>
   </div>
 
   <!-- Tab panel: Financial Overview -->
@@ -1080,7 +1080,7 @@ function switchHomeTab(tab) {
     if (startX === null) return;
     var endX = (e.changedTouches ? e.changedTouches[0].clientX : e.clientX);
     var dx = endX - startX;
-    if (Math.abs(dx) < 40) return;
+    if (Math.abs(dx) < 80) return;
     var curOverview = ov.style.display !== 'none';
     if (dx < 0 && curOverview) switchHomeTab('future');
     else if (dx > 0 && !curOverview) switchHomeTab('overview');
