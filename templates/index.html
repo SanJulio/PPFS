@@ -352,7 +352,7 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
       <select id="qa-to-account" class="form-select" style="font-size:15px;">
         {% for acc in accounts %}
         <option value="{{ acc }}">{{ acc }}</option>
-        {% endfor %}
+        {% endfor %}````
       </select>
     </div>
     <div id="qa-category-row" class="mb-3">
@@ -375,7 +375,7 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
 <div class="mb-4 d-flex justify-content-between align-items-start" id="home">
   <div>
     <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="PPFS Logo" style="height:50px; object-fit:contain;" class="mb-2"></a>
-    <div id="home-greeting" class="text-muted">Know exactly where you stand, every day</div>
+    <div id="home-greeting" class="text-muted" data-email="{{ current_user.email }}">Know exactly where you stand, every day</div>
   </div>
   <a href="/calendar" class="text-decoration-none mt-1" title="Calendar">
     <div style="width:36px;text-align:center;border:2px solid #ccc;border-radius:6px;overflow:hidden;line-height:1;">
@@ -388,7 +388,7 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
       var d = new Date();
       document.getElementById('cal-month').textContent = d.toLocaleString('default',{month:'short'}).toUpperCase();
       document.getElementById('cal-day').textContent = d.getDate();
-      var raw = {{ current_user.email.split('@')[0] | tojson }};
+      var raw = (document.getElementById('home-greeting').dataset.email || '').split('@')[0];
       var name = raw.split('.')[0].split('_')[0];
       name = name.charAt(0).toUpperCase() + name.slice(1);
       var h = d.getHours();
@@ -613,59 +613,138 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
 </div>
 
 <div class="card p-3 mb-4" id="spendingCard">
-  <!-- Header -->
-  <div class="d-flex justify-content-between align-items-center mb-1">
+  <div class="d-flex justify-content-between align-items-start mb-1">
     <h5 class="mb-0">Current Cycle</h5>
     {% if days_to_payday == 1 %}
-    <span class="fw-semibold small" style="background:#d1fae5;color:#065f46;border-radius:10px;padding:5px 12px;">🎉 Payday tomorrow</span>
+    <span class="fw-bold" style="background:#d1fae5;color:#065f46;font-size:14px;border-radius:10px;padding:6px 14px;">🎉 Payday tomorrow</span>
     {% elif days_to_payday == 0 %}
-    <span class="fw-semibold small" style="background:#d1fae5;color:#065f46;border-radius:10px;padding:5px 12px;">🎉 Payday today!</span>
+    <span class="fw-bold" style="background:#d1fae5;color:#065f46;font-size:14px;border-radius:10px;padding:6px 14px;">🎉 Payday today!</span>
     {% else %}
-    <span class="fw-semibold small" style="background:#f0f0f0;color:#111;border-radius:10px;padding:5px 12px;">{{ days_to_payday }} days to payday</span>
+    <span class="fw-bold" style="background:#f0f0f0;color:#111;font-size:14px;border-radius:10px;padding:6px 14px;">{{ days_to_payday }} days to payday</span>
     {% endif %}
   </div>
-  <div class="text-muted small mb-4">{{ cycle_start_date.strftime('%-d %b') }} – {{ cycle_end_date.strftime('%-d %b') }}</div>
+  <div class="text-muted small mb-3">{{ cycle_start_date.strftime('%-d %b') }} – {{ cycle_end_date.strftime('%-d %b') }}</div>
+  <div class="row g-3">
 
-  <!-- Spent amount -->
-  <div class="mb-1">
-    <div class="text-muted small mb-1">Spent this cycle</div>
-    <div class="fw-bold amount-private" style="font-size:28px; line-height:1;">£{{ "%.2f"|format(monthly.total) }}</div>
+    <div class="col-4">
+      <div class="p-3 bg-white rounded-4 shadow-sm text-center tile" onclick="toggleTile('normal')">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="text-muted small">Normal</div>
+          <span id="arrow-normal" class="fw-bold" style="font-size:13px;color:#111">+</span>
+        </div>
+        <div class="fs-5 fw-bold amount-private">£{{ "%.2f"|format(monthly.normal) }}</div>
+      </div>
+      <div id="tile-normal" class="d-none mt-2 px-1">
+        {% for t in monthly.normal_list %}
+        <div class="d-flex justify-content-between small py-1 border-bottom">
+          <span>{{ t.description }}</span>
+          <span class="fw-semibold text-danger amount-private">£{{ "%.2f"|format(t.amount) }}</span>
+        </div>
+        {% endfor %}
+        {% if not monthly.normal_list %}
+        <div class="small text-muted py-1">No expenses this cycle yet</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-4">
+      <div class="p-3 bg-white rounded-4 shadow-sm text-center tile" onclick="toggleTile('billspaid')">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="text-muted small">Bills paid</div>
+          <span id="arrow-billspaid" class="fw-bold" style="font-size:13px;color:#111">+</span>
+        </div>
+        <div class="fs-5 fw-bold amount-private">£{{ "%.2f"|format(monthly.scheduled) }}</div>
+      </div>
+      <div id="tile-billspaid" class="d-none mt-2 px-1">
+        {% for t in monthly.bills_list %}
+        <div class="d-flex justify-content-between small py-1 border-bottom">
+          <span>{{ t.description }}</span>
+          <span class="fw-semibold text-danger amount-private">£{{ "%.2f"|format(t.amount) }}</span>
+        </div>
+        {% endfor %}
+        {% if not monthly.bills_list %}
+        <div class="small text-muted py-1">No bills paid this cycle yet</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if monthly.income_received > 0 %}
+    <div class="col-4">
+      <div class="p-3 bg-white rounded-4 shadow-sm text-center tile" onclick="toggleTile('income-cycle')">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="text-muted small">Income</div>
+          <span id="arrow-income-cycle" class="fw-bold" style="font-size:13px;color:#111">+</span>
+        </div>
+        <div class="fs-5 fw-bold text-success amount-private">£{{ "%.2f"|format(monthly.income_received) }}</div>
+      </div>
+      <div id="tile-income-cycle" class="d-none mt-2 px-1">
+        {% for t in monthly.income_list %}
+        <div class="d-flex justify-content-between small py-1 border-bottom">
+          <span>{{ t.description }}</span>
+          <span class="fw-semibold text-success amount-private">£{{ "%.2f"|format(t.amount) }}</span>
+        </div>
+        {% endfor %}
+        {% if not monthly.income_list %}
+        <div class="small text-muted py-1">No income this cycle yet</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="col-4">
+      <div class="p-3 bg-dark text-white rounded-4 text-center tile" onclick="toggleTile('outflow')">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="small">Outflow</div>
+          <span id="arrow-outflow" class="fw-bold" style="font-size:13px;color:#fff">+</span>
+        </div>
+        <div class="fs-5 fw-bold amount-private">£{{ "%.2f"|format(monthly.total) }}</div>
+      </div>
+      <div id="tile-outflow" class="d-none mt-2 px-1">
+        <div class="d-flex justify-content-between small py-1 border-bottom">
+          <span>Normal spending</span>
+          <span class="fw-semibold amount-private">£{{ "%.2f"|format(monthly.normal) }}</span>
+        </div>
+        <div class="d-flex justify-content-between small py-1">
+          <span>Bills paid</span>
+          <span class="fw-semibold amount-private">£{{ "%.2f"|format(monthly.scheduled) }}</span>
+        </div>
+      </div>
+    </div>
+
   </div>
 
-  <!-- Progress bar -->
+  <!-- Spending progress bar -->
   {% set total_pot = monthly.total + [overview.safe_spending, 0]|max %}
   {% if total_pot > 0 %}
   {% set pct = (monthly.total / total_pot * 100)|round(0)|int %}
   {% set pct_capped = [pct, 100]|min %}
   {% if pct < 70 %}{% set bar_color = '#198754' %}{% elif pct < 90 %}{% set bar_color = '#f59e0b' %}{% else %}{% set bar_color = '#dc3545' %}{% endif %}
-  <div class="mt-3 mb-2">
-    <div class="progress rounded-pill" style="height:10px; background:#e9ecef;">
+  <div class="mt-3">
+    <div class="d-flex justify-content-between small text-muted mb-1">
+      <span>£{{ "%.2f"|format(monthly.total) }} spent this cycle</span>
+      <span>{{ pct }}%</span>
+    </div>
+    <div class="progress rounded-pill" style="height:8px; background:#e9ecef;">
       <div class="progress-bar rounded-pill" role="progressbar"
         id="cycleProgressBar"
         data-pct="{{ pct_capped }}"
         data-color="{{ bar_color }}">
       </div>
     </div>
-    <div class="d-flex justify-content-between small text-muted mt-2">
-      <span>{{ pct }}% used</span>
-      <span class="amount-private">£{{ "%.2f"|format(overview.safe_spending) }} safe to spend</span>
+    <div class="d-flex justify-content-between small text-muted mt-1">
+      <span></span>
+      <span>£{{ "%.2f"|format(overview.safe_spending) }} safe to spend</span>
     </div>
   </div>
   {% endif %}
 
-  <!-- Chips row -->
-  <div class="d-flex flex-wrap gap-2 mt-3 pt-3" style="border-top:1px solid #f0f0f0;">
-    {% if monthly.income_received > 0 %}
-    <div class="px-3 py-2 rounded-3" style="background:#f0fdf4; font-size:13px; font-weight:600; color:#065f46;">
-      💰 Income: <span class="amount-private">£{{ "%.2f"|format(monthly.income_received) }}</span>
-    </div>
-    {% endif %}
-    {% if this_week_spent > 0 %}
-    <div class="px-3 py-2 rounded-3" style="background:#f8f9fa; font-size:13px; font-weight:600; color:#555;">
-      📅 This week: <span class="amount-private">£{{ "%.2f"|format(this_week_spent) }}</span> · {{ this_week_count }} txn{{ 's' if this_week_count != 1 else '' }}
-    </div>
-    {% endif %}
+  <!-- This week stat -->
+  {% if this_week_spent > 0 %}
+  <div class="d-flex align-items-center justify-content-between mt-3 pt-3" style="border-top:1px solid #f0f0f0;">
+    <span class="small text-muted">This week</span>
+    <span class="small fw-semibold amount-private">£{{ "%.2f"|format(this_week_spent) }} · {{ this_week_count }} transaction{{ 's' if this_week_count != 1 else '' }}</span>
   </div>
+  {% endif %}
 
 </div>
 
@@ -952,10 +1031,6 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
     <a href="/manage" class="text-decoration-none text-dark">
       <div style="font-size:22px">🎛️</div>
       <small>Manage</small>
-    </a>
-    <a href="/settings" class="text-decoration-none text-dark">
-      <div style="font-size:22px">⚙️</div>
-      <small>Settings</small>
     </a>
   </div>
 </nav>
@@ -1420,5 +1495,54 @@ function submitAutoApply() {
 })();
 </script>
 <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>
+
+<!-- Profile Panel Button -->
+<button id="profileBtn" onclick="openProfilePanel()" style="position:fixed;top:14px;right:14px;z-index:1040;width:38px;height:38px;border-radius:50%;background:var(--brand,#5b5ef4);color:#fff;border:none;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;">{%- set _pn = current_user.display_name or current_user.email.split('@')[0] %}{%- set _pp = _pn.replace('.', ' ').replace('_', ' ').split() -%}{{ (_pp[0][0] + (_pp[1][0] if _pp|length > 1 else '')) | upper }}</button>
+<!-- Profile Panel Overlay -->
+<div id="profileOverlay" onclick="closeProfilePanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:1041;"></div>
+<!-- Profile Panel -->
+<div id="profilePanel" style="position:fixed;top:0;right:0;width:300px;max-width:90vw;height:100%;background:#fff;z-index:1042;transform:translateX(110%);transition:transform 0.28s ease;box-shadow:-4px 0 24px rgba(0,0,0,0.12);overflow-y:auto;display:flex;flex-direction:column;">
+  <div style="padding:20px;background:#f8f9fa;border-bottom:1px solid #eee;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+      <div style="min-width:0;">
+        <div style="font-size:16px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ current_user.display_name or (current_user.email.split('@')[0].split('.')[0] | capitalize) }}</div>
+        <div style="font-size:11px;color:#aaa;margin-top:2px;">#{{ '%05d' | format(current_user.id) }}</div>
+        <div style="font-size:12px;color:#bbb;margin-top:1px;">{{ current_user.email }}</div>
+      </div>
+      <a href="/logout" style="flex-shrink:0;font-size:12px;color:#555;text-decoration:none;border:1px solid #ddd;padding:6px 11px;border-radius:8px;background:#fff;">Log out</a>
+    </div>
+  </div>
+  <div style="flex:1;padding:4px 0;">
+    <button onclick="togglePanelSection('panelPersonal')" style="width:100%;background:none;border:none;border-bottom:1px solid #f5f5f5;padding:15px 20px;text-align:left;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;color:#222;">
+      <span>👤 Personal Details</span><span style="color:#bbb;font-size:16px;">›</span>
+    </button>
+    <div id="panelPersonal" style="display:none;background:#fafafa;padding:16px 20px;border-bottom:1px solid #f0f0f0;font-size:13px;color:#888;">Coming in a future update</div>
+    <a href="/settings" onclick="closeProfilePanel()" style="display:flex;align-items:center;justify-content:space-between;padding:15px 20px;font-size:14px;color:#222;text-decoration:none;border-bottom:1px solid #f5f5f5;">
+      <span>⚙️ Settings</span><span style="color:#bbb;font-size:16px;">›</span>
+    </a>
+    <div style="height:1px;background:#f0f0f0;"></div>
+    <button onclick="togglePanelSection('panelFeedback')" style="width:100%;background:none;border:none;border-bottom:1px solid #f5f5f5;padding:15px 20px;text-align:left;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;color:#222;">
+      <span>💬 Send us Feedback</span><span style="color:#bbb;font-size:16px;">›</span>
+    </button>
+    <div id="panelFeedback" style="display:none;background:#fafafa;padding:16px 20px;border-bottom:1px solid #f0f0f0;font-size:13px;color:#888;">Coming in a future update</div>
+  </div>
+  <div style="padding:16px 20px;border-top:1px solid #eee;">
+    <button onclick="closeProfilePanel()" style="width:100%;background:#f0f0f0;border:none;padding:10px;border-radius:10px;font-size:14px;cursor:pointer;color:#555;font-weight:500;">Close</button>
+  </div>
+</div>
+<script>
+function openProfilePanel() {
+  document.getElementById('profilePanel').style.transform = 'translateX(0)';
+  document.getElementById('profileOverlay').style.display = 'block';
+}
+function closeProfilePanel() {
+  document.getElementById('profilePanel').style.transform = 'translateX(110%)';
+  document.getElementById('profileOverlay').style.display = 'none';
+}
+function togglePanelSection(id) {
+  var el = document.getElementById(id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
 </body>
 </html>

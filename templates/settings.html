@@ -389,10 +389,6 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       <div style="font-size:22px">🎛️</div>
       <small>Manage</small>
     </a>
-    <a href="/settings" class="text-decoration-none nav-active">
-      <div style="font-size:22px">⚙️</div>
-      <small>Settings</small>
-    </a>
   </div>
 </nav>
 
@@ -487,5 +483,54 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
 });
 </script>
 <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>
+
+<!-- Profile Panel Button -->
+<button id="profileBtn" onclick="openProfilePanel()" style="position:fixed;top:14px;right:14px;z-index:1040;width:38px;height:38px;border-radius:50%;background:var(--brand,#5b5ef4);color:#fff;border:none;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;">{%- set _pn = current_user.display_name or current_user.email.split('@')[0] %}{%- set _pp = _pn.replace('.', ' ').replace('_', ' ').split() -%}{{ (_pp[0][0] + (_pp[1][0] if _pp|length > 1 else '')) | upper }}</button>
+<!-- Profile Panel Overlay -->
+<div id="profileOverlay" onclick="closeProfilePanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:1041;"></div>
+<!-- Profile Panel -->
+<div id="profilePanel" style="position:fixed;top:0;right:0;width:300px;max-width:90vw;height:100%;background:#fff;z-index:1042;transform:translateX(110%);transition:transform 0.28s ease;box-shadow:-4px 0 24px rgba(0,0,0,0.12);overflow-y:auto;display:flex;flex-direction:column;">
+  <div style="padding:20px;background:#f8f9fa;border-bottom:1px solid #eee;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+      <div style="min-width:0;">
+        <div style="font-size:16px;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ current_user.display_name or (current_user.email.split('@')[0].split('.')[0] | capitalize) }}</div>
+        <div style="font-size:11px;color:#aaa;margin-top:2px;">#{{ '%05d' | format(current_user.id) }}</div>
+        <div style="font-size:12px;color:#bbb;margin-top:1px;">{{ current_user.email }}</div>
+      </div>
+      <a href="/logout" style="flex-shrink:0;font-size:12px;color:#555;text-decoration:none;border:1px solid #ddd;padding:6px 11px;border-radius:8px;background:#fff;">Log out</a>
+    </div>
+  </div>
+  <div style="flex:1;padding:4px 0;">
+    <button onclick="togglePanelSection('panelPersonal')" style="width:100%;background:none;border:none;border-bottom:1px solid #f5f5f5;padding:15px 20px;text-align:left;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;color:#222;">
+      <span>👤 Personal Details</span><span style="color:#bbb;font-size:16px;">›</span>
+    </button>
+    <div id="panelPersonal" style="display:none;background:#fafafa;padding:16px 20px;border-bottom:1px solid #f0f0f0;font-size:13px;color:#888;">Coming in a future update</div>
+    <a href="/settings" onclick="closeProfilePanel()" style="display:flex;align-items:center;justify-content:space-between;padding:15px 20px;font-size:14px;color:#222;text-decoration:none;border-bottom:1px solid #f5f5f5;">
+      <span>⚙️ Settings</span><span style="color:#bbb;font-size:16px;">›</span>
+    </a>
+    <div style="height:1px;background:#f0f0f0;"></div>
+    <button onclick="togglePanelSection('panelFeedback')" style="width:100%;background:none;border:none;border-bottom:1px solid #f5f5f5;padding:15px 20px;text-align:left;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;color:#222;">
+      <span>💬 Send us Feedback</span><span style="color:#bbb;font-size:16px;">›</span>
+    </button>
+    <div id="panelFeedback" style="display:none;background:#fafafa;padding:16px 20px;border-bottom:1px solid #f0f0f0;font-size:13px;color:#888;">Coming in a future update</div>
+  </div>
+  <div style="padding:16px 20px;border-top:1px solid #eee;">
+    <button onclick="closeProfilePanel()" style="width:100%;background:#f0f0f0;border:none;padding:10px;border-radius:10px;font-size:14px;cursor:pointer;color:#555;font-weight:500;">Close</button>
+  </div>
+</div>
+<script>
+function openProfilePanel() {
+  document.getElementById('profilePanel').style.transform = 'translateX(0)';
+  document.getElementById('profileOverlay').style.display = 'block';
+}
+function closeProfilePanel() {
+  document.getElementById('profilePanel').style.transform = 'translateX(110%)';
+  document.getElementById('profileOverlay').style.display = 'none';
+}
+function togglePanelSection(id) {
+  var el = document.getElementById(id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
 </body>
 </html>

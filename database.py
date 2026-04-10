@@ -491,5 +491,26 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: users.display_name ---
+    # User's chosen display name (optional, shown in profile panel)
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='display_name'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (display_name): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

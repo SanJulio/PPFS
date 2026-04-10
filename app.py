@@ -187,9 +187,10 @@ def unauthorized():
 # --- USER MODEL ---
 # Minimal User class required by Flask-Login — just stores id and email
 class User(UserMixin):
-    def __init__(self, id, email):
+    def __init__(self, id, email, display_name=None):
         self.id = id
         self.email = email
+        self.display_name = display_name
 
 # Tells Flask-Login how to reload a user from their ID stored in the session
 @login_manager.user_loader
@@ -208,7 +209,7 @@ def load_user(user_id):
     release_db(db)
     if row:
         row = dict(zip(cols, row))
-        return User(row["id"], row["email"])
+        return User(row["id"], row["email"], row.get("display_name"))
     return None
 
 # Run database migrations on startup — creates tables and adds any missing columns
