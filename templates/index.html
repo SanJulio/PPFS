@@ -613,138 +613,59 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
 </div>
 
 <div class="card p-3 mb-4" id="spendingCard">
-  <div class="d-flex justify-content-between align-items-start mb-1">
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center mb-1">
     <h5 class="mb-0">Current Cycle</h5>
     {% if days_to_payday == 1 %}
-    <span class="fw-bold" style="background:#d1fae5;color:#065f46;font-size:14px;border-radius:10px;padding:6px 14px;">🎉 Payday tomorrow</span>
+    <span class="fw-semibold small" style="background:#d1fae5;color:#065f46;border-radius:10px;padding:5px 12px;">🎉 Payday tomorrow</span>
     {% elif days_to_payday == 0 %}
-    <span class="fw-bold" style="background:#d1fae5;color:#065f46;font-size:14px;border-radius:10px;padding:6px 14px;">🎉 Payday today!</span>
+    <span class="fw-semibold small" style="background:#d1fae5;color:#065f46;border-radius:10px;padding:5px 12px;">🎉 Payday today!</span>
     {% else %}
-    <span class="fw-bold" style="background:#f0f0f0;color:#111;font-size:14px;border-radius:10px;padding:6px 14px;">{{ days_to_payday }} days to payday</span>
+    <span class="fw-semibold small" style="background:#f0f0f0;color:#111;border-radius:10px;padding:5px 12px;">{{ days_to_payday }} days to payday</span>
     {% endif %}
   </div>
-  <div class="text-muted small mb-3">{{ cycle_start_date.strftime('%-d %b') }} – {{ cycle_end_date.strftime('%-d %b') }}</div>
-  <div class="row g-3">
+  <div class="text-muted small mb-4">{{ cycle_start_date.strftime('%-d %b') }} – {{ cycle_end_date.strftime('%-d %b') }}</div>
 
-    <div class="col-4">
-      <div class="p-3 bg-white rounded-4 shadow-sm text-center tile" onclick="toggleTile('normal')">
-        <div class="d-flex justify-content-between align-items-center">
-          <div class="text-muted small">Normal</div>
-          <span id="arrow-normal" class="fw-bold" style="font-size:13px;color:#111">+</span>
-        </div>
-        <div class="fs-5 fw-bold amount-private">£{{ "%.2f"|format(monthly.normal) }}</div>
-      </div>
-      <div id="tile-normal" class="d-none mt-2 px-1">
-        {% for t in monthly.normal_list %}
-        <div class="d-flex justify-content-between small py-1 border-bottom">
-          <span>{{ t.description }}</span>
-          <span class="fw-semibold text-danger amount-private">£{{ "%.2f"|format(t.amount) }}</span>
-        </div>
-        {% endfor %}
-        {% if not monthly.normal_list %}
-        <div class="small text-muted py-1">No expenses this cycle yet</div>
-        {% endif %}
-      </div>
-    </div>
-
-    <div class="col-4">
-      <div class="p-3 bg-white rounded-4 shadow-sm text-center tile" onclick="toggleTile('billspaid')">
-        <div class="d-flex justify-content-between align-items-center">
-          <div class="text-muted small">Bills paid</div>
-          <span id="arrow-billspaid" class="fw-bold" style="font-size:13px;color:#111">+</span>
-        </div>
-        <div class="fs-5 fw-bold amount-private">£{{ "%.2f"|format(monthly.scheduled) }}</div>
-      </div>
-      <div id="tile-billspaid" class="d-none mt-2 px-1">
-        {% for t in monthly.bills_list %}
-        <div class="d-flex justify-content-between small py-1 border-bottom">
-          <span>{{ t.description }}</span>
-          <span class="fw-semibold text-danger amount-private">£{{ "%.2f"|format(t.amount) }}</span>
-        </div>
-        {% endfor %}
-        {% if not monthly.bills_list %}
-        <div class="small text-muted py-1">No bills paid this cycle yet</div>
-        {% endif %}
-      </div>
-    </div>
-
-    {% if monthly.income_received > 0 %}
-    <div class="col-4">
-      <div class="p-3 bg-white rounded-4 shadow-sm text-center tile" onclick="toggleTile('income-cycle')">
-        <div class="d-flex justify-content-between align-items-center">
-          <div class="text-muted small">Income</div>
-          <span id="arrow-income-cycle" class="fw-bold" style="font-size:13px;color:#111">+</span>
-        </div>
-        <div class="fs-5 fw-bold text-success amount-private">£{{ "%.2f"|format(monthly.income_received) }}</div>
-      </div>
-      <div id="tile-income-cycle" class="d-none mt-2 px-1">
-        {% for t in monthly.income_list %}
-        <div class="d-flex justify-content-between small py-1 border-bottom">
-          <span>{{ t.description }}</span>
-          <span class="fw-semibold text-success amount-private">£{{ "%.2f"|format(t.amount) }}</span>
-        </div>
-        {% endfor %}
-        {% if not monthly.income_list %}
-        <div class="small text-muted py-1">No income this cycle yet</div>
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
-
-    <div class="col-4">
-      <div class="p-3 bg-dark text-white rounded-4 text-center tile" onclick="toggleTile('outflow')">
-        <div class="d-flex justify-content-between align-items-center">
-          <div class="small">Outflow</div>
-          <span id="arrow-outflow" class="fw-bold" style="font-size:13px;color:#fff">+</span>
-        </div>
-        <div class="fs-5 fw-bold amount-private">£{{ "%.2f"|format(monthly.total) }}</div>
-      </div>
-      <div id="tile-outflow" class="d-none mt-2 px-1">
-        <div class="d-flex justify-content-between small py-1 border-bottom">
-          <span>Normal spending</span>
-          <span class="fw-semibold amount-private">£{{ "%.2f"|format(monthly.normal) }}</span>
-        </div>
-        <div class="d-flex justify-content-between small py-1">
-          <span>Bills paid</span>
-          <span class="fw-semibold amount-private">£{{ "%.2f"|format(monthly.scheduled) }}</span>
-        </div>
-      </div>
-    </div>
-
+  <!-- Spent amount -->
+  <div class="mb-1">
+    <div class="text-muted small mb-1">Spent this cycle</div>
+    <div class="fw-bold amount-private" style="font-size:28px; line-height:1;">£{{ "%.2f"|format(monthly.total) }}</div>
   </div>
 
-  <!-- Spending progress bar -->
+  <!-- Progress bar -->
   {% set total_pot = monthly.total + [overview.safe_spending, 0]|max %}
   {% if total_pot > 0 %}
   {% set pct = (monthly.total / total_pot * 100)|round(0)|int %}
   {% set pct_capped = [pct, 100]|min %}
   {% if pct < 70 %}{% set bar_color = '#198754' %}{% elif pct < 90 %}{% set bar_color = '#f59e0b' %}{% else %}{% set bar_color = '#dc3545' %}{% endif %}
-  <div class="mt-3">
-    <div class="d-flex justify-content-between small text-muted mb-1">
-      <span>£{{ "%.2f"|format(monthly.total) }} spent this cycle</span>
-      <span>{{ pct }}%</span>
-    </div>
-    <div class="progress rounded-pill" style="height:8px; background:#e9ecef;">
+  <div class="mt-3 mb-2">
+    <div class="progress rounded-pill" style="height:10px; background:#e9ecef;">
       <div class="progress-bar rounded-pill" role="progressbar"
         id="cycleProgressBar"
         data-pct="{{ pct_capped }}"
         data-color="{{ bar_color }}">
       </div>
     </div>
-    <div class="d-flex justify-content-between small text-muted mt-1">
-      <span></span>
-      <span>£{{ "%.2f"|format(overview.safe_spending) }} safe to spend</span>
+    <div class="d-flex justify-content-between small text-muted mt-2">
+      <span>{{ pct }}% used</span>
+      <span class="amount-private">£{{ "%.2f"|format(overview.safe_spending) }} safe to spend</span>
     </div>
   </div>
   {% endif %}
 
-  <!-- This week stat -->
-  {% if this_week_spent > 0 %}
-  <div class="d-flex align-items-center justify-content-between mt-3 pt-3" style="border-top:1px solid #f0f0f0;">
-    <span class="small text-muted">This week</span>
-    <span class="small fw-semibold amount-private">£{{ "%.2f"|format(this_week_spent) }} · {{ this_week_count }} transaction{{ 's' if this_week_count != 1 else '' }}</span>
+  <!-- Chips row -->
+  <div class="d-flex flex-wrap gap-2 mt-3 pt-3" style="border-top:1px solid #f0f0f0;">
+    {% if monthly.income_received > 0 %}
+    <div class="px-3 py-2 rounded-3" style="background:#f0fdf4; font-size:13px; font-weight:600; color:#065f46;">
+      💰 Income: <span class="amount-private">£{{ "%.2f"|format(monthly.income_received) }}</span>
+    </div>
+    {% endif %}
+    {% if this_week_spent > 0 %}
+    <div class="px-3 py-2 rounded-3" style="background:#f8f9fa; font-size:13px; font-weight:600; color:#555;">
+      📅 This week: <span class="amount-private">£{{ "%.2f"|format(this_week_spent) }}</span> · {{ this_week_count }} txn{{ 's' if this_week_count != 1 else '' }}
+    </div>
+    {% endif %}
   </div>
-  {% endif %}
 
 </div>
 
