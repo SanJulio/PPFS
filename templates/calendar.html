@@ -23,7 +23,7 @@ html { scroll-behavior: smooth; scroll-padding-bottom: 110px; }
 .navbar a { display:flex; flex-direction:column; align-items:center; }
 .fixed-bottom { position: fixed !important; bottom: 0; left: 0; right: 0; z-index: 9999; }
 body { background: #f2f4f7; padding-bottom: 110px; }
-.top-bar { display:flex;align-items:center;justify-content:space-between;padding:12px 12px; }
+.top-bar { padding:0; }
 .card { border-radius: 18px; border: none; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
 .money { font-variant-numeric: tabular-nums; }
 
@@ -68,6 +68,7 @@ body { background: #f2f4f7; padding-bottom: 110px; }
 </head>
 <body>
 <div class="top-bar">
+<div class="container d-flex align-items-center justify-content-between" style="padding-top:14px;padding-bottom:14px;">
   <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:48px;object-fit:contain;"></a>
   <div style="display:flex;align-items:center;gap:10px;">
     <a href="/calendar" class="text-decoration-none" title="Calendar">
@@ -78,6 +79,7 @@ body { background: #f2f4f7; padding-bottom: 110px; }
     </a>
     <button id="profileBtn" onclick="openProfilePanel()" data-avatar="{{ current_user.avatar or '' }}" style="width:48px;height:48px;border-radius:50%;background:var(--brand,#5b5ef4);color:#fff;border:none;font-size:18px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;">{% if current_user.avatar %}{{ current_user.avatar }}{% else %}{%- set _pn = current_user.display_name or current_user.email.split('@')[0] %}{%- set _pp = _pn.replace('.', ' ').replace('_', ' ').split() -%}{{ (_pp[0][0] + (_pp[1][0] if _pp|length > 1 else '')) | upper }}{% endif %}</button>
   </div>
+</div>
 </div>
 <script>(function(){var d=new Date();document.getElementById('cal-month').textContent=d.toLocaleString('default',{month:'short'}).toUpperCase();document.getElementById('cal-day').textContent=d.getDate();})();</script>
 
