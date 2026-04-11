@@ -140,7 +140,7 @@ body.privacy-invisible .amounts-visible .amount-private {
 <body>
 <!-- Top bar -->
 <div class="top-bar">
-<div class="container d-flex align-items-center justify-content-between" style="padding-top:14px;padding-bottom:14px;">
+<div class="container d-flex align-items-center justify-content-between" style="padding-top:30px;padding-bottom:30px;">
   <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:96px;object-fit:contain;"></a>
   <div style="display:flex;align-items:center;gap:10px;">
     <a href="/calendar" class="text-decoration-none" title="Calendar">
@@ -384,11 +384,23 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
   </div>
 </div>
 
-<!-- Floating + button -->
-<button onclick="openQuickAdd()" style="position:fixed; bottom:85px; right:20px; z-index:9998; width:54px; height:54px; border-radius:50%; background:#111; color:#fff; border:none; font-size:26px; box-shadow:0 4px 14px rgba(0,0,0,0.25); cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1;">+</button>
-
-<!-- Floating A button (account balance adjust) -->
-<button onclick="openAdjustModal()" style="position:fixed; bottom:85px; right:82px; z-index:9998; width:54px; height:54px; border-radius:50%; background:#6366f1; color:#fff; border:none; font-size:18px; font-weight:700; box-shadow:0 4px 14px rgba(99,102,241,0.35); cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1;">A</button>
+<!-- FAB speed dial -->
+<div id="fab-container" style="position:fixed; bottom:85px; right:20px; z-index:9998; display:flex; flex-direction:column; align-items:center; gap:12px;">
+  <!-- Sub-button: Adjust balance -->
+  <div id="fab-adjust" style="display:flex; align-items:center; gap:8px; opacity:0; transform:translateY(10px); transition:opacity 0.2s ease, transform 0.2s ease; pointer-events:none;">
+    <span style="background:#fff; color:#333; font-size:12px; font-weight:600; padding:5px 10px; border-radius:999px; box-shadow:0 2px 8px rgba(0,0,0,0.15); white-space:nowrap;">Adjust balance</span>
+    <button onclick="closeFab();openAdjustModal();" style="width:46px; height:46px; border-radius:50%; background:#6366f1; color:#fff; border:none; font-size:16px; font-weight:700; box-shadow:0 4px 14px rgba(99,102,241,0.35); cursor:pointer; display:flex; align-items:center; justify-content:center;">A</button>
+  </div>
+  <!-- Sub-button: Add transaction -->
+  <div id="fab-add" style="display:flex; align-items:center; gap:8px; opacity:0; transform:translateY(10px); transition:opacity 0.2s ease 0.05s, transform 0.2s ease 0.05s; pointer-events:none;">
+    <span style="background:#fff; color:#333; font-size:12px; font-weight:600; padding:5px 10px; border-radius:999px; box-shadow:0 2px 8px rgba(0,0,0,0.15); white-space:nowrap;">Add transaction</span>
+    <button onclick="closeFab();openQuickAdd();" style="width:46px; height:46px; border-radius:50%; background:#111; color:#fff; border:none; font-size:22px; box-shadow:0 4px 14px rgba(0,0,0,0.25); cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1;">+</button>
+  </div>
+  <!-- Main FAB -->
+  <button id="fab-main" onclick="toggleFab()" style="width:54px; height:54px; border-radius:50%; background:#111; color:#fff; border:none; font-size:26px; box-shadow:0 4px 14px rgba(0,0,0,0.25); cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; transition:transform 0.2s ease;">+</button>
+</div>
+<!-- FAB backdrop (tap outside to close) -->
+<div id="fab-backdrop" onclick="closeFab()" style="display:none; position:fixed; inset:0; z-index:9997;"></div>
 
 <!-- Balance adjust modal -->
 <div id="adjustModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:10001; align-items:flex-end; justify-content:center;">
@@ -433,19 +445,26 @@ var ADJ_BALANCES = {{ balances | tojson }};
 <div class="container py-4">
 <div class="mb-4" id="home">
   <div>
-    <div id="home-greeting" class="fw-bold" style="font-size:20px;" data-email="{{ current_user.email }}">Know exactly where you stand, every day</div>
+    <div id="home-greeting" class="fw-bold" style="font-size:20px;" data-email="{{ current_user.email }}" data-display-name="{{ current_user.display_name or '' }}">Know exactly where you stand, every day</div>
   </div>
   <script>
     (function(){
       var d = new Date();
       document.getElementById('cal-month').textContent = d.toLocaleString('default',{month:'short'}).toUpperCase();
       document.getElementById('cal-day').textContent = d.getDate();
-      var raw = (document.getElementById('home-greeting').dataset.email || '').split('@')[0];
-      var name = raw.split('.')[0].split('_')[0];
+      var el = document.getElementById('home-greeting');
+      var displayName = el.dataset.displayName;
+      var name;
+      if (displayName) {
+        name = displayName.split(' ')[0];
+      } else {
+        var raw = (el.dataset.email || '').split('@')[0];
+        name = raw.split('.')[0].split('_')[0];
+      }
       name = name.charAt(0).toUpperCase() + name.slice(1);
       var h = d.getHours();
       var g = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-      document.getElementById('home-greeting').textContent = g + ', ' + name;
+      el.textContent = g + ', ' + name;
     })();
   </script>
 </div>
@@ -667,6 +686,9 @@ var ADJ_BALANCES = {{ balances | tojson }};
       </div>
     </div>
 
+    <!-- Divider after net worth -->
+    <div class="col-12"><hr style="margin:0;border-color:rgba(0,0,0,0.08);"></div>
+
     <!-- Row 4: Income | Bills paid -->
     <div class="col-6">
       <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('income-cycle')">
@@ -725,6 +747,8 @@ var ADJ_BALANCES = {{ balances | tojson }};
         </div>
       </div>
     </div>
+    <!-- Divider after progress bar -->
+    <div class="col-12"><hr style="margin:0;border-color:rgba(0,0,0,0.08);"></div>
     {% endif %}
 
   </div>
@@ -1091,6 +1115,33 @@ if (window.location.search.includes('msg=')) {
 
 // Quick Add
 var qaType = 'expense';
+
+var fabOpen = false;
+function toggleFab() {
+  fabOpen ? closeFab() : openFab();
+}
+function openFab() {
+  fabOpen = true;
+  document.getElementById('fab-backdrop').style.display = 'block';
+  document.getElementById('fab-main').style.transform = 'rotate(45deg)';
+  ['fab-adjust','fab-add'].forEach(function(id) {
+    var el = document.getElementById(id);
+    el.style.opacity = '1';
+    el.style.transform = 'translateY(0)';
+    el.style.pointerEvents = 'auto';
+  });
+}
+function closeFab() {
+  fabOpen = false;
+  document.getElementById('fab-backdrop').style.display = 'none';
+  document.getElementById('fab-main').style.transform = 'rotate(0deg)';
+  ['fab-adjust','fab-add'].forEach(function(id) {
+    var el = document.getElementById(id);
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(10px)';
+    el.style.pointerEvents = 'none';
+  });
+}
 
 function openQuickAdd() {
   var modal = document.getElementById('quickAddModal');
@@ -1611,6 +1662,16 @@ function savePanelName() {
       if (d.ok) {
         msg.textContent = 'Saved!'; msg.style.color='#065f46'; msg.style.display='block';
         document.getElementById('panelDisplayName').textContent = d.display_name;
+        // Update greeting on home page
+        var greetingEl = document.getElementById('home-greeting');
+        if (greetingEl) {
+          var h = new Date().getHours();
+          var g = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+          var firstName = (d.display_name || '').split(' ')[0];
+          firstName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+          greetingEl.textContent = g + ', ' + firstName;
+          greetingEl.dataset.displayName = d.display_name;
+        }
         setTimeout(function(){ msg.style.display='none'; }, 2000);
       } else {
         msg.textContent = d.error || 'Error saving.'; msg.style.color='#c00'; msg.style.display='block';

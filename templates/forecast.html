@@ -53,7 +53,7 @@ body { background: #f2f4f7; padding-bottom: 140px; }
 </head>
 <body>
 <div class="top-bar">
-<div class="container d-flex align-items-center justify-content-between" style="padding-top:14px;padding-bottom:14px;">
+<div class="container d-flex align-items-center justify-content-between" style="padding-top:30px;padding-bottom:30px;">
   <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:96px;object-fit:contain;"></a>
   <div style="display:flex;align-items:center;gap:10px;">
     <a href="/calendar" class="text-decoration-none" title="Calendar">
@@ -127,6 +127,12 @@ body { background: #f2f4f7; padding-bottom: 140px; }
     <!-- Day detail panel -->
     <div id="dayPanel" class="card p-3 mb-4" style="display:none;">
       <div id="dayPanelContent"></div>
+    </div>
+
+    <!-- Intraday panel (appears when zoomed in tight) -->
+    <div id="intradayPanel" class="card p-3 mb-4" style="display:none;">
+      <div class="fw-bold mb-2" style="font-size:14px;">⏱ Intraday activity</div>
+      <div id="intradayContent" class="small text-muted">No adjustments recorded for this period.</div>
     </div>
 
     <div id="accountSummary"></div>
@@ -431,15 +437,17 @@ function renderChart() {
         zoom: {
           pan: {
             enabled: true,
-            mode: 'x'
+            mode: 'x',
+            onPanComplete: function(ctx) { onChartViewChange(ctx.chart); }
           },
           zoom: {
             wheel: { enabled: true },
             pinch: { enabled: true },
-            mode: 'x'
+            mode: 'x',
+            onZoomComplete: function(ctx) { onChartViewChange(ctx.chart); }
           },
           limits: {
-            x: { minRange: 7 }
+            x: { minRange: 1 }
           }
         },
         annotation: {
@@ -489,6 +497,7 @@ function toggleFcstEdit(uid, defaultAmt) {
 function resetZoom() {
   if (chart) {
     chart.resetZoom();
+    document.getElementById('intradayPanel').style.display = 'none';
   }
 }
 
@@ -783,6 +792,86 @@ function toggleBreakdown(uid, btn) {
 }
 
 if (accountNames.length > 0) { renderChart(); renderSavingsGrowth(); }
+
+// ── Intraday view (activates when zoomed to ≤ 2 days) ───────────────────────
+function onChartViewChange(c) {
+  if (!c) return;
+  var scale = c.scales.x;
+  var visibleRange = scale.max - scale.min; // number of label indices visible
+  if (visibleRange <= 2) {
+    // Determine which dates are in view
+    var minIdx = Math.max(0, Math.floor(scale.min));
+    var maxIdx = Math.min(allSnapshots.length - 1, Math.ceil(scale.max));
+    var dates = [];
+    for (var i = minIdx; i <= maxIdx; i++) {
+      if (allSnapshots[i]) dates.push(allSnapshots[i].date);
+    }
+    showIntradayPanel(dates);
+  } else {
+    document.getElementById('intradayPanel').style.display = 'none';
+  }
+}
+
+function showIntradayPanel(dates) {
+  var panel = document.getElementById('intradayPanel');
+  var content = document.getElementById('intradayContent');
+  if (!dates || dates.length === 0) { panel.style.display = 'none'; return; }
+
+  // Gather all adjustments on visible dates
+  var visible = [];
+  adjMarkers.forEach(function(adj) {
+    var ad = new Date(adj.recorded_at);
+    var adjIso = ad.getFullYear() + '-' +
+      String(ad.getMonth() + 1).padStart(2, '0') + '-' +
+      String(ad.getDate()).padStart(2, '0');
+    if (dates.indexOf(adjIso) !== -1) visible.push({adj: adj, date: ad});
+  });
+
+  panel.style.display = 'block';
+
+  if (visible.length === 0) {
+    content.innerHTML = '<div class="text-muted" style="font-size:13px;">No balance adjustments recorded for this period.<br><span style="font-size:11px;color:#bbb;">Use the A button on the home screen to record an adjustment.</span></div>';
+    return;
+  }
+
+  // Group by date then sort by time
+  var byDate = {};
+  visible.forEach(function(v) {
+    var iso = v.date.getFullYear() + '-' +
+      String(v.date.getMonth() + 1).padStart(2, '0') + '-' +
+      String(v.date.getDate()).padStart(2, '0');
+    if (!byDate[iso]) byDate[iso] = [];
+    byDate[iso].push(v);
+  });
+
+  var html = '';
+  Object.keys(byDate).sort().forEach(function(iso) {
+    var d = new Date(iso + 'T12:00:00');
+    var dateStr = d.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'});
+    html += '<div class="fw-semibold mb-2" style="font-size:12px;color:#555;text-transform:uppercase;letter-spacing:0.5px;">' + dateStr + '</div>';
+    // Timeline
+    html += '<div style="position:relative;padding-left:20px;margin-bottom:12px;">';
+    html += '<div style="position:absolute;left:7px;top:0;bottom:0;width:2px;background:#e0e0f8;border-radius:1px;"></div>';
+    byDate[iso].sort(function(a,b){ return a.date - b.date; }).forEach(function(v) {
+      var adj = v.adj;
+      var delta = adj.delta;
+      var sign = delta >= 0 ? '+' : '';
+      var timeStr = v.date.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+      html += '<div style="display:flex;align-items:flex-start;margin-bottom:10px;position:relative;">' +
+        '<div style="position:absolute;left:-16px;top:3px;width:10px;height:10px;border-radius:50%;background:#6366f1;border:2px solid #fff;box-shadow:0 0 0 2px #c7d2fe;flex-shrink:0;"></div>' +
+        '<div style="flex:1;">' +
+          '<div style="display:flex;justify-content:space-between;align-items:baseline;">' +
+            '<span style="font-weight:600;color:#111;font-size:13px;">' + escHtml(adj.account) + '</span>' +
+            '<span style="font-weight:700;color:' + (delta >= 0 ? '#059669' : '#dc3545') + ';font-size:13px;">' + sign + '£' + Math.abs(delta).toFixed(2) + '</span>' +
+          '</div>' +
+          '<div style="color:#888;font-size:11px;">' + timeStr + ' &nbsp;·&nbsp; £' + adj.old_balance.toFixed(2) + ' → £' + adj.new_balance.toFixed(2) + '</div>' +
+        '</div>' +
+      '</div>';
+    });
+    html += '</div>';
+  });
+  content.innerHTML = html;
+}
 
 // Fetch balance adjustment markers and overlay on chart
 fetch('/api/balance-adjustments')
