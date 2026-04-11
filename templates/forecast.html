@@ -54,7 +54,7 @@ body { background: #f2f4f7; padding-bottom: 140px; }
 <body>
 <div class="top-bar">
 <div class="container d-flex align-items-center justify-content-between" style="padding-top:14px;padding-bottom:14px;">
-  <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:48px;object-fit:contain;"></a>
+  <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:96px;object-fit:contain;"></a>
   <div style="display:flex;align-items:center;gap:10px;">
     <a href="/calendar" class="text-decoration-none" title="Calendar">
       <div style="width:44px;text-align:center;border:2px solid #ddd;border-radius:8px;overflow:hidden;line-height:1;">
@@ -208,6 +208,7 @@ var chart = null;
 var currentFilter = 'current';
 var riskyFilter = false;
 var allSnapshots = [];
+var adjMarkers = [];
 
 // Index upcoming items by date for fast lookup
 var upcomingByDate = {};
@@ -285,6 +286,42 @@ function buildAnnotations() {
       label: { display: false }
     };
   });
+
+  // Balance adjustment markers (purple vertical lines)
+  var adjByDate = {};
+  adjMarkers.forEach(function(adj) {
+    var d = new Date(adj.recorded_at);
+    var iso = d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0');
+    if (!adjByDate[iso]) adjByDate[iso] = [];
+    adjByDate[iso].push(adj);
+  });
+  Object.keys(adjByDate).forEach(function(iso) {
+    var label = formatLabel(iso);
+    var adjs = adjByDate[iso];
+    var totalDelta = adjs.reduce(function(sum, a) { return sum + a.delta; }, 0);
+    var sign = totalDelta >= 0 ? '+' : '';
+    annotations['adj_' + iso] = {
+      type: 'line',
+      xMin: label,
+      xMax: label,
+      borderColor: 'rgba(99,102,241,0.9)',
+      borderWidth: 2,
+      borderDash: [5, 3],
+      label: {
+        display: true,
+        content: sign + '£' + Math.abs(totalDelta).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2}),
+        position: 'center',
+        color: '#fff',
+        font: { size: 10, weight: 'bold' },
+        backgroundColor: '#6366f1',
+        padding: { top: 3, bottom: 3, left: 6, right: 6 },
+        borderRadius: 4
+      }
+    };
+  });
+
   return annotations;
 }
 
@@ -465,8 +502,40 @@ function showDayPanel(isoDate) {
 
   var html = '<div class="fw-bold mb-3" style="font-size:15px;">📅 ' + dateStr + '</div>';
 
-  if (items.length === 0) {
+  // Show balance adjustments for this day
+  var dayAdjs = adjMarkers.filter(function(adj) {
+    var ad = new Date(adj.recorded_at);
+    var adjIso = ad.getFullYear() + '-' +
+      String(ad.getMonth() + 1).padStart(2, '0') + '-' +
+      String(ad.getDate()).padStart(2, '0');
+    return adjIso === isoDate;
+  });
+  if (dayAdjs.length > 0) {
+    html += '<div style="margin-bottom:12px;">';
+    dayAdjs.forEach(function(adj) {
+      var ad = new Date(adj.recorded_at);
+      var timeStr = ad.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      var delta = adj.delta;
+      var sign = delta >= 0 ? '+' : '';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#f0f0ff;border-radius:10px;margin-bottom:6px;">' +
+        '<div>' +
+          '<span style="font-size:14px;margin-right:6px;">⬡</span>' +
+          '<span class="fw-semibold" style="color:#4338ca;">' + escHtml(adj.account) + '</span>' +
+          '<span class="text-muted small ms-2">adjusted at ' + timeStr + '</span>' +
+        '</div>' +
+        '<div style="text-align:right;">' +
+          '<div class="fw-bold money" style="color:' + (delta >= 0 ? '#059669' : '#dc3545') + ';">' + sign + '£' + Math.abs(delta).toFixed(2) + '</div>' +
+          '<div class="text-muted" style="font-size:11px;">£' + adj.old_balance.toFixed(2) + ' → £' + adj.new_balance.toFixed(2) + '</div>' +
+        '</div>' +
+      '</div>';
+    });
+    html += '</div>';
+  }
+
+  if (items.length === 0 && dayAdjs.length === 0) {
     html += '<div class="text-muted small">No scheduled bills or income on this day.</div>';
+  } else if (items.length === 0) {
+    // adjustments already shown above, nothing more
   } else {
     items.forEach(function(item, i) {
       var isBill = item.type === 'bill';
@@ -714,6 +783,18 @@ function toggleBreakdown(uid, btn) {
 }
 
 if (accountNames.length > 0) { renderChart(); renderSavingsGrowth(); }
+
+// Fetch balance adjustment markers and overlay on chart
+fetch('/api/balance-adjustments')
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    adjMarkers = data.adjustments || [];
+    if (adjMarkers.length > 0 && chart) {
+      chart.options.plugins.annotation.annotations = buildAnnotations();
+      chart.update('none');
+    }
+  })
+  .catch(function() {});
 
 // ── Savings growth ───────────────────────────────────────────────────────────
 function applyInterest(balance, annualRatePct, days) {

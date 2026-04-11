@@ -141,7 +141,7 @@ body.privacy-invisible .amounts-visible .amount-private {
 <!-- Top bar -->
 <div class="top-bar">
 <div class="container d-flex align-items-center justify-content-between" style="padding-top:14px;padding-bottom:14px;">
-  <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:48px;object-fit:contain;"></a>
+  <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:96px;object-fit:contain;"></a>
   <div style="display:flex;align-items:center;gap:10px;">
     <a href="/calendar" class="text-decoration-none" title="Calendar">
       <div style="width:44px;text-align:center;border:2px solid #ddd;border-radius:8px;overflow:hidden;line-height:1;">
@@ -399,15 +399,19 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
     </div>
     <div class="mb-3">
       <label class="form-label fw-semibold" style="font-size:13px;">Account</label>
-      <select id="adj-account" class="form-select" style="font-size:15px;">
-        {% for acc in accounts %}
-        <option value="{{ acc }}">{{ acc }}</option>
+      <select id="adj-account" class="form-select" style="font-size:15px;" onchange="onAdjAccountChange()">
+        {% for b in balances %}
+        <option value="{{ b.name }}" data-balance="{{ b.balance }}">{{ b.name }}</option>
         {% endfor %}
       </select>
     </div>
+    <div class="mb-1">
+      <label class="form-label fw-semibold" style="font-size:13px;">Current balance</label>
+      <div id="adj-current" class="text-muted small mb-2" style="font-size:14px;"></div>
+    </div>
     <div class="mb-3">
-      <label class="form-label fw-semibold" style="font-size:13px;">Amount (£) — positive to add, negative to subtract</label>
-      <input id="adj-amount" class="form-control" inputmode="decimal" placeholder="e.g. 50 or -20" style="font-size:22px; font-weight:700; text-align:center;">
+      <label class="form-label fw-semibold" style="font-size:13px;">New balance (£)</label>
+      <input id="adj-new-balance" class="form-control" inputmode="decimal" placeholder="Enter new balance" style="font-size:22px; font-weight:700; text-align:center;">
     </div>
     <div class="mb-3">
       <label class="form-label fw-semibold" style="font-size:13px;">Category</label>
@@ -422,6 +426,9 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
     <button id="adj-submit" onclick="submitAdjust()" class="btn w-100 py-3 rounded-4" style="background:#6366f1;color:#fff;font-size:15px;font-weight:700;">Adjust</button>
   </div>
 </div>
+<script>
+var ADJ_BALANCES = {{ balances | tojson }};
+</script>
 
 <div class="container py-4">
 <div class="mb-4" id="home">
@@ -588,7 +595,7 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
       </div>
     </div>
 
-    <!-- Row 2: Safe to spend | Bills paid -->
+    <!-- Row 2: Safe to spend | Savings -->
     <div class="col-6">
       <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('safe')">
         <div class="d-flex justify-content-between align-items-center">
@@ -622,44 +629,45 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
     </div>
 
     <div class="col-6">
-      <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('billspaid')">
+      <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('savings')">
         <div class="d-flex justify-content-between align-items-center">
-          <div class="text-muted small">Bills paid</div>
-          <span id="arrow-billspaid" class="fw-bold" style="font-size:13px;color:#111">+</span>
+          <div class="text-muted small">Savings</div>
+          <span id="arrow-savings" class="fw-bold" style="font-size:13px;color:#111">+</span>
         </div>
-        <div class="fs-4 fw-bold amount-private">£{{ "%.2f"|format(monthly.scheduled) }}</div>
+        <div class="fs-4 fw-bold amount-private">£{{ "%.2f"|format(overview.savings_balance) }}</div>
       </div>
-      <div id="tile-billspaid" class="d-none mt-2 px-1">
-        {% for t in monthly.bills_list %}
+      <div id="tile-savings" class="d-none mt-2 px-1">
+        {% for a in overview.savings_accounts %}
         <div class="d-flex justify-content-between small py-1 border-bottom">
-          <span>{{ t.description }}</span>
-          <span class="fw-semibold text-danger amount-private">£{{ "%.2f"|format(t.amount) }}</span>
+          <span>{{ a.name }}</span>
+          <span class="fw-semibold amount-private">£{{ "%.2f"|format(a.balance) }}</span>
         </div>
         {% endfor %}
-        {% if not monthly.bills_list %}
-        <div class="small text-muted py-1">No bills paid this cycle yet</div>
-        {% endif %}
       </div>
     </div>
 
-    <!-- Progress bar spanning both columns -->
-    {% set total_pot = monthly.total + [overview.safe_spending, 0]|max %}
-    {% if total_pot > 0 %}
-    {% set pct = (monthly.total / total_pot * 100)|round(0)|int %}
-    {% set pct_capped = [pct, 100]|min %}
-    {% if pct < 70 %}{% set bar_color = '#198754' %}{% elif pct < 90 %}{% set bar_color = '#f59e0b' %}{% else %}{% set bar_color = '#dc3545' %}{% endif %}
+    <!-- Row 3: Net Worth full width -->
     <div class="col-12">
-      <div class="progress rounded-pill" style="height:6px; background:#e9ecef;">
-        <div class="progress-bar rounded-pill" role="progressbar"
-          id="cycleProgressBar"
-          data-pct="{{ pct_capped }}"
-          data-color="{{ bar_color }}">
+      <div class="p-3 bg-dark text-white rounded-4 tile" onclick="toggleTile('networth')">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="small">Net Worth</div>
+          <span id="arrow-networth" class="fw-bold" style="font-size:13px;color:#fff">+</span>
+        </div>
+        <div class="fs-3 fw-bold amount-private">£{{ "%.2f"|format(overview.net_worth) }}</div>
+      </div>
+      <div id="tile-networth" class="d-none mt-2 px-1">
+        <div class="d-flex justify-content-between small py-1 border-bottom">
+          <span>Available</span>
+          <span class="fw-semibold amount-private">£{{ "%.2f"|format(overview.spending_balance) }}</span>
+        </div>
+        <div class="d-flex justify-content-between small py-1">
+          <span>Savings</span>
+          <span class="fw-semibold amount-private">£{{ "%.2f"|format(overview.savings_balance) }}</span>
         </div>
       </div>
     </div>
-    {% endif %}
 
-    <!-- Row 3: Income | Savings -->
+    <!-- Row 4: Income | Bills paid -->
     <div class="col-6">
       <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('income-cycle')">
         <div class="d-flex justify-content-between align-items-center">
@@ -682,43 +690,42 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
     </div>
 
     <div class="col-6">
-      <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('savings')">
+      <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('billspaid')">
         <div class="d-flex justify-content-between align-items-center">
-          <div class="text-muted small">Savings</div>
-          <span id="arrow-savings" class="fw-bold" style="font-size:13px;color:#111">+</span>
+          <div class="text-muted small">Bills paid</div>
+          <span id="arrow-billspaid" class="fw-bold" style="font-size:13px;color:#111">+</span>
         </div>
-        <div class="fs-4 fw-bold amount-private">£{{ "%.2f"|format(overview.savings_balance) }}</div>
+        <div class="fs-4 fw-bold amount-private">£{{ "%.2f"|format(monthly.scheduled) }}</div>
       </div>
-      <div id="tile-savings" class="d-none mt-2 px-1">
-        {% for a in overview.savings_accounts %}
+      <div id="tile-billspaid" class="d-none mt-2 px-1">
+        {% for t in monthly.bills_list %}
         <div class="d-flex justify-content-between small py-1 border-bottom">
-          <span>{{ a.name }}</span>
-          <span class="fw-semibold amount-private">£{{ "%.2f"|format(a.balance) }}</span>
+          <span>{{ t.description }}</span>
+          <span class="fw-semibold text-danger amount-private">£{{ "%.2f"|format(t.amount) }}</span>
         </div>
         {% endfor %}
+        {% if not monthly.bills_list %}
+        <div class="small text-muted py-1">No bills paid this cycle yet</div>
+        {% endif %}
       </div>
     </div>
 
-    <!-- Row 4: Net Worth full width -->
+    <!-- Row 5: Progress bar -->
+    {% set total_pot = monthly.total + [overview.safe_spending, 0]|max %}
+    {% if total_pot > 0 %}
+    {% set pct = (monthly.total / total_pot * 100)|round(0)|int %}
+    {% set pct_capped = [pct, 100]|min %}
+    {% if pct < 70 %}{% set bar_color = '#198754' %}{% elif pct < 90 %}{% set bar_color = '#f59e0b' %}{% else %}{% set bar_color = '#dc3545' %}{% endif %}
     <div class="col-12">
-      <div class="p-3 bg-dark text-white rounded-4 tile" onclick="toggleTile('networth')">
-        <div class="d-flex justify-content-between align-items-center">
-          <div class="small">Net Worth</div>
-          <span id="arrow-networth" class="fw-bold" style="font-size:13px;color:#fff">+</span>
-        </div>
-        <div class="fs-3 fw-bold amount-private">£{{ "%.2f"|format(overview.net_worth) }}</div>
-      </div>
-      <div id="tile-networth" class="d-none mt-2 px-1">
-        <div class="d-flex justify-content-between small py-1 border-bottom">
-          <span>Available</span>
-          <span class="fw-semibold amount-private">£{{ "%.2f"|format(overview.spending_balance) }}</span>
-        </div>
-        <div class="d-flex justify-content-between small py-1">
-          <span>Savings</span>
-          <span class="fw-semibold amount-private">£{{ "%.2f"|format(overview.savings_balance) }}</span>
+      <div class="progress rounded-pill" style="height:6px; background:#e9ecef;">
+        <div class="progress-bar rounded-pill" role="progressbar"
+          id="cycleProgressBar"
+          data-pct="{{ pct_capped }}"
+          data-color="{{ bar_color }}">
         </div>
       </div>
     </div>
+    {% endif %}
 
   </div>
 
@@ -1215,11 +1222,19 @@ document.getElementById('quickAddModal').addEventListener('click', function(e) {
 });
 
 // --- BALANCE ADJUST ---
+function onAdjAccountChange() {
+  var sel = document.getElementById('adj-account');
+  var opt = sel.options[sel.selectedIndex];
+  var bal = parseFloat(opt.dataset.balance);
+  document.getElementById('adj-current').textContent = 'Current: £' + bal.toFixed(2);
+  document.getElementById('adj-new-balance').value = bal.toFixed(2);
+}
 function openAdjustModal() {
-  document.getElementById('adj-amount').value = '';
   document.getElementById('adj-error').style.display = 'none';
   document.getElementById('adjustModal').style.display = 'flex';
-  document.getElementById('adj-amount').focus();
+  onAdjAccountChange();
+  document.getElementById('adj-new-balance').focus();
+  document.getElementById('adj-new-balance').select();
 }
 function closeAdjustModal() {
   document.getElementById('adjustModal').style.display = 'none';
@@ -1228,14 +1243,22 @@ document.getElementById('adjustModal').addEventListener('click', function(e) {
   if (e.target === this) closeAdjustModal();
 });
 function submitAdjust() {
-  var amount = document.getElementById('adj-amount').value.trim();
+  var newBalRaw = document.getElementById('adj-new-balance').value.trim();
   var account = document.getElementById('adj-account').value;
   var category = document.getElementById('adj-category').value;
   var errEl = document.getElementById('adj-error');
   var btn = document.getElementById('adj-submit');
+  var sel = document.getElementById('adj-account');
+  var oldBal = parseFloat(sel.options[sel.selectedIndex].dataset.balance);
 
-  if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) === 0) {
-    errEl.textContent = 'Please enter a non-zero amount.';
+  if (newBalRaw === '' || isNaN(parseFloat(newBalRaw))) {
+    errEl.textContent = 'Please enter a valid balance.';
+    errEl.style.display = 'block';
+    return;
+  }
+  var newBal = parseFloat(newBalRaw);
+  if (Math.abs(newBal - oldBal) < 0.001) {
+    errEl.textContent = 'Balance is unchanged.';
     errEl.style.display = 'block';
     return;
   }
@@ -1245,8 +1268,9 @@ function submitAdjust() {
 
   var body = new URLSearchParams();
   body.append('csrf_token', HOME_CSRF);
-  body.append('amount', amount);
   body.append('account', account);
+  body.append('new_balance', newBal);
+  body.append('old_balance', oldBal);
   body.append('category', category);
 
   fetch('/quick-adjust', { method: 'POST', body: body })

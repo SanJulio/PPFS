@@ -1659,43 +1659,171 @@ def quick_add():
 
 
 # --- QUICK ADJUST (AJAX) ---
-# Balance adjustment from the home screen A-button — accepts signed amounts
+# Balance adjustment from the home screen A-button.
+# Accepts new_balance + old_balance, sets the account to new_balance,
+# logs the delta as a transaction, and records in balance_adjustments for hourly forecast.
 @app.post("/quick-adjust")
 @login_required
 def quick_adjust():
-    amount_raw = (request.form.get("amount") or "").strip()
+    from datetime import datetime as dt
     account = (request.form.get("account") or "").strip()
     category = (request.form.get("category") or "Various").strip()
 
-    if not amount_raw or not account:
-        return {"ok": False, "error": "Missing amount or account"}, 400
-
     try:
-        amount = float(amount_raw)
-        if amount == 0:
-            return {"ok": False, "error": "Amount must be non-zero"}, 400
+        new_balance = float(request.form.get("new_balance", ""))
+        old_balance = float(request.form.get("old_balance", ""))
     except (ValueError, TypeError):
-        return {"ok": False, "error": "Amount must be a valid number"}, 400
+        return {"ok": False, "error": "Invalid balance values"}, 400
+
+    if not account:
+        return {"ok": False, "error": "Missing account"}, 400
+
+    delta = round(new_balance - old_balance, 2)
+    if abs(delta) < 0.001:
+        return {"ok": False, "error": "Balance is unchanged"}, 400
 
     db = get_db()
     cursor = db.cursor()
-    if USE_POSTGRES:
-        cursor.execute("SELECT id FROM accounts WHERE name=%s AND user_id=%s", (account, current_user.id))
-    else:
-        cursor.execute("SELECT id FROM accounts WHERE name=? AND user_id=?", (account, current_user.id))
-    row = cursor.fetchone()
+    try:
+        # Ensure balance_adjustments table exists
+        if USE_POSTGRES:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS balance_adjustments (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    account TEXT NOT NULL,
+                    old_balance NUMERIC(12,2) NOT NULL,
+                    new_balance NUMERIC(12,2) NOT NULL,
+                    delta NUMERIC(12,2) NOT NULL,
+                    category TEXT NOT NULL DEFAULT 'Various',
+                    recorded_at TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS balance_adjustments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    account TEXT NOT NULL,
+                    old_balance REAL NOT NULL,
+                    new_balance REAL NOT NULL,
+                    delta REAL NOT NULL,
+                    category TEXT NOT NULL DEFAULT 'Various',
+                    recorded_at TEXT NOT NULL
+                )
+            """)
+
+        now_str = dt.utcnow().isoformat()
+
+        if USE_POSTGRES:
+            cursor.execute("SELECT id FROM accounts WHERE name=%s AND user_id=%s", (account, current_user.id))
+        else:
+            cursor.execute("SELECT id FROM accounts WHERE name=? AND user_id=?", (account, current_user.id))
+        row = cursor.fetchone()
+        if not row:
+            cursor.close()
+            release_db(db)
+            return {"ok": False, "error": "Account not found"}, 400
+
+        # Set account to new_balance directly
+        if USE_POSTGRES:
+            cursor.execute("UPDATE accounts SET balance=%s WHERE name=%s AND user_id=%s",
+                           (new_balance, account, current_user.id))
+            cursor.execute("""
+                INSERT INTO balance_adjustments (user_id, account, old_balance, new_balance, delta, category)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (current_user.id, account, old_balance, new_balance, delta, category))
+        else:
+            cursor.execute("UPDATE accounts SET balance=? WHERE name=? AND user_id=?",
+                           (new_balance, account, current_user.id))
+            cursor.execute("""
+                INSERT INTO balance_adjustments (user_id, account, old_balance, new_balance, delta, category, recorded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (current_user.id, account, old_balance, new_balance, delta, category, now_str))
+
+        # Log as transaction for forecast history
+        today_str = date.today().isoformat()
+        if USE_POSTGRES:
+            cursor.execute(
+                "INSERT INTO transactions (date, description, amount, account, user_id, type, category) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (today_str, "Balance adjustment", delta, account, current_user.id, "adjustment", category)
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO transactions (date, description, amount, account, user_id, type, category) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (today_str, "Balance adjustment", delta, account, current_user.id, "adjustment", category)
+            )
+
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.debug(f"quick_adjust error: {e}")
+        cursor.close()
+        release_db(db)
+        return {"ok": False, "error": "Server error"}, 500
+
     cursor.close()
     release_db(db)
-
-    if not row:
-        return {"ok": False, "error": "Account not found"}, 400
-
-    today_str = date.today().isoformat()
-    add_transaction(today_str, "Balance adjustment", amount, account, current_user.id, type="adjustment", category=category)
-    update_account_balance(account, amount, current_user.id)
     bust_forecast_cache(current_user.id)
     track('action.balance_adjust')
-    return {"ok": True, "amount": amount, "account": account}
+    return {"ok": True, "old_balance": old_balance, "new_balance": new_balance, "delta": delta, "account": account}
+
+
+# --- BALANCE ADJUSTMENTS API ---
+# Returns timestamped balance adjustments for the current user — used by forecast chart for hourly markers
+@app.get("/api/balance-adjustments")
+@login_required
+def api_balance_adjustments():
+    days = min(int(request.args.get("days", 90)), 365)
+    from datetime import datetime as dt
+    since = (dt.utcnow().date() - timedelta(days=days)).isoformat()
+    db = get_db()
+    cursor = db.cursor()
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS balance_adjustments (
+                    id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL,
+                    account TEXT NOT NULL, old_balance NUMERIC(12,2) NOT NULL,
+                    new_balance NUMERIC(12,2) NOT NULL, delta NUMERIC(12,2) NOT NULL,
+                    category TEXT NOT NULL DEFAULT 'Various',
+                    recorded_at TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            """)
+            cursor.execute("""
+                SELECT account, old_balance, new_balance, delta, category, recorded_at
+                FROM balance_adjustments
+                WHERE user_id=%s AND recorded_at >= %s
+                ORDER BY recorded_at ASC
+            """, (current_user.id, since))
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS balance_adjustments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
+                    account TEXT NOT NULL, old_balance REAL NOT NULL,
+                    new_balance REAL NOT NULL, delta REAL NOT NULL,
+                    category TEXT NOT NULL DEFAULT 'Various', recorded_at TEXT NOT NULL
+                )
+            """)
+            cursor.execute("""
+                SELECT account, old_balance, new_balance, delta, category, recorded_at
+                FROM balance_adjustments
+                WHERE user_id=? AND recorded_at >= ?
+                ORDER BY recorded_at ASC
+            """, (current_user.id, since))
+        rows = cursor.fetchall()
+        db.commit()
+    except Exception as e:
+        logger.debug(f"api_balance_adjustments error: {e}")
+        rows = []
+    cursor.close()
+    release_db(db)
+    result = [
+        {"account": r[0], "old_balance": float(r[1]), "new_balance": float(r[2]),
+         "delta": float(r[3]), "category": r[4], "recorded_at": str(r[5])}
+        for r in rows
+    ]
+    return {"ok": True, "adjustments": result}
 
 
 # --- CALENDAR PAGE ---

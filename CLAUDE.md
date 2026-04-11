@@ -38,14 +38,18 @@ GitHub: https://github.com/SanJulio/PPFS.git
 - `templates/transactions.html` — transaction list + category totals
 
 ## What was last worked on (April 2026)
-- **Financial Position card** on home page — replaces the old "Can I afford this?" card. Has a date slider (1–90 days) + manual date input that sync bidirectionally. Account filter pills. Per-account projection cards showing balance on date + net change. Income and bills mixed in chronological order inside each account card (green 💰 for income, red 📋 for bills). Integrated afford check with account dropdown at the bottom.
-- **Landing page cleanup** — bigger logo (80px), added Log In button alongside Get Started Free in hero, removed "Real results from real users" benefits section and "Join others who are taking control" social proof section.
-- **Login page** — logo bumped to 80px to match landing.
+- **Auto-apply scheduled items** — built a feature where recurring income/bills auto-post to accounts and the transaction log on their due date. Users see a banner ("X scheduled items ready to apply") with a Review & Apply modal. Settings > Display has a toggle to enable/disable and a payday cycle start day (1–28).
+- **Budget cycle** — `calculate_monthly_spending()` uses a user-defined cycle start day (stored in `users` table as `budget_cycle_start`, default 1). Home page shows "Cycle: Apr 1 – Apr 30" style dates.
+- **Profile panel** — slide-in panel from top-right avatar button: personal details, avatar picker, feedback form. Works across all pages via fixed header.
+- **Calendar widget** — small date widget (month/day) in the top bar, always shows today's date.
+
+## Known open issues (as of session end Apr 2026)
+- VS Code JS linter shows errors in `index.html` for Jinja expressions inside `<script>` blocks (e.g. `{{ pending_items | tojson }}`). These are **false positives** — the linter doesn't understand Jinja. The app works fine in the browser. Add a `.claudeignore` if linter noise becomes a problem.
+- The auto-apply modal "Review & Apply" was fixed to use `data-*` attributes on checkboxes (not JSON.parse on tojson — that broke due to HTML entity encoding). CSRF token moved to `<meta name="csrf-token">` in `<head>`.
 
 ## Commit style
 - No "Co-Authored-By: Claude..." trailer in commits — omit it always.
 
-## What's next (landing page focus)
-The user wants to keep shortening the landing page so it almost fits on one screen. In progress:
-- Landing page still has: Hero → Features (3 cards) → How it works (3 steps) → CTA section → Footer
-- Goal: tighten it further, potentially collapsing or removing more sections
+## What's next
+- Continue any remaining polish on auto-apply feature if needed
+- Landing page: still has Hero → Features → How it works → CTA → Footer; goal is to tighten further
