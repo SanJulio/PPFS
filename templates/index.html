@@ -59,9 +59,8 @@ html {
 body {
     background: #f2f4f7;
     padding-bottom: 140px;
-    padding-top: 56px;
 }
-.top-bar { position:fixed;top:0;left:0;right:0;height:52px;background:#fff;border-bottom:1px solid #eee;z-index:1039;display:flex;align-items:center;justify-content:space-between;padding:0 14px; }
+.top-bar { position:sticky;top:0;background:#fff;border-bottom:1px solid #eee;z-index:1039;display:flex;align-items:center;justify-content:space-between;padding:0 16px;height:60px; }
 :root { --brand: #6366f1; }
 .nav-active { color: var(--brand) !important; }
 .nav-active small { font-weight: 700; }
@@ -141,15 +140,15 @@ body.privacy-invisible .amounts-visible .amount-private {
 <body>
 <!-- Top bar -->
 <div class="top-bar">
-  <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:32px;object-fit:contain;"></a>
+  <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:34px;object-fit:contain;"></a>
   <div style="display:flex;align-items:center;gap:10px;">
     <a href="/calendar" class="text-decoration-none" title="Calendar">
-      <div style="width:32px;text-align:center;border:2px solid #ccc;border-radius:6px;overflow:hidden;line-height:1;">
-        <div style="background:#dc3545;color:#fff;font-size:8px;font-weight:700;padding:2px 0;letter-spacing:0.5px;" id="cal-month"></div>
-        <div style="font-size:14px;font-weight:700;color:#333;padding:2px 0;" id="cal-day"></div>
+      <div style="width:36px;text-align:center;border:2px solid #ddd;border-radius:7px;overflow:hidden;line-height:1;">
+        <div style="background:#dc3545;color:#fff;font-size:9px;font-weight:700;padding:2px 0;letter-spacing:0.5px;" id="cal-month"></div>
+        <div style="font-size:15px;font-weight:700;color:#333;padding:2px 0;" id="cal-day"></div>
       </div>
     </a>
-    <button id="profileBtn" onclick="openProfilePanel()" data-avatar="{{ current_user.avatar or '' }}" style="width:36px;height:36px;border-radius:50%;background:var(--brand,#5b5ef4);color:#fff;border:none;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;">{% if current_user.avatar %}{{ current_user.avatar }}{% else %}{%- set _pn = current_user.display_name or current_user.email.split('@')[0] %}{%- set _pp = _pn.replace('.', ' ').replace('_', ' ').split() -%}{{ (_pp[0][0] + (_pp[1][0] if _pp|length > 1 else '')) | upper }}{% endif %}</button>
+    <button id="profileBtn" onclick="openProfilePanel()" data-avatar="{{ current_user.avatar or '' }}" style="width:40px;height:40px;border-radius:50%;background:var(--brand,#5b5ef4);color:#fff;border:none;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;">{% if current_user.avatar %}{{ current_user.avatar }}{% else %}{%- set _pn = current_user.display_name or current_user.email.split('@')[0] %}{%- set _pp = _pn.replace('.', ' ').replace('_', ' ').split() -%}{{ (_pp[0][0] + (_pp[1][0] if _pp|length > 1 else '')) | upper }}{% endif %}</button>
   </div>
 </div>
 
@@ -386,6 +385,42 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
 <!-- Floating + button -->
 <button onclick="openQuickAdd()" style="position:fixed; bottom:85px; right:20px; z-index:9998; width:54px; height:54px; border-radius:50%; background:#111; color:#fff; border:none; font-size:26px; box-shadow:0 4px 14px rgba(0,0,0,0.25); cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1;">+</button>
 
+<!-- Floating A button (account balance adjust) -->
+<button onclick="openAdjustModal()" style="position:fixed; bottom:85px; right:82px; z-index:9998; width:54px; height:54px; border-radius:50%; background:#6366f1; color:#fff; border:none; font-size:18px; font-weight:700; box-shadow:0 4px 14px rgba(99,102,241,0.35); cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1;">A</button>
+
+<!-- Balance adjust modal -->
+<div id="adjustModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:10001; align-items:flex-end; justify-content:center;">
+  <div class="card p-4" style="width:100%; max-width:480px; border-radius:24px 24px 0 0; margin:0;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <span class="fw-bold" style="font-size:16px;">Adjust Balance</span>
+      <button onclick="closeAdjustModal()" style="background:none;border:none;font-size:20px;color:#aaa;cursor:pointer;">✕</button>
+    </div>
+    <div class="mb-3">
+      <label class="form-label fw-semibold" style="font-size:13px;">Account</label>
+      <select id="adj-account" class="form-select" style="font-size:15px;">
+        {% for acc in accounts %}
+        <option value="{{ acc }}">{{ acc }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="mb-3">
+      <label class="form-label fw-semibold" style="font-size:13px;">Amount (£) — positive to add, negative to subtract</label>
+      <input id="adj-amount" class="form-control" inputmode="decimal" placeholder="e.g. 50 or -20" style="font-size:22px; font-weight:700; text-align:center;">
+    </div>
+    <div class="mb-3">
+      <label class="form-label fw-semibold" style="font-size:13px;">Category</label>
+      <select id="adj-category" class="form-select" style="font-size:15px;">
+        <option selected>Various</option>
+        <option>Going out</option>
+        <option>Food</option>
+        <option>Activities</option>
+      </select>
+    </div>
+    <div id="adj-error" class="text-danger small mb-2" style="display:none;"></div>
+    <button id="adj-submit" onclick="submitAdjust()" class="btn w-100 py-3 rounded-4" style="background:#6366f1;color:#fff;font-size:15px;font-weight:700;">Adjust</button>
+  </div>
+</div>
+
 <div class="container py-4">
 <div class="mb-4" id="home">
   <div>
@@ -498,10 +533,14 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
   <div class="card p-3 mb-4" id="overviewCard">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0">Financial Overview</h5>
-    <button id="toggleAmountsBtn" onclick="toggleAmounts()" class="btn btn-sm" style="border-radius:999px; padding:6px 14px; font-size:13px; font-weight:600; background:white; border:2px solid #dee2e6; color:#555;">Show</button>
+    <div class="d-flex align-items-center gap-2">
+      <span class="text-muted" style="font-size:12px;">{{ cycle_start_date.strftime('%-d %b') }} – {{ cycle_end_date.strftime('%-d %b') }}</span>
+      <button id="toggleAmountsBtn" onclick="toggleAmounts()" class="btn btn-sm" style="border-radius:999px; padding:6px 14px; font-size:13px; font-weight:600; background:white; border:2px solid #dee2e6; color:#555;">Show</button>
+    </div>
   </div>
   <div class="row g-3">
 
+    <!-- Row 1: Available | Bills left -->
     <div class="col-6">
       <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('available')">
         <div class="d-flex justify-content-between align-items-center">
@@ -547,6 +586,7 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
       </div>
     </div>
 
+    <!-- Row 2: Safe to spend | Bills paid -->
     <div class="col-6">
       <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('safe')">
         <div class="d-flex justify-content-between align-items-center">
@@ -580,6 +620,66 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
     </div>
 
     <div class="col-6">
+      <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('billspaid')">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="text-muted small">Bills paid</div>
+          <span id="arrow-billspaid" class="fw-bold" style="font-size:13px;color:#111">+</span>
+        </div>
+        <div class="fs-4 fw-bold amount-private">£{{ "%.2f"|format(monthly.scheduled) }}</div>
+      </div>
+      <div id="tile-billspaid" class="d-none mt-2 px-1">
+        {% for t in monthly.bills_list %}
+        <div class="d-flex justify-content-between small py-1 border-bottom">
+          <span>{{ t.description }}</span>
+          <span class="fw-semibold text-danger amount-private">£{{ "%.2f"|format(t.amount) }}</span>
+        </div>
+        {% endfor %}
+        {% if not monthly.bills_list %}
+        <div class="small text-muted py-1">No bills paid this cycle yet</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Progress bar spanning both columns -->
+    {% set total_pot = monthly.total + [overview.safe_spending, 0]|max %}
+    {% if total_pot > 0 %}
+    {% set pct = (monthly.total / total_pot * 100)|round(0)|int %}
+    {% set pct_capped = [pct, 100]|min %}
+    {% if pct < 70 %}{% set bar_color = '#198754' %}{% elif pct < 90 %}{% set bar_color = '#f59e0b' %}{% else %}{% set bar_color = '#dc3545' %}{% endif %}
+    <div class="col-12">
+      <div class="progress rounded-pill" style="height:6px; background:#e9ecef;">
+        <div class="progress-bar rounded-pill" role="progressbar"
+          id="cycleProgressBar"
+          data-pct="{{ pct_capped }}"
+          data-color="{{ bar_color }}">
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Row 3: Income | Savings -->
+    <div class="col-6">
+      <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('income-cycle')">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="text-muted small">Income</div>
+          <span id="arrow-income-cycle" class="fw-bold" style="font-size:13px;color:#111">+</span>
+        </div>
+        <div class="fs-4 fw-bold text-success amount-private">£{{ "%.2f"|format(monthly.income_received) }}</div>
+      </div>
+      <div id="tile-income-cycle" class="d-none mt-2 px-1">
+        {% for t in monthly.income_list %}
+        <div class="d-flex justify-content-between small py-1 border-bottom">
+          <span>{{ t.description }}</span>
+          <span class="fw-semibold text-success amount-private">£{{ "%.2f"|format(t.amount) }}</span>
+        </div>
+        {% endfor %}
+        {% if not monthly.income_list %}
+        <div class="small text-muted py-1">No income this cycle yet</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-6">
       <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('savings')">
         <div class="d-flex justify-content-between align-items-center">
           <div class="text-muted small">Savings</div>
@@ -597,6 +697,7 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
       </div>
     </div>
 
+    <!-- Row 4: Net Worth full width -->
     <div class="col-12">
       <div class="p-3 bg-dark text-white rounded-4 tile" onclick="toggleTile('networth')">
         <div class="d-flex justify-content-between align-items-center">
@@ -618,199 +719,18 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
     </div>
 
   </div>
-</div>
 
-<div class="card p-3 mb-4" id="spendingCard">
-  <div class="d-flex justify-content-between align-items-start mb-1">
-    <h5 class="mb-0">Current Cycle</h5>
-    {% if days_to_payday == 1 %}
-    <span class="fw-bold" style="background:#d1fae5;color:#065f46;font-size:14px;border-radius:10px;padding:6px 14px;">🎉 Payday tomorrow</span>
-    {% elif days_to_payday == 0 %}
-    <span class="fw-bold" style="background:#d1fae5;color:#065f46;font-size:14px;border-radius:10px;padding:6px 14px;">🎉 Payday today!</span>
-    {% else %}
-    <span class="fw-bold" style="background:#f0f0f0;color:#111;font-size:14px;border-radius:10px;padding:6px 14px;">{{ days_to_payday }} days to payday</span>
-    {% endif %}
-  </div>
-  <div class="text-muted small mb-3">{{ cycle_start_date.strftime('%-d %b') }} – {{ cycle_end_date.strftime('%-d %b') }}</div>
-  <div class="row g-3">
-
-    <div class="col-4">
-      <div class="p-3 bg-white rounded-4 shadow-sm text-center tile" onclick="toggleTile('normal')">
-        <div class="d-flex justify-content-between align-items-center">
-          <div class="text-muted small">Normal</div>
-          <span id="arrow-normal" class="fw-bold" style="font-size:13px;color:#111">+</span>
-        </div>
-        <div class="fs-5 fw-bold amount-private">£{{ "%.2f"|format(monthly.normal) }}</div>
-      </div>
-      <div id="tile-normal" class="d-none mt-2 px-1">
-        {% for t in monthly.normal_list %}
-        <div class="d-flex justify-content-between small py-1 border-bottom">
-          <span>{{ t.description }}</span>
-          <span class="fw-semibold text-danger amount-private">£{{ "%.2f"|format(t.amount) }}</span>
-        </div>
-        {% endfor %}
-        {% if not monthly.normal_list %}
-        <div class="small text-muted py-1">No expenses this cycle yet</div>
-        {% endif %}
-      </div>
-    </div>
-
-    <div class="col-4">
-      <div class="p-3 bg-white rounded-4 shadow-sm text-center tile" onclick="toggleTile('billspaid')">
-        <div class="d-flex justify-content-between align-items-center">
-          <div class="text-muted small">Bills paid</div>
-          <span id="arrow-billspaid" class="fw-bold" style="font-size:13px;color:#111">+</span>
-        </div>
-        <div class="fs-5 fw-bold amount-private">£{{ "%.2f"|format(monthly.scheduled) }}</div>
-      </div>
-      <div id="tile-billspaid" class="d-none mt-2 px-1">
-        {% for t in monthly.bills_list %}
-        <div class="d-flex justify-content-between small py-1 border-bottom">
-          <span>{{ t.description }}</span>
-          <span class="fw-semibold text-danger amount-private">£{{ "%.2f"|format(t.amount) }}</span>
-        </div>
-        {% endfor %}
-        {% if not monthly.bills_list %}
-        <div class="small text-muted py-1">No bills paid this cycle yet</div>
-        {% endif %}
-      </div>
-    </div>
-
-    {% if monthly.income_received > 0 %}
-    <div class="col-4">
-      <div class="p-3 bg-white rounded-4 shadow-sm text-center tile" onclick="toggleTile('income-cycle')">
-        <div class="d-flex justify-content-between align-items-center">
-          <div class="text-muted small">Income</div>
-          <span id="arrow-income-cycle" class="fw-bold" style="font-size:13px;color:#111">+</span>
-        </div>
-        <div class="fs-5 fw-bold text-success amount-private">£{{ "%.2f"|format(monthly.income_received) }}</div>
-      </div>
-      <div id="tile-income-cycle" class="d-none mt-2 px-1">
-        {% for t in monthly.income_list %}
-        <div class="d-flex justify-content-between small py-1 border-bottom">
-          <span>{{ t.description }}</span>
-          <span class="fw-semibold text-success amount-private">£{{ "%.2f"|format(t.amount) }}</span>
-        </div>
-        {% endfor %}
-        {% if not monthly.income_list %}
-        <div class="small text-muted py-1">No income this cycle yet</div>
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
-
-    <div class="col-4">
-      <div class="p-3 bg-dark text-white rounded-4 text-center tile" onclick="toggleTile('outflow')">
-        <div class="d-flex justify-content-between align-items-center">
-          <div class="small">Outflow</div>
-          <span id="arrow-outflow" class="fw-bold" style="font-size:13px;color:#fff">+</span>
-        </div>
-        <div class="fs-5 fw-bold amount-private">£{{ "%.2f"|format(monthly.total) }}</div>
-      </div>
-      <div id="tile-outflow" class="d-none mt-2 px-1">
-        <div class="d-flex justify-content-between small py-1 border-bottom">
-          <span>Normal spending</span>
-          <span class="fw-semibold amount-private">£{{ "%.2f"|format(monthly.normal) }}</span>
-        </div>
-        <div class="d-flex justify-content-between small py-1">
-          <span>Bills paid</span>
-          <span class="fw-semibold amount-private">£{{ "%.2f"|format(monthly.scheduled) }}</span>
-        </div>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- Spending progress bar -->
-  {% set total_pot = monthly.total + [overview.safe_spending, 0]|max %}
-  {% if total_pot > 0 %}
-  {% set pct = (monthly.total / total_pot * 100)|round(0)|int %}
-  {% set pct_capped = [pct, 100]|min %}
-  {% if pct < 70 %}{% set bar_color = '#198754' %}{% elif pct < 90 %}{% set bar_color = '#f59e0b' %}{% else %}{% set bar_color = '#dc3545' %}{% endif %}
+  <!-- Can I afford this? -->
   <div class="mt-3">
-    <div class="d-flex justify-content-between small text-muted mb-1">
-      <span>£{{ "%.2f"|format(monthly.total) }} spent this cycle</span>
-      <span>{{ pct }}%</span>
-    </div>
-    <div class="progress rounded-pill" style="height:8px; background:#e9ecef;">
-      <div class="progress-bar rounded-pill" role="progressbar"
-        id="cycleProgressBar"
-        data-pct="{{ pct_capped }}"
-        data-color="{{ bar_color }}">
-      </div>
-    </div>
-    <div class="d-flex justify-content-between small text-muted mt-1">
-      <span></span>
-      <span>£{{ "%.2f"|format(overview.safe_spending) }} safe to spend</span>
-    </div>
+    <button onclick="document.getElementById('affordModal').style.display='flex'" class="btn w-100 rounded-4 py-2 fw-bold" style="background:var(--brand);color:#fff;font-size:14px;letter-spacing:0.01em;box-shadow:0 4px 12px rgba(99,102,241,0.3);">💬 Can I afford this?</button>
   </div>
-  {% endif %}
-
-  <!-- This week stat -->
-  {% if this_week_spent > 0 %}
-  <div class="d-flex align-items-center justify-content-between mt-3 pt-3" style="border-top:1px solid #f0f0f0;">
-    <span class="small text-muted">This week</span>
-    <span class="small fw-semibold amount-private">£{{ "%.2f"|format(this_week_spent) }} · {{ this_week_count }} transaction{{ 's' if this_week_count != 1 else '' }}</span>
-  </div>
-  {% endif %}
 
 </div>
-
-  <!-- Net worth trend (last 3–4 months) -->
-  {% if nw_trend and nw_trend|length > 1 %}
-  <div class="card p-3 mb-4" id="nwTrendCard"
-    data-labels="{{ nw_trend | map(attribute='month') | list | tojson | forceescape }}"
-    data-values="{{ nw_trend | map(attribute='value') | list | tojson | forceescape }}">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <h6 class="mb-0 fw-bold">Net Worth Trend</h6>
-      <a href="/forecast" class="small text-muted" style="text-decoration:none;">90-day forecast →</a>
-    </div>
-    <div style="height:100px;">
-      <canvas id="nwTrendChart"></canvas>
-    </div>
-  </div>
-  {% endif %}
 
   </div><!-- /tabOverview -->
 
   <!-- Tab panel: Future Balances -->
   <div id="tabFuture" style="display:none;">
-
-  <!-- Can I afford this — floating button + modal -->
-  <button onclick="document.getElementById('affordModal').style.display='flex'" class="btn w-100 mb-3 rounded-4 py-3 fw-bold" style="background:var(--brand);color:#fff;font-size:15px;letter-spacing:0.01em;box-shadow:0 4px 12px rgba(99,102,241,0.3);">💬 Can I afford this?</button>
-
-  <div id="affordModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:20px;">
-    <div class="card p-4" style="max-width:480px; width:100%; border-radius:24px 24px 24px 24px;">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="mb-0 fw-bold">Can I afford this?</h5>
-        <button onclick="document.getElementById('affordModal').style.display='none'" class="btn btn-sm btn-outline-secondary rounded-3">✕</button>
-      </div>
-      <div class="mb-2 text-muted small">Based on your projected balance on the selected date.</div>
-      <div class="row g-2 mb-3">
-        <div class="col">
-          <input id="snapshotAffordInput" class="form-control" inputmode="decimal"
-            placeholder="Amount (e.g. 200)" style="border-radius:12px !important; font-size:15px !important;">
-        </div>
-        <div class="col-auto">
-          <select id="snapshotAffordAccount" class="form-select"
-            style="border-radius:12px !important; font-size:13px !important; padding:10px 12px !important;">
-            {% for b in balances %}
-            {% if b.type in ['current', 'cash'] %}
-            <option value="{{ b.name }}">{{ b.name }}</option>
-            {% endif %}
-            {% endfor %}
-          </select>
-        </div>
-      </div>
-      <div class="mb-3">
-        <label class="form-label small fw-semibold mb-1">On date</label>
-        <input type="date" id="affordDateInput" class="form-control"
-          style="border-radius:12px !important; font-size:14px !important; padding:10px !important;">
-      </div>
-      <button onclick="checkSnapshotAfford()" class="btn btn-dark w-100 py-2 rounded-3 mb-2">Check</button>
-      <div id="snapshotAffordResult"></div>
-    </div>
-  </div>
 
   <div class="card p-3 mb-4" id="snapshot">
   <div class="d-flex align-items-center justify-content-between mb-3">
@@ -1018,6 +938,40 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
   
 
 </div>
+<!-- Can I afford this modal (fixed, outside tabs so it always renders) -->
+<div id="affordModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:20px;">
+  <div class="card p-4" style="max-width:480px; width:100%; border-radius:24px 24px 24px 24px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0 fw-bold">Can I afford this?</h5>
+      <button onclick="document.getElementById('affordModal').style.display='none'" class="btn btn-sm btn-outline-secondary rounded-3">✕</button>
+    </div>
+    <div class="mb-2 text-muted small">Based on your projected balance on the selected date.</div>
+    <div class="row g-2 mb-3">
+      <div class="col">
+        <input id="snapshotAffordInput" class="form-control" inputmode="decimal"
+          placeholder="Amount (e.g. 200)" style="border-radius:12px !important; font-size:15px !important;">
+      </div>
+      <div class="col-auto">
+        <select id="snapshotAffordAccount" class="form-select"
+          style="border-radius:12px !important; font-size:13px !important; padding:10px 12px !important;">
+          {% for b in balances %}
+          {% if b.type in ['current', 'cash'] %}
+          <option value="{{ b.name }}">{{ b.name }}</option>
+          {% endif %}
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label small fw-semibold mb-1">On date</label>
+      <input type="date" id="affordDateInput" class="form-control"
+        style="border-radius:12px !important; font-size:14px !important; padding:10px !important;">
+    </div>
+    <button onclick="checkSnapshotAfford()" class="btn btn-dark w-100 py-2 rounded-3 mb-2">Check</button>
+    <div id="snapshotAffordResult"></div>
+  </div>
+</div>
+
 <nav class="navbar fixed-bottom bg-white border-top">
   <div class="container-fluid d-flex justify-content-around text-center">
     <a href="/" class="text-decoration-none nav-active">
@@ -1044,7 +998,7 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
 </nav>
 <script>
 // Toggle button to show/hide financial figures
-const privateCards = [document.getElementById('overviewCard'), document.getElementById('spendingCard')];
+const privateCards = [document.getElementById('overviewCard')];
 let amountsVisible = false;
 
 // Apply display prefs from settings
@@ -1257,6 +1211,62 @@ function submitQuickAdd() {
 document.getElementById('quickAddModal').addEventListener('click', function(e) {
   if (e.target === this) closeQuickAdd();
 });
+
+// --- BALANCE ADJUST ---
+function openAdjustModal() {
+  document.getElementById('adj-amount').value = '';
+  document.getElementById('adj-error').style.display = 'none';
+  document.getElementById('adjustModal').style.display = 'flex';
+  document.getElementById('adj-amount').focus();
+}
+function closeAdjustModal() {
+  document.getElementById('adjustModal').style.display = 'none';
+}
+document.getElementById('adjustModal').addEventListener('click', function(e) {
+  if (e.target === this) closeAdjustModal();
+});
+function submitAdjust() {
+  var amount = document.getElementById('adj-amount').value.trim();
+  var account = document.getElementById('adj-account').value;
+  var category = document.getElementById('adj-category').value;
+  var errEl = document.getElementById('adj-error');
+  var btn = document.getElementById('adj-submit');
+
+  if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) === 0) {
+    errEl.textContent = 'Please enter a non-zero amount.';
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Adjusting...';
+
+  var body = new URLSearchParams();
+  body.append('csrf_token', HOME_CSRF);
+  body.append('amount', amount);
+  body.append('account', account);
+  body.append('category', category);
+
+  fetch('/quick-adjust', { method: 'POST', body: body })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      btn.textContent = 'Adjust';
+      if (data.ok) {
+        closeAdjustModal();
+        location.reload();
+      } else {
+        errEl.textContent = data.error || 'Something went wrong.';
+        errEl.style.display = 'block';
+      }
+    })
+    .catch(function() {
+      btn.disabled = false;
+      btn.textContent = 'Adjust';
+      errEl.textContent = 'Network error. Try again.';
+      errEl.style.display = 'block';
+    });
+}
 
 // ONBOARDING FUNCTIONS
 var onboardingAccountName = '';
@@ -1479,27 +1489,6 @@ function submitAutoApply() {
 (function() {
   var bar = document.getElementById('cycleProgressBar');
   if (bar) { bar.style.width = bar.dataset.pct + '%'; bar.style.background = bar.dataset.color; }
-})();
-(function() {
-  var card = document.getElementById('nwTrendCard');
-  if (!card || typeof Chart === 'undefined') return;
-  var labels = JSON.parse(card.getAttribute('data-labels') || '[]');
-  var values = JSON.parse(card.getAttribute('data-values') || '[]');
-  if (values.length < 2) return;
-  var positive = values[values.length - 1] >= values[0];
-  var color = positive ? '#10b981' : '#ef4444';
-  new Chart(document.getElementById('nwTrendChart').getContext('2d'), {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [{ data: values, borderColor: color, backgroundColor: color + '18', borderWidth: 2, pointRadius: 3, pointBackgroundColor: color, fill: true, tension: 0.3 }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(c) { return '\u00a3' + c.raw.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); } } } },
-      scales: { x: { grid: { display: false }, ticks: { font: { size: 11 } } }, y: { display: false } }
-    }
-  });
 })();
 </script>
 <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>

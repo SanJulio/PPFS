@@ -21,8 +21,8 @@ html { scroll-behavior: smooth; scroll-padding-bottom: 110px; }
 .navbar small { font-size: 11px; }
 .navbar a { display:flex; flex-direction:column; align-items:center; }
 .fixed-bottom { position: fixed !important; bottom: 0; left: 0; right: 0; z-index: 9999; }
-body { background: #f2f4f7; padding-bottom: 110px; padding-top: 56px; }
-.top-bar { position:fixed;top:0;left:0;right:0;height:52px;background:#fff;border-bottom:1px solid #eee;z-index:1039;display:flex;align-items:center;justify-content:space-between;padding:0 14px; }
+body { background: #f2f4f7; padding-bottom: 110px; }
+.top-bar { position:sticky;top:0;background:#fff;border-bottom:1px solid #eee;z-index:1039;display:flex;align-items:center;justify-content:space-between;padding:0 16px;height:60px; }
 .card { border-radius: 18px; border: none; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
 .badge-soft {
   background: rgba(0,0,0,0.06);
@@ -48,9 +48,18 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
 </head>
 <body>
 <div class="top-bar">
-  <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:32px;object-fit:contain;"></a>
-  <button id="profileBtn" onclick="openProfilePanel()" data-avatar="{{ current_user.avatar or '' }}" style="width:36px;height:36px;border-radius:50%;background:var(--brand,#5b5ef4);color:#fff;border:none;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;">{% if current_user.avatar %}{{ current_user.avatar }}{% else %}{%- set _pn = current_user.display_name or current_user.email.split('@')[0] %}{%- set _pp = _pn.replace('.', ' ').replace('_', ' ').split() -%}{{ (_pp[0][0] + (_pp[1][0] if _pp|length > 1 else '')) | upper }}{% endif %}</button>
+  <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:34px;object-fit:contain;"></a>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <a href="/calendar" class="text-decoration-none" title="Calendar">
+      <div style="width:36px;text-align:center;border:2px solid #ddd;border-radius:7px;overflow:hidden;line-height:1;">
+        <div style="background:#dc3545;color:#fff;font-size:9px;font-weight:700;padding:2px 0;letter-spacing:0.5px;" id="cal-month"></div>
+        <div style="font-size:15px;font-weight:700;color:#333;padding:2px 0;" id="cal-day"></div>
+      </div>
+    </a>
+    <button id="profileBtn" onclick="openProfilePanel()" data-avatar="{{ current_user.avatar or '' }}" style="width:40px;height:40px;border-radius:50%;background:var(--brand,#5b5ef4);color:#fff;border:none;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;">{% if current_user.avatar %}{{ current_user.avatar }}{% else %}{%- set _pn = current_user.display_name or current_user.email.split('@')[0] %}{%- set _pp = _pn.replace('.', ' ').replace('_', ' ').split() -%}{{ (_pp[0][0] + (_pp[1][0] if _pp|length > 1 else '')) | upper }}{% endif %}</button>
+  </div>
 </div>
+<script>(function(){var d=new Date();document.getElementById('cal-month').textContent=d.toLocaleString('default',{month:'short'}).toUpperCase();document.getElementById('cal-day').textContent=d.getDate();})();</script>
 
 <div class="container py-4">
 

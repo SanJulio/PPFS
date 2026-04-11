@@ -1658,6 +1658,46 @@ def quick_add():
     return {"ok": True, "amount": abs(amount), "account": account, "type": tx_type}
 
 
+# --- QUICK ADJUST (AJAX) ---
+# Balance adjustment from the home screen A-button — accepts signed amounts
+@app.post("/quick-adjust")
+@login_required
+def quick_adjust():
+    amount_raw = (request.form.get("amount") or "").strip()
+    account = (request.form.get("account") or "").strip()
+    category = (request.form.get("category") or "Various").strip()
+
+    if not amount_raw or not account:
+        return {"ok": False, "error": "Missing amount or account"}, 400
+
+    try:
+        amount = float(amount_raw)
+        if amount == 0:
+            return {"ok": False, "error": "Amount must be non-zero"}, 400
+    except (ValueError, TypeError):
+        return {"ok": False, "error": "Amount must be a valid number"}, 400
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT id FROM accounts WHERE name=%s AND user_id=%s", (account, current_user.id))
+    else:
+        cursor.execute("SELECT id FROM accounts WHERE name=? AND user_id=?", (account, current_user.id))
+    row = cursor.fetchone()
+    cursor.close()
+    release_db(db)
+
+    if not row:
+        return {"ok": False, "error": "Account not found"}, 400
+
+    today_str = date.today().isoformat()
+    add_transaction(today_str, "Balance adjustment", amount, account, current_user.id, type="adjustment", category=category)
+    update_account_balance(account, amount, current_user.id)
+    bust_forecast_cache(current_user.id)
+    track('action.balance_adjust')
+    return {"ok": True, "amount": amount, "account": account}
+
+
 # --- CALENDAR PAGE ---
 # Shows monthly transaction calendar — day totals rendered client-side, detail loaded via AJAX
 @app.get("/calendar")
@@ -2508,12 +2548,28 @@ def settings_edit_account():
     db = get_db()
     cursor = db.cursor()
     try:
+        # Fetch current balance to detect changes
+        if USE_POSTGRES:
+            cursor.execute("SELECT balance FROM accounts WHERE id=%s AND user_id=%s", (account_id, current_user.id))
+        else:
+            cursor.execute("SELECT balance FROM accounts WHERE id=? AND user_id=?", (account_id, current_user.id))
+        row = cursor.fetchone()
+        old_balance = float(row[0]) if row else None
+
         if USE_POSTGRES:
             cursor.execute("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS savings_rate DECIMAL(5,2) DEFAULT 0")
             cursor.execute("UPDATE accounts SET name=%s, type=%s, balance=%s, savings_rate=%s WHERE id=%s AND user_id=%s", (name, acc_type, balance, savings_rate, account_id, current_user.id))
         else:
             cursor.execute("UPDATE accounts SET name=?, type=?, balance=? WHERE id=? AND user_id=?", (name, acc_type, balance, account_id, current_user.id))
         db.commit()
+
+        # Log balance change as a transaction for forecast tracking
+        if old_balance is not None:
+            delta = round(balance - old_balance, 2)
+            if abs(delta) > 0.001:
+                today_str = date.today().isoformat()
+                add_transaction(today_str, "Balance adjustment (manage)", delta, name, current_user.id, type="adjustment", category="Various")
+                bust_forecast_cache(current_user.id)
     except Exception as e:
         db.rollback()
         logger.debug(f"edit_account error: {e}")
