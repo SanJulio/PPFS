@@ -3534,27 +3534,31 @@ def register():
 @app.post("/register")
 @limiter.limit("5 per minute")
 def register_post():
+    display_name = (request.form.get("display_name") or "").strip()
     email = (request.form.get("email") or "").strip().lower()
     password = (request.form.get("password") or "").strip()
     confirm = (request.form.get("confirm") or "").strip()
 
+    if not display_name:
+        return render_template("register.html", error="Please enter your name.", submitted_name=display_name)
+
     if not email or not password:
-        return render_template("register.html", error="All fields are required.")
+        return render_template("register.html", error="All fields are required.", submitted_name=display_name)
 
     if password != confirm:
-        return render_template("register.html", error="Passwords do not match.")
+        return render_template("register.html", error="Passwords do not match.", submitted_name=display_name)
 
     if len(password) < 8:
-        return render_template("register.html", error="Password must be at least 8 characters.")
+        return render_template("register.html", error="Password must be at least 8 characters.", submitted_name=display_name)
 
     if not any(c.isupper() for c in password):
-        return render_template("register.html", error="Password must contain at least one uppercase letter.")
+        return render_template("register.html", error="Password must contain at least one uppercase letter.", submitted_name=display_name)
 
     if not any(c.isdigit() for c in password):
-        return render_template("register.html", error="Password must contain at least one number.")
+        return render_template("register.html", error="Password must contain at least one number.", submitted_name=display_name)
 
     if not request.form.get("age_confirm"):
-        return render_template("register.html", error="You must confirm you are 16 or over.")
+        return render_template("register.html", error="You must confirm you are 16 or over.", submitted_name=display_name)
 
     db = get_db()
     cursor = db.cursor()
@@ -3569,7 +3573,7 @@ def register_post():
     if existing:
         cursor.close()
         release_db(db)
-        return render_template("register.html", error="An account with that email already exists.")
+        return render_template("register.html", error="An account with that email already exists.", submitted_name=display_name)
 
     hashed = generate_password_hash(password)
     today_str = date.today().isoformat()
@@ -3579,14 +3583,14 @@ def register_post():
 
     if USE_POSTGRES:
         cursor.execute(
-            "INSERT INTO users (email, password, created_at, verify_token, verify_token_expires_at) VALUES (%s, %s, %s, %s, %s) RETURNING id",
-            (email, hashed, today_str, token, expires_at)
+            "INSERT INTO users (email, password, display_name, created_at, verify_token, verify_token_expires_at) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+            (email, hashed, display_name, today_str, token, expires_at)
         )
         user_id = cursor.fetchone()[0]
     else:
         cursor.execute(
-            "INSERT INTO users (email, password, created_at, verify_token, verify_token_expires_at) VALUES (?, ?, ?, ?, ?)",
-            (email, hashed, today_str, token, expires_at)
+            "INSERT INTO users (email, password, display_name, created_at, verify_token, verify_token_expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (email, hashed, display_name, today_str, token, expires_at)
         )
         user_id = cursor.lastrowid
 

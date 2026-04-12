@@ -36,6 +36,10 @@ input { border-radius: 12px !important; padding: 12px !important; font-size: 16p
 
         <form method="POST" action="/register">
           <div class="mb-3">
+            <label class="form-label">Your name</label>
+            <input class="form-control" name="display_name" type="text" placeholder="e.g. Alex" autocomplete="given-name" required maxlength="60" value="{{ submitted_name or '' }}">
+          </div>
+          <div class="mb-3">
             <label class="form-label">Email</label>
             <input class="form-control" name="email" type="email" placeholder="you@example.com" required>
           </div>
