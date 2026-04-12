@@ -15,6 +15,9 @@ html, body { min-height: 100vh; background: #f2f4f7; }
 .card { border-radius: 18px; border: none; box-shadow: 0 6px 18px rgba(0,0,0,0.08); }
 input { border-radius: 12px !important; padding: 12px !important; font-size: 16px !important; }
 .form-label { font-weight: 600; }
+.pw-rule { font-size: 13px; color: #888; margin-bottom: 4px; transition: color 0.15s; }
+.pw-rule:last-child { margin-bottom: 0; }
+.pw-rule.met { color: #059669; }
 </style>
 </head>
 <body>
@@ -45,11 +48,14 @@ input { border-radius: 12px !important; padding: 12px !important; font-size: 16p
           </div>
           <div class="mb-3">
             <label class="form-label">Password</label>
-            <input class="form-control" id="passwordInput" name="password" type="password" placeholder="At least 8 characters" required>
-            <div style="height:4px; border-radius:4px; background:#e9ecef; margin-top:8px; overflow:hidden;">
-              <div id="strengthBar" style="height:100%; width:0%; border-radius:4px; transition:width 0.3s ease, background 0.3s ease;"></div>
+            <input class="form-control" id="passwordInput" name="password" type="password" placeholder="Create a password" required>
+            <div id="pwChecklist" style="margin-top:10px; display:none; background:#f8f9fa; border-radius:10px; padding:10px 12px;">
+              <div id="chk-len"    class="pw-rule">&#x25CB; At least 8 characters</div>
+              <div id="chk-upper"  class="pw-rule">&#x25CB; One uppercase letter</div>
+              <div id="chk-lower"  class="pw-rule">&#x25CB; One lowercase letter</div>
+              <div id="chk-number" class="pw-rule">&#x25CB; One number</div>
+              <div id="chk-symbol" class="pw-rule">&#x25CB; One symbol (!@#$…)</div>
             </div>
-            <div id="strengthText" class="form-text small mt-1" style="min-height:18px;"></div>
           </div>
           <div class="mb-4">
             <label class="form-label">Confirm Password</label>
@@ -92,33 +98,23 @@ document.querySelectorAll('form:not([onsubmit])').forEach(function(form) {
 });
 
 document.getElementById('passwordInput').addEventListener('input', function() {
-  const val = this.value;
-  const bar = document.getElementById('strengthBar');
-  const text = document.getElementById('strengthText');
+  var val = this.value;
+  var list = document.getElementById('pwChecklist');
+  list.style.display = val.length > 0 ? 'block' : 'none';
 
-  const hasLength = val.length >= 8;
-  const hasUpper = /[A-Z]/.test(val);
-  const hasNumber = /[0-9]/.test(val);
-  const score = [hasLength, hasUpper, hasNumber].filter(Boolean).length;
-
-  const levels = [
-    { width: '0%',   bg: '',        label: '' },
-    { width: '33%',  bg: '#dc3545', label: 'Weak' },
-    { width: '66%',  bg: '#fd7e14', label: 'Almost there' },
-    { width: '100%', bg: '#198754', label: 'Strong ✓' },
+  var rules = [
+    { id: 'chk-len',    ok: val.length >= 8,              label: 'At least 8 characters' },
+    { id: 'chk-upper',  ok: /[A-Z]/.test(val),            label: 'One uppercase letter' },
+    { id: 'chk-lower',  ok: /[a-z]/.test(val),            label: 'One lowercase letter' },
+    { id: 'chk-number', ok: /[0-9]/.test(val),            label: 'One number' },
+    { id: 'chk-symbol', ok: /[^A-Za-z0-9]/.test(val),    label: 'One symbol (!@#$\u2026)' },
   ];
 
-  if (val.length === 0) {
-    bar.style.width = '0%';
-    text.textContent = '';
-    text.style.color = '';
-  } else {
-    const level = levels[score];
-    bar.style.width = level.width;
-    bar.style.background = level.bg;
-    text.textContent = level.label;
-    text.style.color = level.bg;
-  }
+  rules.forEach(function(r) {
+    var el = document.getElementById(r.id);
+    el.textContent = (r.ok ? '\u25CF ' : '\u25CB ') + r.label;
+    el.classList.toggle('met', r.ok);
+  });
 });
 </script>
 </body>

@@ -3545,6 +3545,32 @@ def register_post():
     if not email or not password:
         return render_template("register.html", error="All fields are required.", submitted_name=display_name)
 
+    # Block disposable / throwaway email domains
+    _DISPOSABLE_DOMAINS = {
+        "mailinator.com","guerrillamail.com","guerrillamail.net","guerrillamail.org",
+        "guerrillamail.biz","guerrillamail.de","guerrillamailblock.com","grr.la",
+        "sharklasers.com","spam4.me","tempmail.com","temp-mail.org","temp-mail.io",
+        "throwam.com","throwam.net","throwaway.email","dispostable.com","maildrop.cc",
+        "yopmail.com","yopmail.fr","cool.fr.nf","jetable.fr.nf","nospam.ze.tc",
+        "nomail.xl.cx","mega.zik.dj","speed.1s.fr","courriel.fr.nf","moncourrier.fr.nf",
+        "monemail.fr.nf","monmail.fr.nf","trashmail.com","trashmail.at","trashmail.io",
+        "trashmail.me","trashmail.net","trashmail.org","trashmail.xyz","discard.email",
+        "fakeinbox.com","mailnull.com","spamgourmet.com","spamgourmet.net","spamgourmet.org",
+        "getairmail.com","filzmail.com","spamfree24.org","spamfree24.de","spamfree24.info",
+        "spamfree24.net","spamfree.eu","spammotel.com","spamslicer.com","trashdevil.com",
+        "trashdevil.de","wegwerfmail.de","wegwerfmail.net","wegwerfmail.org",
+        "crazymailing.com","spambox.us","spam.la","binkmail.com","bobmail.info",
+        "mailinatar.com","mailinator2.com","mailinator.us","notmailinator.com",
+        "getnada.com","mohmal.com","burnermail.io","10minutemail.com","10minutemail.net",
+        "10minutemail.org","10minutemail.de","minutemail.com","tempinbox.com",
+        "throwam.com","spamhereplease.com","spamherelots.com","emailondeck.com",
+        "inoutmail.de","inoutmail.eu","inoutmail.info","inoutmail.net",
+        "anonaddy.com","simplelogin.io",
+    }
+    email_domain = email.split("@")[-1] if "@" in email else ""
+    if email_domain in _DISPOSABLE_DOMAINS:
+        return render_template("register.html", error="Please use a real email address — disposable addresses aren't accepted.", submitted_name=display_name)
+
     if password != confirm:
         return render_template("register.html", error="Passwords do not match.", submitted_name=display_name)
 
@@ -3554,8 +3580,14 @@ def register_post():
     if not any(c.isupper() for c in password):
         return render_template("register.html", error="Password must contain at least one uppercase letter.", submitted_name=display_name)
 
+    if not any(c.islower() for c in password):
+        return render_template("register.html", error="Password must contain at least one lowercase letter.", submitted_name=display_name)
+
     if not any(c.isdigit() for c in password):
         return render_template("register.html", error="Password must contain at least one number.", submitted_name=display_name)
+
+    if not any(not c.isalnum() for c in password):
+        return render_template("register.html", error="Password must contain at least one symbol (e.g. !@#$).", submitted_name=display_name)
 
     if not request.form.get("age_confirm"):
         return render_template("register.html", error="You must confirm you are 16 or over.", submitted_name=display_name)
