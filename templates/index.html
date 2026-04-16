@@ -1350,11 +1350,20 @@ function submitAdjust() {
 var onboardingAccountName = '';
 var currentOnboardingStep = 1;
 
+var ONBOARDING_BTN_LABELS = {2: 'Create account →', 3: 'Add income →', 4: 'Add bill →'};
 function onboardingStep(step) {
   currentOnboardingStep = step;
   document.querySelectorAll('.onboarding-step').forEach(el => el.style.display = 'none');
   const stepEl = document.getElementById('step-' + step);
-  if (stepEl) stepEl.style.display = 'block';
+  if (stepEl) {
+    stepEl.style.display = 'block';
+    // Re-enable any submit button that may have been disabled during a previous attempt
+    var btn = stepEl.querySelector('button.btn-dark:not(.btn-link)');
+    if (btn && ONBOARDING_BTN_LABELS[step]) {
+      btn.disabled = false;
+      btn.textContent = ONBOARDING_BTN_LABELS[step];
+    }
+  }
   [1, 2, 3, 4, 5].forEach(i => {
     var dot = document.getElementById('dot-' + i);
     if (dot) dot.style.background = i === step ? '#111' : '#ddd';
