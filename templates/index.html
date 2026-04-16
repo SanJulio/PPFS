@@ -1378,8 +1378,7 @@ function createOnboardingAccount(btn) {
     return;
   }
 
-  // Get CSRF token from any input on the page
-  const csrfToken = document.querySelector('input[name="csrf_token"]')?.value;
+  const csrfToken = HOME_CSRF || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
   if (!csrfToken) {
     alert('Security token missing. Please refresh and try again.');
     return;
