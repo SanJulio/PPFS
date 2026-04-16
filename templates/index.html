@@ -157,7 +157,7 @@ body.privacy-invisible .amounts-visible .amount-private {
 
 <!-- ONBOARDING MODAL -->
 {% if show_onboarding %}
-<script>if (localStorage.getItem('spendara_ob_dismissed')) { document.addEventListener('DOMContentLoaded', function(){ var o=document.getElementById('onboardingOverlay'); if(o) o.style.display='none'; }); }</script>
+<script>if (localStorage.getItem('spendara_ob_dismissed_{{ current_user.id }}')) { document.addEventListener('DOMContentLoaded', function(){ var o=document.getElementById('onboardingOverlay'); if(o) o.style.display='none'; }); }</script>
 <div id="onboardingOverlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;">
   <div class="card" style="width: 100%; max-width: 500px; margin: 20px; position:relative;">
     <button onclick="closeOnboarding()" style="position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;line-height:1;color:#aaa;cursor:pointer;z-index:1;">✕</button>
@@ -1455,7 +1455,7 @@ function createOnboardingBill(btn) {
 }
 
 function closeOnboarding() {
-  localStorage.setItem('spendara_ob_dismissed', '1');
+  localStorage.setItem('spendara_ob_dismissed_{{ current_user.id }}', '1');
   const overlay = document.getElementById('onboardingOverlay');
   if (overlay) overlay.style.display = 'none';
 }

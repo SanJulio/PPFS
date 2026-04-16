@@ -291,17 +291,57 @@ def send_verification_email(to_email, token):
     send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
         to=[{"email": to_email}],
         sender={"email": "noreply@spendara.co.uk", "name": "Spendara"},
-        subject="Verify your Spendara account",
-        html_content=f"""
-        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto;">
-            <h2 style="color: #111;">Welcome to Spendara! 👋</h2>
-            <p>Thanks for signing up. Please verify your email address to get started.</p>
-            <a href="{verify_url}" style="display:inline-block; background:#111; color:#fff; padding:12px 24px; border-radius:12px; text-decoration:none; font-weight:bold;">
-                Verify Email
-            </a>
-            <p style="color:#999; font-size:12px; margin-top:24px;">If you didn't sign up for Spendara, you can ignore this email.</p>
-        </div>
-        """
+        reply_to={"email": "hello@spendara.co.uk", "name": "Spendara"},
+        subject="Confirm your email – Spendara",
+        html_content=f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f2f4f7;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f7;padding:40px 0;">
+  <tr><td align="center">
+    <table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+      <!-- Header -->
+      <tr><td align="center" style="padding:32px 32px 24px;">
+        <img src="https://spendara.co.uk/static/6000-logo.png" alt="Spendara" height="56" style="display:block;height:56px;object-fit:contain;">
+      </td></tr>
+      <!-- Body -->
+      <tr><td style="padding:0 32px 32px;">
+        <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#111;">Confirm your email address</h1>
+        <p style="margin:0 0 24px;font-size:15px;color:#444;line-height:1.6;">
+          Thanks for signing up to Spendara — your personal finance tracker.<br>
+          Click the button below to verify your email and get started.
+        </p>
+        <table cellpadding="0" cellspacing="0"><tr><td>
+          <a href="{verify_url}" style="display:inline-block;background:#111111;color:#ffffff;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;">
+            Verify my email
+          </a>
+        </td></tr></table>
+        <p style="margin:24px 0 0;font-size:12px;color:#999;line-height:1.5;">
+          This link expires in 7 days. If you didn't create a Spendara account you can safely ignore this email.
+        </p>
+      </td></tr>
+      <!-- Footer -->
+      <tr><td style="padding:20px 32px;background:#f8f9fa;border-top:1px solid #eee;">
+        <p style="margin:0;font-size:11px;color:#aaa;text-align:center;">
+          Spendara · <a href="https://spendara.co.uk" style="color:#aaa;">spendara.co.uk</a>
+        </p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>""",
+        text_content=f"""Confirm your email – Spendara
+
+Thanks for signing up to Spendara, your personal finance tracker.
+
+Verify your email address by visiting this link:
+{verify_url}
+
+This link expires in 7 days. If you didn't create a Spendara account you can safely ignore this email.
+
+— Spendara · https://spendara.co.uk
+"""
     )
 
     try:
