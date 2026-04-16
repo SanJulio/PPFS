@@ -300,16 +300,9 @@ def send_verification_email(to_email, token):
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f7;padding:40px 16px;">
   <tr><td align="center">
     <table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:16px;overflow:hidden;">
-      <!-- Brand header -->
-      <tr><td align="center" style="padding:32px 32px 20px;background:#ffffff;">
-        <div style="font-size:26px;font-weight:900;color:#6366f1;letter-spacing:-0.5px;">Spendara</div>
-        <div style="font-size:12px;color:#aaa;margin-top:2px;">Your personal finance tracker</div>
-      </td></tr>
-      <!-- Divider -->
-      <tr><td style="padding:0 32px;"><div style="height:1px;background:#f0f0f0;"></div></td></tr>
       <!-- Body -->
-      <tr><td style="padding:28px 32px 32px;">
-        <h1 style="margin:0 0 12px;font-size:20px;font-weight:700;color:#111;">Confirm your email address</h1>
+      <tr><td style="padding:32px 32px 32px;">
+        <h1 style="margin:0 0 12px;font-size:20px;font-weight:700;color:#111;">Welcome to Spendara 👋</h1>
         <p style="margin:0 0 24px;font-size:15px;color:#555;line-height:1.6;">
           Thanks for signing up. Click the button below to verify your email and get started with Spendara.
         </p>
