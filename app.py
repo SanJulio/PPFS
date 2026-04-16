@@ -290,40 +290,43 @@ def send_verification_email(to_email, token):
 
     send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
         to=[{"email": to_email}],
-        sender={"email": "noreply@spendara.co.uk", "name": "Spendara"},
+        sender={"email": "hello@spendara.co.uk", "name": "Spendara"},
         reply_to={"email": "hello@spendara.co.uk", "name": "Spendara"},
-        subject="Confirm your email – Spendara",
+        subject="Confirm your Spendara account",
         html_content=f"""<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f2f4f7;font-family:Arial,Helvetica,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f7;padding:40px 0;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f7;padding:40px 16px;">
   <tr><td align="center">
-    <table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-      <!-- Header -->
-      <tr><td align="center" style="padding:32px 32px 24px;">
-        <img src="https://spendara.co.uk/static/6000-logo.png" alt="Spendara" height="56" style="display:block;height:56px;object-fit:contain;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:16px;overflow:hidden;">
+      <!-- Brand header -->
+      <tr><td align="center" style="padding:32px 32px 20px;background:#ffffff;">
+        <div style="font-size:26px;font-weight:900;color:#6366f1;letter-spacing:-0.5px;">Spendara</div>
+        <div style="font-size:12px;color:#aaa;margin-top:2px;">Your personal finance tracker</div>
       </td></tr>
+      <!-- Divider -->
+      <tr><td style="padding:0 32px;"><div style="height:1px;background:#f0f0f0;"></div></td></tr>
       <!-- Body -->
-      <tr><td style="padding:0 32px 32px;">
-        <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#111;">Confirm your email address</h1>
-        <p style="margin:0 0 24px;font-size:15px;color:#444;line-height:1.6;">
-          Thanks for signing up to Spendara — your personal finance tracker.<br>
-          Click the button below to verify your email and get started.
+      <tr><td style="padding:28px 32px 32px;">
+        <h1 style="margin:0 0 12px;font-size:20px;font-weight:700;color:#111;">Confirm your email address</h1>
+        <p style="margin:0 0 24px;font-size:15px;color:#555;line-height:1.6;">
+          Thanks for signing up. Click the button below to verify your email and get started with Spendara.
         </p>
-        <table cellpadding="0" cellspacing="0"><tr><td>
-          <a href="{verify_url}" style="display:inline-block;background:#111111;color:#ffffff;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;">
-            Verify my email
+        <table cellpadding="0" cellspacing="0" style="margin-bottom:24px;"><tr><td>
+          <a href="{verify_url}" style="display:inline-block;background:#6366f1;color:#ffffff;padding:14px 36px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;">
+            Confirm email
           </a>
         </td></tr></table>
-        <p style="margin:24px 0 0;font-size:12px;color:#999;line-height:1.5;">
-          This link expires in 7 days. If you didn't create a Spendara account you can safely ignore this email.
+        <p style="margin:0;font-size:12px;color:#aaa;line-height:1.6;">
+          This link expires in 7 days.<br>
+          If you didn't create a Spendara account, you can safely ignore this email.
         </p>
       </td></tr>
       <!-- Footer -->
-      <tr><td style="padding:20px 32px;background:#f8f9fa;border-top:1px solid #eee;">
-        <p style="margin:0;font-size:11px;color:#aaa;text-align:center;">
-          Spendara · <a href="https://spendara.co.uk" style="color:#aaa;">spendara.co.uk</a>
+      <tr><td style="padding:16px 32px;background:#f8f9fa;border-top:1px solid #eee;">
+        <p style="margin:0;font-size:11px;color:#bbb;text-align:center;">
+          Spendara &middot; <a href="https://spendara.co.uk" style="color:#bbb;text-decoration:none;">spendara.co.uk</a>
         </p>
       </td></tr>
     </table>
@@ -1104,7 +1107,22 @@ def home():
         })
 
     # Check if user has no accounts (show onboarding), or manually triggered via ?onboarding=1
-    show_onboarding = len(active_accounts) == 0 or request.args.get('onboarding') == '1'
+    # Also check server-side dismissed flag so closing the modal persists across devices/browsers
+    _ob_db = get_db(); _ob_cur = _ob_db.cursor()
+    try:
+        if USE_POSTGRES:
+            _ob_cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_dismissed BOOLEAN DEFAULT FALSE")
+            _ob_cur.execute("SELECT onboarding_dismissed FROM users WHERE id = %s", (current_user.id,))
+        else:
+            _ob_cur.execute("SELECT onboarding_dismissed FROM users WHERE id = ?", (current_user.id,))
+        _ob_row = _ob_cur.fetchone()
+        _ob_dismissed = bool(_ob_row[0] if _ob_row else False)
+        _ob_db.commit()
+    except Exception:
+        _ob_dismissed = False
+    finally:
+        _ob_cur.close(); release_db(_ob_db)
+    show_onboarding = (len(active_accounts) == 0 and not _ob_dismissed) or request.args.get('onboarding') == '1'
 
     # --- Auto-apply scheduled bills/income ---
     pending_items = []
@@ -1169,6 +1187,24 @@ def home():
         cycle_end_date=cycle_end_date,
         days_to_payday=days_to_payday,
     )
+
+# --- ONBOARDING DISMISS ---
+@app.post("/onboarding/dismiss")
+@login_required
+def onboarding_dismiss():
+    db = get_db(); cursor = db.cursor()
+    try:
+        if USE_POSTGRES:
+            cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_dismissed BOOLEAN DEFAULT FALSE")
+            cursor.execute("UPDATE users SET onboarding_dismissed = TRUE WHERE id = %s", (current_user.id,))
+        else:
+            cursor.execute("UPDATE users SET onboarding_dismissed = 1 WHERE id = ?", (current_user.id,))
+        db.commit()
+    except Exception as e:
+        logger.debug(f"onboarding_dismiss error: {e}")
+    finally:
+        cursor.close(); release_db(db)
+    return {"ok": True}
 
 # --- AUTO-APPLY ROUTE ---
 # Called via AJAX when user confirms pending scheduled items from the home page banner
