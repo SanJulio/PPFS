@@ -4502,7 +4502,7 @@ TRUELAYER_CLIENT_SECRET = os.environ.get("TRUELAYER_CLIENT_SECRET", "")
 TRUELAYER_AUTH_URL      = "https://auth.truelayer-sandbox.com"
 TRUELAYER_API_URL       = "https://api.truelayer-sandbox.com"
 TRUELAYER_REDIRECT_URI  = os.environ.get("TRUELAYER_REDIRECT_URI", "https://spendara.co.uk/truelayer/callback")
-TRUELAYER_SCOPES        = "accounts balance transactions direct_debits standing_orders offline_access"
+TRUELAYER_SCOPES        = "accounts%20balance%20transactions%20direct_debits%20standing_orders%20offline_access"
 
 def _ensure_bank_connections_table():
     db = get_db()
@@ -4602,9 +4602,9 @@ def debug_truelayer():
         "client_id":     TRUELAYER_CLIENT_ID,
         "scope":         TRUELAYER_SCOPES,
         "redirect_uri":  TRUELAYER_REDIRECT_URI,
-        "providers":     "uk-ob-all uk-oauth-all",
+        "providers":     "uk-ob-all%20uk-oauth-all%20uk-cs-mock",
     }
-    auth_url = f"{TRUELAYER_AUTH_URL}/?{urllib.parse.urlencode(params)}"
+    auth_url = f"{TRUELAYER_AUTH_URL}/?{urllib.parse.urlencode(params, quote_via=urllib.parse.quote)}"
     return f"AUTH_URL: {auth_url}\n\nCLIENT_ID: {TRUELAYER_CLIENT_ID}\nREDIRECT_URI: {TRUELAYER_REDIRECT_URI}\nAUTH_BASE: {TRUELAYER_AUTH_URL}", 200, {"Content-Type": "text/plain"}
 
 
@@ -4618,9 +4618,9 @@ def connect_bank():
         "client_id":     TRUELAYER_CLIENT_ID,
         "scope":         TRUELAYER_SCOPES,
         "redirect_uri":  TRUELAYER_REDIRECT_URI,
-        "providers":     "uk-ob-all uk-oauth-all",
+        "providers":     "uk-ob-all%20uk-oauth-all%20uk-cs-mock",
     }
-    auth_url = f"{TRUELAYER_AUTH_URL}/?{urllib.parse.urlencode(params)}"
+    auth_url = f"{TRUELAYER_AUTH_URL}/?{urllib.parse.urlencode(params, quote_via=urllib.parse.quote)}"
     return redirect(auth_url)
 
 
