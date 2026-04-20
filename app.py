@@ -4502,7 +4502,7 @@ TRUELAYER_CLIENT_SECRET = os.environ.get("TRUELAYER_CLIENT_SECRET", "")
 TRUELAYER_AUTH_URL      = "https://auth.truelayer-sandbox.com"
 TRUELAYER_API_URL       = "https://api.truelayer-sandbox.com"
 TRUELAYER_REDIRECT_URI  = os.environ.get("TRUELAYER_REDIRECT_URI", "https://spendara.co.uk/truelayer/callback")
-TRUELAYER_SCOPES        = "info%20accounts%20balance%20cards%20transactions%20direct_debits%20standing_orders%20offline_access"
+TRUELAYER_SCOPES        = "info accounts balance cards transactions direct_debits standing_orders offline_access"
 
 def _ensure_bank_connections_table():
     db = get_db()
@@ -4602,10 +4602,20 @@ def debug_truelayer():
         "client_id":     TRUELAYER_CLIENT_ID,
         "scope":         TRUELAYER_SCOPES,
         "redirect_uri":  TRUELAYER_REDIRECT_URI,
-        "providers":     "uk-cs-mock%20uk-ob-all%20uk-oauth-all",
+        "providers":     "uk-cs-mock uk-ob-all uk-oauth-all",
     }
     auth_url = f"{TRUELAYER_AUTH_URL}/?{urllib.parse.urlencode(params, quote_via=urllib.parse.quote)}"
-    return f"AUTH_URL: {auth_url}\n\nCLIENT_ID: {TRUELAYER_CLIENT_ID}\nREDIRECT_URI: {TRUELAYER_REDIRECT_URI}\nAUTH_BASE: {TRUELAYER_AUTH_URL}", 200, {"Content-Type": "text/plain"}
+    lines = [
+        f"AUTH_URL: {auth_url}",
+        "",
+        f"response_type: code",
+        f"client_id: {TRUELAYER_CLIENT_ID}",
+        f"scope (raw): {TRUELAYER_SCOPES}",
+        f"redirect_uri: {TRUELAYER_REDIRECT_URI}",
+        f"providers: uk-cs-mock uk-ob-all uk-oauth-all",
+        f"auth_base: {TRUELAYER_AUTH_URL}",
+    ]
+    return "\n".join(lines), 200, {"Content-Type": "text/plain"}
 
 
 @app.get("/connect-bank")
@@ -4618,7 +4628,7 @@ def connect_bank():
         "client_id":     TRUELAYER_CLIENT_ID,
         "scope":         TRUELAYER_SCOPES,
         "redirect_uri":  TRUELAYER_REDIRECT_URI,
-        "providers":     "uk-cs-mock%20uk-ob-all%20uk-oauth-all",
+        "providers":     "uk-cs-mock uk-ob-all uk-oauth-all",
     }
     auth_url = f"{TRUELAYER_AUTH_URL}/?{urllib.parse.urlencode(params, quote_via=urllib.parse.quote)}"
     return redirect(auth_url)
