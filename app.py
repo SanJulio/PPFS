@@ -4593,6 +4593,21 @@ def _get_valid_token(user_id):
     return conn["access_token"]
 
 
+@app.get("/debug-truelayer")
+@login_required
+def debug_truelayer():
+    import urllib.parse
+    params = {
+        "response_type": "code",
+        "client_id":     TRUELAYER_CLIENT_ID,
+        "scope":         TRUELAYER_SCOPES,
+        "redirect_uri":  TRUELAYER_REDIRECT_URI,
+        "providers":     "uk-ob-all uk-oauth-all",
+    }
+    auth_url = f"{TRUELAYER_AUTH_URL}/?{urllib.parse.urlencode(params)}"
+    return f"AUTH_URL: {auth_url}\n\nCLIENT_ID: {TRUELAYER_CLIENT_ID}\nREDIRECT_URI: {TRUELAYER_REDIRECT_URI}\nAUTH_BASE: {TRUELAYER_AUTH_URL}", 200, {"Content-Type": "text/plain"}
+
+
 @app.get("/connect-bank")
 @login_required
 def connect_bank():
