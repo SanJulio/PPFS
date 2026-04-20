@@ -4495,22 +4495,6 @@ def privacy():
     return render_template("privacy.html")
 
 
-@app.get("/add-truelayer-column")
-@login_required
-def add_truelayer_column():
-    db = get_db()
-    cursor = db.cursor()
-    try:
-        cursor.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS truelayer_tx_id TEXT")
-        db.commit()
-        msg = "Column added!"
-    except Exception as e:
-        msg = f"Error: {e}"
-    cursor.close()
-    release_db(db)
-    return msg
-
-
 # --- TRUELAYER OPEN BANKING ---
 
 TRUELAYER_CLIENT_ID     = os.environ.get("TRUELAYER_CLIENT_ID", "")
