@@ -4502,7 +4502,7 @@ TRUELAYER_CLIENT_SECRET = os.environ.get("TRUELAYER_CLIENT_SECRET", "")
 TRUELAYER_AUTH_URL      = "https://auth.truelayer-sandbox.com"
 TRUELAYER_API_URL       = "https://api.truelayer-sandbox.com"
 TRUELAYER_REDIRECT_URI  = os.environ.get("TRUELAYER_REDIRECT_URI", "https://spendara.co.uk/truelayer/callback")
-TRUELAYER_SCOPES        = "accounts%20balance%20transactions%20direct_debits%20standing_orders%20offline_access"
+TRUELAYER_SCOPES        = "accounts%20balance%20transactions%20offline_access"
 
 def _ensure_bank_connections_table():
     db = get_db()
