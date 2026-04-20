@@ -225,6 +225,20 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   </div>
   {% endif %}
 
+  <!-- OPEN BANKING -->
+  <div class="card p-3 mb-4" id="open-banking" style="border-left: 4px solid #6366f1 !important;">
+    <h5 class="mb-2">Open Banking</h5>
+    <p class="text-muted small mb-3">Connect your bank to automatically import transactions and keep balances up to date.</p>
+    <a href="/connect-bank" class="btn btn-dark w-100 py-3 mb-2">
+      🏦 {{ 'Reconnect bank' if bank_connected else 'Connect your bank' }}
+    </a>
+    {% if bank_connected %}
+    <a href="/sync-bank" class="btn btn-outline-dark w-100 py-3">
+      🔄 Sync transactions
+    </a>
+    {% endif %}
+  </div>
+
   {% if recent_tx %}
   <div class="card p-3 mb-4">
     <div class="d-flex justify-content-between align-items-center mb-2">

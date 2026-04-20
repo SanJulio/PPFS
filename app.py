@@ -1375,7 +1375,11 @@ def actions():
     from models import get_recent_transactions
     all_tx = get_recent_transactions(current_user.id)
     recent_tx = all_tx[:5]
-    return render_template("actions.html", accounts=accounts, investments=investments, message=request.args.get("msg", ""), today=date.today().isoformat(), recent_tx=recent_tx)
+    try:
+        bank_connected = _get_bank_connection(current_user.id) is not None
+    except Exception:
+        bank_connected = False
+    return render_template("actions.html", accounts=accounts, investments=investments, message=request.args.get("msg", ""), today=date.today().isoformat(), recent_tx=recent_tx, bank_connected=bank_connected)
 
 # --- FLOW PAGE ---
 # Shows each account's monthly cash flow: bills paid, bills still to pay,
@@ -4489,6 +4493,331 @@ def export_data():
 @app.get("/privacy")
 def privacy():
     return render_template("privacy.html")
+
+
+# --- TRUELAYER OPEN BANKING ---
+
+TRUELAYER_CLIENT_ID     = os.environ.get("TRUELAYER_CLIENT_ID", "")
+TRUELAYER_CLIENT_SECRET = os.environ.get("TRUELAYER_CLIENT_SECRET", "")
+TRUELAYER_AUTH_URL      = "https://auth.truelayer-sandbox.com"
+TRUELAYER_API_URL       = "https://api.truelayer-sandbox.com"
+TRUELAYER_REDIRECT_URI  = "https://spendara.co.uk/truelayer/callback"
+TRUELAYER_SCOPES        = "accounts balance transactions direct_debits standing_orders offline_access"
+
+def _ensure_bank_connections_table():
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bank_connections (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            provider TEXT,
+            access_token TEXT NOT NULL,
+            refresh_token TEXT,
+            token_expiry TIMESTAMP,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    db.commit()
+    cursor.close()
+    release_db(db)
+
+def _get_bank_connection(user_id):
+    """Return the most recent bank_connections row for user, or None."""
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute(
+            "SELECT id, access_token, refresh_token, token_expiry FROM bank_connections WHERE user_id = %s ORDER BY created_at DESC LIMIT 1",
+            (user_id,)
+        )
+    else:
+        cursor.execute(
+            "SELECT id, access_token, refresh_token, token_expiry FROM bank_connections WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
+            (user_id,)
+        )
+    row = cursor.fetchone()
+    cursor.close()
+    release_db(db)
+    if not row:
+        return None
+    return {"id": row[0], "access_token": row[1], "refresh_token": row[2], "token_expiry": row[3]}
+
+def _refresh_access_token(conn):
+    """Exchange refresh_token for a new access_token. Returns updated conn dict or None on failure."""
+    import requests as _req
+    resp = _req.post(
+        f"{TRUELAYER_AUTH_URL}/connect/token",
+        data={
+            "grant_type":    "refresh_token",
+            "client_id":     TRUELAYER_CLIENT_ID,
+            "client_secret": TRUELAYER_CLIENT_SECRET,
+            "refresh_token": conn["refresh_token"],
+        },
+        timeout=15,
+    )
+    if resp.status_code != 200:
+        return None
+    data = resp.json()
+    expiry = datetime.utcnow() + timedelta(seconds=data.get("expires_in", 3600))
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute(
+            "UPDATE bank_connections SET access_token=%s, refresh_token=%s, token_expiry=%s WHERE id=%s",
+            (data["access_token"], data.get("refresh_token", conn["refresh_token"]), expiry, conn["id"])
+        )
+    else:
+        cursor.execute(
+            "UPDATE bank_connections SET access_token=?, refresh_token=?, token_expiry=? WHERE id=?",
+            (data["access_token"], data.get("refresh_token", conn["refresh_token"]), expiry, conn["id"])
+        )
+    db.commit()
+    cursor.close()
+    release_db(db)
+    conn["access_token"]  = data["access_token"]
+    conn["refresh_token"] = data.get("refresh_token", conn["refresh_token"])
+    conn["token_expiry"]  = expiry
+    return conn
+
+def _get_valid_token(user_id):
+    """Return a valid access token, refreshing if needed. None if no connection."""
+    conn = _get_bank_connection(user_id)
+    if not conn:
+        return None
+    expiry = conn["token_expiry"]
+    if expiry and datetime.utcnow() >= expiry - timedelta(minutes=5):
+        conn = _refresh_access_token(conn)
+        if not conn:
+            return None
+    return conn["access_token"]
+
+
+@app.get("/connect-bank")
+@login_required
+def connect_bank():
+    _ensure_bank_connections_table()
+    import urllib.parse
+    params = {
+        "response_type": "code",
+        "client_id":     TRUELAYER_CLIENT_ID,
+        "scope":         TRUELAYER_SCOPES,
+        "redirect_uri":  TRUELAYER_REDIRECT_URI,
+        "providers":     "uk-ob-all uk-oauth-all",
+    }
+    auth_url = f"{TRUELAYER_AUTH_URL}/?{urllib.parse.urlencode(params)}"
+    return redirect(auth_url)
+
+
+@app.get("/truelayer/callback")
+@login_required
+def truelayer_callback():
+    import requests as _req
+    _ensure_bank_connections_table()
+    error = request.args.get("error")
+    if error:
+        return redirect(url_for("actions", msg=f"Bank connection cancelled: {error}"))
+
+    code = request.args.get("code")
+    if not code:
+        return redirect(url_for("actions", msg="Bank connection failed — no code received."))
+
+    resp = _req.post(
+        f"{TRUELAYER_AUTH_URL}/connect/token",
+        data={
+            "grant_type":    "authorization_code",
+            "client_id":     TRUELAYER_CLIENT_ID,
+            "client_secret": TRUELAYER_CLIENT_SECRET,
+            "code":          code,
+            "redirect_uri":  TRUELAYER_REDIRECT_URI,
+        },
+        timeout=15,
+    )
+    if resp.status_code != 200:
+        logger.error("TrueLayer token exchange failed: %s", resp.text)
+        return redirect(url_for("actions", msg="Bank connection failed — could not exchange token."))
+
+    data         = resp.json()
+    access_token = data.get("access_token")
+    refresh_token = data.get("refresh_token")
+    expires_in   = data.get("expires_in", 3600)
+    token_expiry = datetime.utcnow() + timedelta(seconds=expires_in)
+
+    # Try to get the provider name from the /me endpoint
+    provider = "Unknown"
+    try:
+        me_resp = _req.get(
+            f"{TRUELAYER_API_URL}/data/v1/me",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10,
+        )
+        if me_resp.status_code == 200:
+            results = me_resp.json().get("results", [])
+            if results:
+                provider = results[0].get("provider_id", "Unknown")
+    except Exception:
+        pass
+
+    db = get_db()
+    cursor = db.cursor()
+    # Remove any previous connection for this user and replace
+    if USE_POSTGRES:
+        cursor.execute("DELETE FROM bank_connections WHERE user_id = %s", (current_user.id,))
+        cursor.execute(
+            "INSERT INTO bank_connections (user_id, provider, access_token, refresh_token, token_expiry) VALUES (%s, %s, %s, %s, %s)",
+            (current_user.id, provider, access_token, refresh_token, token_expiry)
+        )
+    else:
+        cursor.execute("DELETE FROM bank_connections WHERE user_id = ?", (current_user.id,))
+        cursor.execute(
+            "INSERT INTO bank_connections (user_id, provider, access_token, refresh_token, token_expiry) VALUES (?, ?, ?, ?, ?)",
+            (current_user.id, provider, access_token, refresh_token, token_expiry)
+        )
+    db.commit()
+    cursor.close()
+    release_db(db)
+    track('action.bank_connected')
+    return redirect(url_for("actions", msg="Bank connected successfully! Tap 'Sync transactions' to import your data."))
+
+
+@app.get("/sync-bank")
+@login_required
+def sync_bank():
+    import requests as _req
+    token = _get_valid_token(current_user.id)
+    if not token:
+        return redirect(url_for("actions", msg="No bank connected. Please connect your bank first."))
+
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Fetch accounts from TrueLayer
+    accounts_resp = _req.get(f"{TRUELAYER_API_URL}/data/v1/accounts", headers=headers, timeout=15)
+    if accounts_resp.status_code != 200:
+        logger.error("TrueLayer accounts fetch failed: %s", accounts_resp.text)
+        return redirect(url_for("actions", msg="Sync failed — could not fetch accounts from your bank."))
+
+    tl_accounts = accounts_resp.json().get("results", [])
+    total_imported = 0
+    accounts_synced = 0
+
+    db = get_db()
+    cursor = db.cursor()
+
+    # Load existing Spendara account names for this user
+    if USE_POSTGRES:
+        cursor.execute("SELECT id, name, balance FROM accounts WHERE user_id = %s AND active = TRUE", (current_user.id,))
+    else:
+        cursor.execute("SELECT id, name, balance FROM accounts WHERE user_id = ? AND active = 1", (current_user.id,))
+    existing_accounts = {row[1]: {"id": row[0], "balance": row[1]} for row in cursor.fetchall()}
+
+    for tl_acc in tl_accounts:
+        tl_acc_id   = tl_acc.get("account_id")
+        tl_acc_name = tl_acc.get("display_name") or tl_acc.get("account_type", "Bank Account")
+
+        # Match to a Spendara account by name (case-insensitive), or skip if no match
+        matched_name = None
+        for sp_name in existing_accounts:
+            if sp_name.lower() == tl_acc_name.lower():
+                matched_name = sp_name
+                break
+
+        # Update balance if we have a matched account
+        if matched_name:
+            bal_resp = _req.get(f"{TRUELAYER_API_URL}/data/v1/accounts/{tl_acc_id}/balance", headers=headers, timeout=10)
+            if bal_resp.status_code == 200:
+                bal_results = bal_resp.json().get("results", [])
+                if bal_results:
+                    new_balance = float(bal_results[0].get("available", bal_results[0].get("current", 0)))
+                    if USE_POSTGRES:
+                        cursor.execute("UPDATE accounts SET balance = %s WHERE user_id = %s AND name = %s", (new_balance, current_user.id, matched_name))
+                    else:
+                        cursor.execute("UPDATE accounts SET balance = ? WHERE user_id = ? AND name = ?", (new_balance, current_user.id, matched_name))
+                    accounts_synced += 1
+
+        # Fetch transactions for this TrueLayer account
+        tx_resp = _req.get(f"{TRUELAYER_API_URL}/data/v1/accounts/{tl_acc_id}/transactions", headers=headers, timeout=15)
+        if tx_resp.status_code != 200:
+            continue
+
+        tl_txns = tx_resp.json().get("results", [])
+        target_account = matched_name or tl_acc_name
+
+        for tx in tl_txns:
+            tx_id          = tx.get("transaction_id", "")
+            description    = tx.get("description") or tx.get("merchant_name") or "Bank transaction"
+            amount         = float(tx.get("amount", 0))
+            tx_date_str    = (tx.get("timestamp") or tx.get("booking_date_time") or "")[:10]
+            try:
+                tx_date = date.fromisoformat(tx_date_str)
+            except ValueError:
+                tx_date = date.today()
+
+            # Skip duplicates — check by truelayer_tx_id if column exists, else by description+amount+date+account
+            already_exists = False
+            try:
+                if USE_POSTGRES:
+                    cursor.execute(
+                        "SELECT id FROM transactions WHERE user_id = %s AND truelayer_tx_id = %s",
+                        (current_user.id, tx_id)
+                    )
+                else:
+                    cursor.execute(
+                        "SELECT id FROM transactions WHERE user_id = ? AND truelayer_tx_id = ?",
+                        (current_user.id, tx_id)
+                    )
+                already_exists = cursor.fetchone() is not None
+            except Exception:
+                # Column doesn't exist yet — fall back to description+amount+date duplicate check
+                db.rollback()
+                try:
+                    if USE_POSTGRES:
+                        cursor.execute(
+                            "SELECT id FROM transactions WHERE user_id=%s AND description=%s AND amount=%s AND date=%s AND account=%s",
+                            (current_user.id, description, amount, tx_date, target_account)
+                        )
+                    else:
+                        cursor.execute(
+                            "SELECT id FROM transactions WHERE user_id=? AND description=? AND amount=? AND date=? AND account=?",
+                            (current_user.id, description, amount, tx_date, target_account)
+                        )
+                    already_exists = cursor.fetchone() is not None
+                except Exception:
+                    db.rollback()
+                    already_exists = True
+
+            if already_exists:
+                continue
+
+            category = "Income" if amount > 0 else "Other"
+            try:
+                if USE_POSTGRES:
+                    cursor.execute(
+                        "INSERT INTO transactions (user_id, description, amount, date, account, category) VALUES (%s, %s, %s, %s, %s, %s)",
+                        (current_user.id, description, amount, tx_date, target_account, category)
+                    )
+                else:
+                    cursor.execute(
+                        "INSERT INTO transactions (user_id, description, amount, date, account, category) VALUES (?, ?, ?, ?, ?, ?)",
+                        (current_user.id, description, amount, tx_date, target_account, category)
+                    )
+                total_imported += 1
+            except Exception as e:
+                logger.error("Failed to insert TrueLayer transaction: %s", e)
+                db.rollback()
+
+    db.commit()
+    cursor.close()
+    release_db(db)
+    bust_forecast_cache(current_user.id)
+    track('action.bank_synced')
+
+    parts = []
+    if total_imported:
+        parts.append(f"{total_imported} transaction{'s' if total_imported != 1 else ''} imported")
+    if accounts_synced:
+        parts.append(f"{accounts_synced} account balance{'s' if accounts_synced != 1 else ''} updated")
+    msg = ", ".join(parts) + "." if parts else "Already up to date — no new transactions found."
+    return redirect(url_for("actions", msg=msg))
 
 
 @app.errorhandler(404)
