@@ -4730,7 +4730,7 @@ def sync_bank():
 
     # Load existing Spendara account names for this user
     if USE_POSTGRES:
-        cursor.execute("SELECT id, name, balance FROM accounts WHERE user_id = %s AND active = TRUE", (current_user.id,))
+        cursor.execute("SELECT id, name, balance FROM accounts WHERE user_id = %s AND active = 1", (current_user.id,))
     else:
         cursor.execute("SELECT id, name, balance FROM accounts WHERE user_id = ? AND active = 1", (current_user.id,))
     existing_accounts = {row[1]: {"id": row[0], "balance": row[1]} for row in cursor.fetchall()}
