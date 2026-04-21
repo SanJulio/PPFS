@@ -631,55 +631,9 @@ footer .copyright { line-height: 1.8; }
   <div class="phone-wrap">
     <div class="phone-frame">
       <div class="phone-screen">
-        <div class="phone-header">
-          <span class="phone-header-logo">Spendara</span>
-          <span style="font-size:9px;color:#888;">90-day view</span>
-        </div>
-        <div class="phone-body">
-          <div class="phone-title">Forecast</div>
-          <div class="phone-chips">
-            <span class="chip">All</span>
-            <span class="chip active">Current</span>
-            <span class="chip">Savings</span>
-            <span class="chip risk">⚠️ At risk</span>
-          </div>
-          <div class="stat-cards">
-            <div class="stat-card" style="border-top: 3px solid #ef4444;">
-              <div class="stat-label">Risk in</div>
-              <div class="stat-value">41 days</div>
-              <div class="stat-sub">Monzo goes negative</div>
-            </div>
-            <div class="stat-card" style="border-top: 3px solid #4f46e5;">
-              <div class="stat-label">In 90 days</div>
-              <div class="stat-value">£3,177</div>
-              <div class="stat-sub">Combined balance</div>
-            </div>
-          </div>
-          <div class="phone-warn">
-            <div class="phone-warn-title">⚠️ Monzo Current</div>
-            <div class="phone-warn-body">Goes negative 1 Jun (lowest: −£80.36)<br>→ Reduce spend by £1.96/day, or move £81 from savings</div>
-          </div>
-          <div class="phone-chart-wrap">
-            <div class="phone-chart-label">Balance trajectory</div>
-            <svg class="phone-chart-svg" viewBox="0 0 220 70" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <!-- Grid lines -->
-              <line x1="0" y1="35" x2="220" y2="35" stroke="#e5e7eb" stroke-width="0.5"/>
-              <line x1="0" y1="10" x2="220" y2="10" stroke="#e5e7eb" stroke-width="0.5"/>
-              <line x1="0" y1="60" x2="220" y2="60" stroke="#e5e7eb" stroke-width="0.5"/>
-              <!-- Savings line (green, stays low) -->
-              <polyline points="0,55 40,52 80,50 120,48 160,46 220,44" stroke="#10b981" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-              <!-- Current account line (purple, drops negative) -->
-              <polyline points="0,20 40,22 80,28 120,36 160,50 220,65" stroke="#7c3aed" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-              <!-- Danger zone fill -->
-              <polygon points="160,50 220,65 220,70 160,70" fill="rgba(239,68,68,0.12)"/>
-              <!-- Today marker -->
-              <line x1="55" y1="5" x2="55" y2="65" stroke="#4f46e5" stroke-width="1" stroke-dasharray="3,2"/>
-              <text x="57" y="12" font-size="6" fill="#4f46e5" font-family="DM Sans, sans-serif">📍 Today</text>
-              <!-- Zero line label -->
-              <text x="2" y="39" font-size="5" fill="#9ca3af" font-family="DM Sans, sans-serif">£0</text>
-            </svg>
-          </div>
-        </div>
+        <img src="{{ url_for('static', filename='forecast-screenshot.jpg') }}"
+             alt="Spendara Forecast Screen"
+             style="width:100%; height:100%; object-fit:cover; object-position:top; border-radius:30px;">
       </div>
     </div>
   </div>
