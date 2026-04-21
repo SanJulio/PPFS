@@ -602,8 +602,12 @@ footer .copyright { line-height: 1.8; }
     <div class="blob blob-3"></div>
   </div>
   <div class="hero-inner">
-    <img class="fade-up" src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:80px;object-fit:contain;margin-bottom:20px;">
-    <div class="hero-badge fade-up">⚡ Now live — 90-day financial forecasting</div>
+    <div class="fade-up" style="display:flex;flex-direction:column;align-items:center;text-align:center;margin:0 auto 0;">
+      <img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:80px;object-fit:contain;margin-bottom:20px;">
+    </div>
+    <div class="fade-up" style="display:flex;justify-content:center;margin:0 auto 28px auto;">
+      <div class="hero-badge">⚡ Now live — 90-day financial forecasting</div>
+    </div>
     <h1 class="fade-up">Know what's coming<br><span class="grad-text">before it hits.</span></h1>
     <div class="warning-card fade-up">
       <div class="warning-label">⚠️ Live forecast warning</div>
