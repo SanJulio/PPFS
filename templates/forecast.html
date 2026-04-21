@@ -48,7 +48,9 @@ body { background: #f2f4f7; padding-bottom: 140px; }
 .day-item { display:flex; align-items:center; justify-content:space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; gap: 12px; }
 .day-item:last-child { border-bottom: none; }
 .chart-hint { font-size: 11px; color: #aaa; text-align: center; margin-top: 6px; }
-
+@media (max-width: 768px) {
+  .container.py-4 { padding-top: 0.5rem !important; }
+}
 </style>
 </head>
 <body>
@@ -82,9 +84,8 @@ body { background: #f2f4f7; padding-bottom: 140px; }
 
 <div class="container py-4">
 
-  <div class="mb-4">
+  <div class="mb-3">
     <h1 class="display-6 fw-bold">Forecast</h1>
-    <div class="text-muted">Predicted account balances — scroll the chart to move through time</div>
   </div>
 
   {% if message %}
@@ -94,7 +95,7 @@ body { background: #f2f4f7; padding-bottom: 140px; }
   </div>
   {% endif %}
 
-  <div class="d-flex gap-2 mb-4 flex-wrap">
+  <div class="d-flex gap-2 mb-2 flex-wrap">
     <button class="btn btn-outline-secondary btn-filter" id="filterAll" onclick="setFilter('all', this)">All</button>
     <button class="btn btn-outline-secondary btn-filter active" id="filterCurrent" onclick="setFilter('current', this)">Current</button>
     <button class="btn btn-outline-secondary btn-filter" id="filterSavings" onclick="setFilter('savings', this)">Savings</button>
@@ -631,19 +632,24 @@ function renderInsights() {
   // Build cards
   var cards = '';
 
+  var cardStyle = 'border-radius:12px;padding:10px 12px;';
+  var labelStyle = 'font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;';
+  var valStyle = 'font-size:20px;font-weight:800;';
+  var subStyle = 'font-size:10px;color:#666;margin-top:1px;';
+
   if (daysUntilNegative !== null) {
     var urgency = daysUntilNegative <= 7 ? '#dc3545' : daysUntilNegative <= 21 ? '#fd7e14' : '#856404';
     var bg = daysUntilNegative <= 7 ? '#fde8e8' : daysUntilNegative <= 21 ? '#fff3e0' : '#fff3cd';
-    cards += '<div style="background:' + bg + ';border-radius:14px;padding:14px 16px;flex:1;min-width:140px;">' +
-      '<div style="font-size:11px;color:' + urgency + ';font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">⚠️ Risk in</div>' +
-      '<div style="font-size:22px;font-weight:800;color:' + urgency + ';">' + daysUntilNegative + ' days</div>' +
-      '<div style="font-size:11px;color:#666;margin-top:2px;">' + escHtml(negAccount) + ' goes negative</div>' +
+    cards += '<div style="background:' + bg + ';' + cardStyle + '">' +
+      '<div style="' + labelStyle + 'color:' + urgency + ';">⚠️ Risk in</div>' +
+      '<div style="' + valStyle + 'color:' + urgency + ';">' + daysUntilNegative + ' days</div>' +
+      '<div style="' + subStyle + '">' + escHtml(negAccount) + ' goes negative</div>' +
     '</div>';
   } else {
-    cards += '<div style="background:#d1fae5;border-radius:14px;padding:14px 16px;flex:1;min-width:140px;">' +
-      '<div style="font-size:11px;color:#065f46;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">✅ Status</div>' +
-      '<div style="font-size:22px;font-weight:800;color:#065f46;">All safe</div>' +
-      '<div style="font-size:11px;color:#666;margin-top:2px;">90 days ahead</div>' +
+    cards += '<div style="background:#d1fae5;' + cardStyle + '">' +
+      '<div style="' + labelStyle + 'color:#065f46;">✅ Status</div>' +
+      '<div style="' + valStyle + 'color:#065f46;">All safe</div>' +
+      '<div style="' + subStyle + '">90 days ahead</div>' +
     '</div>';
   }
 
@@ -651,20 +657,20 @@ function renderInsights() {
     var d = new Date(lowestDate);
     var dateStr = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
     var isNeg = lowestTotal < 0;
-    cards += '<div style="background:' + (isNeg ? '#fde8e8' : '#f8f9fa') + ';border-radius:14px;padding:14px 16px;flex:1;min-width:140px;">' +
-      '<div style="font-size:11px;color:#555;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">📉 Lowest point</div>' +
-      '<div style="font-size:22px;font-weight:800;color:' + (isNeg ? '#dc3545' : '#111') + ';">£' + Math.abs(lowestTotal).toLocaleString('en-GB', {minimumFractionDigits:0,maximumFractionDigits:0}) + '</div>' +
-      '<div style="font-size:11px;color:#666;margin-top:2px;">' + dateStr + (isNeg ? ' (negative)' : '') + '</div>' +
+    cards += '<div style="background:' + (isNeg ? '#fde8e8' : '#f8f9fa') + ';' + cardStyle + '">' +
+      '<div style="' + labelStyle + 'color:#555;">📉 Lowest point</div>' +
+      '<div style="' + valStyle + 'color:' + (isNeg ? '#dc3545' : '#111') + ';">£' + Math.abs(lowestTotal).toLocaleString('en-GB', {minimumFractionDigits:0,maximumFractionDigits:0}) + '</div>' +
+      '<div style="' + subStyle + '">' + dateStr + (isNeg ? ' (negative)' : '') + '</div>' +
     '</div>';
   }
 
-  cards += '<div style="background:#f0f4ff;border-radius:14px;padding:14px 16px;flex:1;min-width:140px;">' +
-    '<div style="font-size:11px;color:#3730a3;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">🏁 In 90 days</div>' +
-    '<div style="font-size:22px;font-weight:800;color:#111;">£' + endTotal.toLocaleString('en-GB', {minimumFractionDigits:0,maximumFractionDigits:0}) + '</div>' +
-    '<div style="font-size:11px;color:#666;margin-top:2px;">Combined balance</div>' +
+  cards += '<div style="background:#f0f4ff;' + cardStyle + 'grid-column:1/-1;">' +
+    '<div style="' + labelStyle + 'color:#3730a3;">🏁 In 90 days</div>' +
+    '<div style="' + valStyle + 'color:#111;">£' + endTotal.toLocaleString('en-GB', {minimumFractionDigits:0,maximumFractionDigits:0}) + '</div>' +
+    '<div style="' + subStyle + '">Combined balance</div>' +
   '</div>';
 
-  box.innerHTML = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">' + cards + '</div>';
+  box.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">' + cards + '</div>';
 }
 
 function renderWarnings() {
