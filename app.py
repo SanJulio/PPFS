@@ -3764,7 +3764,7 @@ def logout():
     if current_user.is_authenticated:
         logger.info(f"User logout: {current_user.email}")
     logout_user()
-    return redirect(url_for("login"))
+    return redirect("/")
 
 # --- FORGOT PASSWORD ---
 # Sends a reset link to the user's email (if it exists in the database)
