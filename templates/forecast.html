@@ -50,6 +50,10 @@ body { background: #f2f4f7; padding-bottom: 140px; }
 .chart-hint { font-size: 11px; color: #aaa; text-align: center; margin-top: 6px; }
 @media (max-width: 768px) {
   .container.py-4 { padding-top: 0.5rem !important; }
+  .ig { grid-template-columns: 1fr 1fr 1fr !important; }
+  .ic-val { font-size: 16px !important; }
+  .ic-label { font-size: 9px !important; }
+  .ic { padding: 8px !important; }
 }
 </style>
 </head>
@@ -628,16 +632,16 @@ function renderInsights() {
   if (daysUntilNegative !== null) {
     var urgency = daysUntilNegative <= 7 ? '#dc3545' : daysUntilNegative <= 21 ? '#fd7e14' : '#856404';
     var bg = daysUntilNegative <= 7 ? '#fde8e8' : daysUntilNegative <= 21 ? '#fff3e0' : '#fff3cd';
-    cards += '<div style="background:' + bg + ';' + cardStyle + '">' +
-      '<div style="' + labelStyle + 'color:' + urgency + ';">⚠️ Risk in</div>' +
-      '<div style="' + valStyle + 'color:' + urgency + ';">' + daysUntilNegative + ' days</div>' +
-      '<div style="' + subStyle + '">' + escHtml(negAccount) + ' goes negative</div>' +
+    cards += '<div class="ic" style="background:' + bg + ';' + cardStyle + '">' +
+      '<div class="ic-label" style="' + labelStyle + 'color:' + urgency + ';">⚠️ Risk in</div>' +
+      '<div class="ic-val" style="' + valStyle + 'color:' + urgency + ';">' + daysUntilNegative + ' days</div>' +
+      '<div class="ic-sub" style="' + subStyle + '">' + escHtml(negAccount) + ' goes negative</div>' +
     '</div>';
   } else {
-    cards += '<div style="background:#d1fae5;' + cardStyle + '">' +
-      '<div style="' + labelStyle + 'color:#065f46;">✅ Status</div>' +
-      '<div style="' + valStyle + 'color:#065f46;">All safe</div>' +
-      '<div style="' + subStyle + '">90 days ahead</div>' +
+    cards += '<div class="ic" style="background:#d1fae5;' + cardStyle + '">' +
+      '<div class="ic-label" style="' + labelStyle + 'color:#065f46;">✅ Status</div>' +
+      '<div class="ic-val" style="' + valStyle + 'color:#065f46;">All safe</div>' +
+      '<div class="ic-sub" style="' + subStyle + '">90 days ahead</div>' +
     '</div>';
   }
 
@@ -645,20 +649,20 @@ function renderInsights() {
     var d = new Date(lowestDate);
     var dateStr = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
     var isNeg = lowestTotal < 0;
-    cards += '<div style="background:' + (isNeg ? '#fde8e8' : '#f8f9fa') + ';' + cardStyle + '">' +
-      '<div style="' + labelStyle + 'color:#555;">📉 Lowest point</div>' +
-      '<div style="' + valStyle + 'color:' + (isNeg ? '#dc3545' : '#111') + ';">£' + Math.abs(lowestTotal).toLocaleString('en-GB', {minimumFractionDigits:0,maximumFractionDigits:0}) + '</div>' +
-      '<div style="' + subStyle + '">' + dateStr + (isNeg ? ' (negative)' : '') + '</div>' +
+    cards += '<div class="ic" style="background:' + (isNeg ? '#fde8e8' : '#f8f9fa') + ';' + cardStyle + '">' +
+      '<div class="ic-label" style="' + labelStyle + 'color:#555;">📉 Lowest point</div>' +
+      '<div class="ic-val" style="' + valStyle + 'color:' + (isNeg ? '#dc3545' : '#111') + ';">£' + Math.abs(lowestTotal).toLocaleString('en-GB', {minimumFractionDigits:0,maximumFractionDigits:0}) + '</div>' +
+      '<div class="ic-sub" style="' + subStyle + '">' + dateStr + (isNeg ? ' (negative)' : '') + '</div>' +
     '</div>';
   }
 
-  cards += '<div style="background:#f0f4ff;' + cardStyle + 'grid-column:1/-1;">' +
-    '<div style="' + labelStyle + 'color:#3730a3;">🏁 In 90 days</div>' +
-    '<div style="' + valStyle + 'color:#111;">£' + endTotal.toLocaleString('en-GB', {minimumFractionDigits:0,maximumFractionDigits:0}) + '</div>' +
-    '<div style="' + subStyle + '">Combined balance</div>' +
+  cards += '<div class="ic" style="background:#f0f4ff;' + cardStyle + '">' +
+    '<div class="ic-label" style="' + labelStyle + 'color:#3730a3;">🏁 In 90 days</div>' +
+    '<div class="ic-val" style="' + valStyle + 'color:#111;">£' + endTotal.toLocaleString('en-GB', {minimumFractionDigits:0,maximumFractionDigits:0}) + '</div>' +
+    '<div class="ic-sub" style="' + subStyle + '">Combined balance</div>' +
   '</div>';
 
-  box.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">' + cards + '</div>';
+  box.innerHTML = '<div class="ig" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">' + cards + '</div>';
 }
 
 function renderWarnings() {
