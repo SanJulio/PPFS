@@ -100,7 +100,6 @@ body { background: #f2f4f7; padding-bottom: 140px; }
     <button class="btn btn-outline-secondary btn-filter active" id="filterCurrent" onclick="setFilter('current', this)">Current</button>
     <button class="btn btn-outline-secondary btn-filter" id="filterSavings" onclick="setFilter('savings', this)">Savings</button>
     <button class="btn btn-outline-secondary btn-filter" id="filterCash" onclick="setFilter('cash', this)">Cash</button>
-    <button class="btn btn-outline-secondary btn-filter ms-auto" id="filterRisky" onclick="toggleRiskyFilter(this)">⚠️ At risk only</button>
   </div>
 
   <div id="insightsStrip"></div>
@@ -213,7 +212,6 @@ var COLORS = [
 
 var chart = null;
 var currentFilter = 'current';
-var riskyFilter = false;
 var allSnapshots = [];
 var adjMarkers = [];
 
@@ -230,11 +228,7 @@ if (accountNames.length === 0) {
 }
 
 function filteredAccounts() {
-  var base = currentFilter === 'all' ? accountNames : accountNames.filter(function(name) { return accountTypes[name] === currentFilter; });
-  if (!riskyFilter) return base;
-  return base.filter(function(name) {
-    return snapshots.length > 0 && Math.min.apply(null, snapshots.map(function(s) { return s[name] !== undefined ? s[name] : 0; })) < 0;
-  });
+  return currentFilter === 'all' ? accountNames : accountNames.filter(function(name) { return accountTypes[name] === currentFilter; });
 }
 
 function setFilter(type, btn) {
@@ -245,12 +239,6 @@ function setFilter(type, btn) {
   if (v2Initialised) { v2ApplyFilter(); }
 }
 
-function toggleRiskyFilter(btn) {
-  riskyFilter = !riskyFilter;
-  btn.classList.toggle('active', riskyFilter);
-  renderChart();
-  if (v2Initialised) { v2ApplyFilter(); }
-}
 
 function buildAnnotations() {
   var annotations = {};
@@ -703,19 +691,10 @@ function renderWarnings() {
   });
 
   var closeBtn = '<button onclick="this.closest(\'.alert\').remove()" style="position:absolute;top:10px;right:12px;background:none;border:none;font-size:16px;line-height:1;color:#888;cursor:pointer;">✕</button>';
-  var riskyBtn = document.getElementById('filterRisky');
   if (issues.length > 0) {
     box.innerHTML = '<div class="alert rounded-4 mb-3" style="background:#fff3cd; border:none; position:relative;">' + closeBtn + '<div class="fw-bold mb-2">⚠️ Balance warnings</div>' + issues.join('') + '</div>';
-    riskyBtn.style.background = '#f59e0b';
-    riskyBtn.style.color = '#fff';
-    riskyBtn.style.borderColor = '#f59e0b';
   } else {
     box.innerHTML = '<div class="alert rounded-4 mb-3" style="background:#d1fae5; border:none; position:relative;">' + closeBtn + '<div class="fw-bold">✅ All accounts stay positive over the next 90 days</div></div>';
-    if (!riskyFilter) {
-      riskyBtn.style.background = '';
-      riskyBtn.style.color = '';
-      riskyBtn.style.borderColor = '';
-    }
   }
 }
 
