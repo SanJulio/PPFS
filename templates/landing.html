@@ -44,9 +44,16 @@ nav {
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid rgba(79,70,229,0.08);
   padding: 14px 24px;
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: flex-end; gap: 20px;
 }
-.nav-logo { height: 40px; object-fit: contain; }
+.nav-login {
+  color: #6b7280;
+  font-weight: 500;
+  font-size: 14px;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.nav-login:hover { color: var(--brand); text-decoration: none; }
 .nav-cta {
   background: var(--grad);
   color: #fff;
@@ -346,22 +353,22 @@ nav {
 /* ── FEATURES SECTION ── */
 .features-section {
   background: #fafafa;
-  padding: 100px 24px;
+  padding: 80px 24px;
 }
-.section-header { text-align: center; margin-bottom: 56px; }
+.section-header { text-align: center; margin-bottom: 40px; }
 .section-header h2 { font-size: clamp(26px, 4vw, 42px); color: #0f0f1a; margin-bottom: 12px; }
-.section-header .section-sub { font-size: 17px; color: #666; font-weight: 300; }
-.features-list {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+.features-hero-wrap { max-width: 700px; margin: 0 auto 16px; }
+.features-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
   max-width: 700px;
   margin: auto;
 }
 .feature-card {
   background: #fff;
   border-radius: 18px;
-  padding: 28px;
+  padding: 16px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.06);
   border: 1px solid #e5e7eb;
   transition: transform 0.2s, box-shadow 0.2s;
@@ -370,6 +377,7 @@ nav {
 .feature-card.hero-card {
   background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
   border-color: #c4b5fd;
+  padding: 20px;
 }
 .feature-badge {
   display: inline-block;
@@ -379,11 +387,19 @@ nav {
   padding: 3px 12px;
   font-size: 11px;
   font-weight: 500;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
-.feature-emoji { font-size: 28px; margin-bottom: 10px; display: block; }
-.feature-card h3 { font-size: 19px; color: #0f0f1a; margin-bottom: 8px; }
-.feature-card p { font-size: 14px; color: #555; line-height: 1.7; font-weight: 300; }
+.feature-emoji {
+  font-size: 36px;
+  margin-bottom: 8px;
+  display: block;
+  border-radius: 10px;
+  line-height: 1;
+}
+.feature-card h3 { font-size: 15px; color: #0f0f1a; margin-bottom: 6px; }
+.feature-card p { font-size: 13px; color: #555; line-height: 1.65; font-weight: 300; }
+.hero-card h3 { font-size: 18px; }
+.hero-card p { font-size: 14px; }
 
 /* ── HOW IT WORKS ── */
 .how-section {
@@ -574,7 +590,7 @@ footer .copyright { line-height: 1.8; }
 
 <!-- ── FIXED NAV ── -->
 <nav>
-  <a href="/"><img class="nav-logo" src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara"></a>
+  <a href="/login" class="nav-login">Log in</a>
   <a href="/register" class="nav-cta">Get started free</a>
 </nav>
 
@@ -586,6 +602,8 @@ footer .copyright { line-height: 1.8; }
     <div class="blob blob-3"></div>
   </div>
   <div class="hero-inner">
+    <img class="fade-up" src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:80px;object-fit:contain;margin-bottom:8px;">
+    <div class="fade-up" style="font-family:'Syne',sans-serif;font-weight:800;font-size:28px;color:#0f0f1a;margin-bottom:20px;">Spendara</div>
     <div class="hero-badge fade-up">⚡ Now live — 90-day financial forecasting</div>
     <h1 class="fade-up">Know what's coming<br><span class="grad-text">before it hits.</span></h1>
     <div class="warning-card fade-up">
@@ -593,7 +611,6 @@ footer .copyright { line-height: 1.8; }
       <div class="warning-main">Your Monzo Current goes negative on 1st May</div>
       <span class="fix-pill">✓ Fix it — Spend £6.19 less per day to stay on track</span>
     </div>
-    <p class="hero-sub fade-up">Spendara sees 90 days into your financial future — telling you exactly when accounts go negative and precisely what to do about it.</p>
     <div class="hero-btns fade-up">
       <a href="/register" class="btn-grad">Get started free →</a>
       <a href="/login" class="btn-outline-white">Already have an account? Log in</a>
@@ -661,46 +678,24 @@ footer .copyright { line-height: 1.8; }
   </div>
 </section>
 
-<!-- ── PAIN SECTION ── -->
-<section class="pain-section">
-  <p class="section-eyebrow">Sound familiar?</p>
-  <h2>You earn decent money.<br>So where does it all go?</h2>
-  <p class="section-sub">You're not bad with money. You just don't have the right tool.</p>
-  <div class="pain-cards">
-    <div class="pain-card">
-      <div class="pain-icon">😰</div>
-      <h3>You check your balance and panic</h3>
-      <p>Payday was two weeks ago and you're already wondering where it went.</p>
-    </div>
-    <div class="pain-card">
-      <div class="pain-icon">📊</div>
-      <h3>Spreadsheets are too much effort</h3>
-      <p>You built one once. Used it for a week. Never touched it again.</p>
-    </div>
-    <div class="pain-card">
-      <div class="pain-icon">🏦</div>
-      <h3>Your bank app shows the past, not the future</h3>
-      <p>Knowing you spent £300 on food last month doesn't stop the same thing happening again.</p>
-    </div>
-  </div>
-</section>
-
 <!-- ── FEATURES SECTION ── -->
 <section class="features-section">
   <div class="section-header">
-    <h2>Built for the way you actually<br>think about money</h2>
+    <h2>Why Spendara?</h2>
   </div>
-  <div class="features-list">
+  <div class="features-hero-wrap">
     <div class="feature-card hero-card">
       <div class="feature-badge">⭐ The standout feature</div>
       <span class="feature-emoji">🔮</span>
       <h3>90-day balance forecasting</h3>
       <p>See exactly when each account goes negative — weeks before it happens. Get a specific daily spend fix. Nobody else does this.</p>
     </div>
+  </div>
+  <div class="features-grid-2">
     <div class="feature-card">
       <span class="feature-emoji">💬</span>
       <h3>Can I afford this?</h3>
-      <p>Type in a purchase. Spendara runs the numbers and tells you honestly whether you can afford it without wrecking your month.</p>
+      <p>Type in a purchase. Spendara tells you honestly whether you can afford it without wrecking your month.</p>
     </div>
     <div class="feature-card">
       <span class="feature-emoji">📅</span>
@@ -710,38 +705,12 @@ footer .copyright { line-height: 1.8; }
     <div class="feature-card">
       <span class="feature-emoji">👁️</span>
       <h3>Privacy mode</h3>
-      <p>Blur or hide all figures in one tap. Check your finances on the bus without strangers seeing your balance.</p>
+      <p>Blur all figures in one tap. Check your finances on the bus without strangers seeing your balance.</p>
     </div>
-  </div>
-</section>
-
-<!-- ── HOW IT WORKS ── -->
-<section class="how-section">
-  <div class="section-header">
-    <h2>Up and running in 3 steps</h2>
-  </div>
-  <div class="steps-wrap">
-    <div class="steps-line"></div>
-    <div class="step-row">
-      <div class="step-num">1</div>
-      <div class="step-content">
-        <h3>Add your accounts</h3>
-        <p>Add your current, savings, and cash accounts. Import transactions via CSV or connect your bank directly.</p>
-      </div>
-    </div>
-    <div class="step-row">
-      <div class="step-num">2</div>
-      <div class="step-content">
-        <h3>Add your bills and income</h3>
-        <p>Tell Spendara your salary date and recurring bills. It does the rest — automatically.</p>
-      </div>
-    </div>
-    <div class="step-row">
-      <div class="step-num">3</div>
-      <div class="step-content">
-        <h3>See your 90-day forecast</h3>
-        <p>Instantly see where every account is heading. Get warned before problems happen — not after.</p>
-      </div>
+    <div class="feature-card">
+      <span class="feature-emoji">🏦</span>
+      <h3>Open banking sync</h3>
+      <p>Connect your bank and import transactions automatically. No more manual entry.</p>
     </div>
   </div>
 </section>
