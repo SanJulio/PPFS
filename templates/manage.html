@@ -67,9 +67,11 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 }
 .tab-section { display: none; }
 .tab-section.active { display: block; }
-@media (max-width: 575px) {
+@media (max-width: 768px) {
   .acc-col-type { display:none !important; }
   .manage-actions { gap: 4px !important; }
+  .manage-actions .btn,
+  .manage-btn { padding: 4px 8px !important; font-size: 12px !important; }
 }
 </style>
 </head>
@@ -254,7 +256,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                 {% endif %}
               </td>
               <td class="text-end">
-                <div class="d-flex gap-3 justify-content-end">
+                <div class="d-flex gap-3 justify-content-end manage-actions">
                   <button class="btn btn-sm btn-outline-secondary" onclick="toggleEdit('bill-{{ b.id }}')">Edit</button>
                   <form method="POST" action="/settings/delete-bill" onsubmit="return confirm('Delete {{ b.name }}?')">
                     <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
@@ -360,7 +362,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                 {% if i.frequency == 'monthly' %}<span class="text-muted small ms-1">day {{ i.day if i.day else 1 }}</span>{% endif %}
               </td>
               <td class="text-end">
-                <div class="d-flex gap-3 justify-content-end">
+                <div class="d-flex gap-3 justify-content-end manage-actions">
                   <button class="btn btn-sm btn-outline-secondary" onclick="toggleEdit('income-{{ i.id }}')">Edit</button>
                   <form method="POST" action="/settings/delete-income" onsubmit="return confirm('Delete {{ i.name }}?')">
                     <input type="hidden" name="id" value="{{ i.id }}">
