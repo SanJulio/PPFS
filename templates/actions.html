@@ -351,8 +351,12 @@ document.getElementById('calcModal').addEventListener('show.bs.modal', function 
 });
 
 function calcInput(val) {
-  calcExpr += val;
-  document.getElementById('calcDisplay').textContent = calcExpr;
+  if (val === '%') {
+    calcExpr = calcExpr ? '(' + calcExpr + ')/100' : '0';
+  } else {
+    calcExpr += val;
+  }
+  document.getElementById('calcDisplay').textContent = calcExpr || '0';
 }
 
 function calcClear() {
@@ -368,19 +372,22 @@ function calcBackspace() {
 
 function calcEquals() {
   try {
-    // Replace sqrt( with Math.sqrt(, sin( with Math.sin( etc
     let expr = calcExpr
+      .replace(/×/g, '*')
+      .replace(/÷/g, '/')
       .replace(/sqrt\(/g, 'Math.sqrt(')
       .replace(/sin\(/g, 'Math.sin(')
       .replace(/cos\(/g, 'Math.cos(')
       .replace(/tan\(/g, 'Math.tan(');
 
     const result = Function('"use strict"; return (' + expr + ')')();
+    if (!isFinite(result)) throw new Error('Not finite');
     document.getElementById('calcExpression').textContent = calcExpr + ' =';
     document.getElementById('calcDisplay').textContent = parseFloat(result.toFixed(10));
     calcExpr = String(parseFloat(result.toFixed(10)));
   } catch (e) {
     document.getElementById('calcDisplay').textContent = 'Error';
+    document.getElementById('calcExpression').textContent = '';
     calcExpr = '';
   }
 }
