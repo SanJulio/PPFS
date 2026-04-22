@@ -346,6 +346,10 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 <script>
 let calcExpr = '';
 
+document.getElementById('calcModal').addEventListener('show.bs.modal', function () {
+  calcClear();
+});
+
 function calcInput(val) {
   calcExpr += val;
   document.getElementById('calcDisplay').textContent = calcExpr;
