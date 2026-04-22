@@ -35,13 +35,24 @@ def get_active_accounts(user_id):
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("SELECT * FROM accounts WHERE active = 1 AND user_id = %s ORDER BY LOWER(name)", (user_id,))
+        cursor.execute(
+            "SELECT DISTINCT ON (LOWER(name)) * FROM accounts WHERE active = 1 AND user_id = %s ORDER BY LOWER(name), id",
+            (user_id,)
+        )
     else:
         cursor.execute("SELECT * FROM accounts WHERE active = 1 AND user_id = ? ORDER BY LOWER(name)", (user_id,))
     rows = _rows_as_dicts(cursor, cursor.fetchall())
     cursor.close()
     release_db(db)
-    return rows
+    # Deduplicate by name (keeps first occurrence) as a safety net for SQLite
+    seen = set()
+    deduped = []
+    for r in rows:
+        key = r["name"].lower()
+        if key not in seen:
+            seen.add(key)
+            deduped.append(r)
+    return deduped
 
 
 # --- GET ACCOUNT BY NAME ---
