@@ -380,12 +380,15 @@ function calcEquals() {
       .replace(/cos\(/g, 'Math.cos(')
       .replace(/tan\(/g, 'Math.tan(');
 
+    console.log("Evaluating:", expr);
     const result = Function('"use strict"; return (' + expr + ')')();
+    console.log("Result:", result);
     if (!isFinite(result)) throw new Error('Not finite');
     document.getElementById('calcExpression').textContent = calcExpr + ' =';
     document.getElementById('calcDisplay').textContent = parseFloat(result.toFixed(10));
     calcExpr = String(parseFloat(result.toFixed(10)));
   } catch (e) {
+    console.error("Calc error:", e);
     document.getElementById('calcDisplay').textContent = 'Error';
     document.getElementById('calcExpression').textContent = '';
     calcExpr = '';
