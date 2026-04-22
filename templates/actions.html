@@ -370,25 +370,89 @@ function calcBackspace() {
   document.getElementById('calcDisplay').textContent = calcExpr || '0';
 }
 
+function safeEval(expr) {
+  expr = expr.trim().replace(/\s+/g, '');
+  expr = expr.replace(/(\d+\.?\d*)%/g, '($1/100)');
+  return parseAddSub(expr, {pos: 0});
+}
+
+function parseAddSub(expr, state) {
+  let left = parseMulDiv(expr, state);
+  while (state.pos < expr.length) {
+    const op = expr[state.pos];
+    if (op !== '+' && op !== '-') break;
+    state.pos++;
+    const right = parseMulDiv(expr, state);
+    left = op === '+' ? left + right : left - right;
+  }
+  return left;
+}
+
+function parseMulDiv(expr, state) {
+  let left = parseUnary(expr, state);
+  while (state.pos < expr.length) {
+    const op = expr[state.pos];
+    if (op === '*' && expr[state.pos + 1] === '*') {
+      state.pos += 2;
+      left = Math.pow(left, parseUnary(expr, state));
+    } else if (op === '*') {
+      state.pos++;
+      left *= parseUnary(expr, state);
+    } else if (op === '/') {
+      state.pos++;
+      const right = parseUnary(expr, state);
+      if (right === 0) throw new Error('Division by zero');
+      left /= right;
+    } else break;
+  }
+  return left;
+}
+
+function parseUnary(expr, state) {
+  if (expr[state.pos] === '-') {
+    state.pos++;
+    return -parsePrimary(expr, state);
+  }
+  return parsePrimary(expr, state);
+}
+
+function parsePrimary(expr, state) {
+  if (expr[state.pos] === '(') {
+    state.pos++;
+    const val = parseAddSub(expr, state);
+    if (expr[state.pos] === ')') state.pos++;
+    return val;
+  }
+  for (const fn of ['sin', 'cos', 'tan', 'sqrt']) {
+    if (expr.startsWith(fn, state.pos)) {
+      state.pos += fn.length;
+      if (expr[state.pos] === '(') {
+        state.pos++;
+        const arg = parseAddSub(expr, state);
+        if (expr[state.pos] === ')') state.pos++;
+        return Math[fn](arg);
+      }
+    }
+  }
+  const numMatch = expr.slice(state.pos).match(/^\d+\.?\d*/);
+  if (numMatch) {
+    state.pos += numMatch[0].length;
+    return parseFloat(numMatch[0]);
+  }
+  throw new Error('Unexpected token at: ' + expr.slice(state.pos));
+}
+
 function calcEquals() {
   try {
     let expr = calcExpr
       .replace(/×/g, '*')
-      .replace(/÷/g, '/')
-      .replace(/sqrt\(/g, 'Math.sqrt(')
-      .replace(/sin\(/g, 'Math.sin(')
-      .replace(/cos\(/g, 'Math.cos(')
-      .replace(/tan\(/g, 'Math.tan(');
-
-    console.log("Evaluating:", expr);
-    const result = Function('"use strict"; return (' + expr + ')')();
-    console.log("Result:", result);
+      .replace(/÷/g, '/');
+    const result = safeEval(expr);
     if (!isFinite(result)) throw new Error('Not finite');
     document.getElementById('calcExpression').textContent = calcExpr + ' =';
     document.getElementById('calcDisplay').textContent = parseFloat(result.toFixed(10));
     calcExpr = String(parseFloat(result.toFixed(10)));
   } catch (e) {
-    console.error("Calc error:", e);
     document.getElementById('calcDisplay').textContent = 'Error';
     document.getElementById('calcExpression').textContent = '';
     calcExpr = '';
