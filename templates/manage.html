@@ -39,6 +39,17 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   font-weight: 600;
   font-size: 12px;
 }
+.settings-tabs-wrap {
+  position: relative;
+}
+.settings-tabs-wrap::after {
+  content: '';
+  position: absolute;
+  right: 0; top: 0; bottom: 4px;
+  width: 48px;
+  background: linear-gradient(to right, transparent, #f2f4f7);
+  pointer-events: none;
+}
 .settings-tabs {
   display: flex;
   gap: 8px;
@@ -111,11 +122,13 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   {% endif %}
 
   <!-- TABS -->
-  <div class="settings-tabs mb-4">
-    <button class="tab-btn active" onclick="showTab('accounts')">🏦 Accounts</button>
-    <button class="tab-btn" onclick="showTab('bills')">💸 Bills</button>
-    <button class="tab-btn" onclick="showTab('income')">💰 Income</button>
-    <button class="tab-btn" onclick="showTab('rules')">📋 Rules</button>
+  <div class="settings-tabs-wrap mb-4">
+    <div class="settings-tabs">
+      <button class="tab-btn active" onclick="showTab('accounts')">🏦 Accounts</button>
+      <button class="tab-btn" onclick="showTab('bills')">💸 Bills</button>
+      <button class="tab-btn" onclick="showTab('income')">💰 Income</button>
+      <button class="tab-btn" onclick="showTab('rules')">📋 Rules</button>
+    </div>
   </div>
 
   <!-- TAB: ACCOUNTS -->
