@@ -2813,6 +2813,7 @@ def settings_add_bill():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("manage", msg=f"Bill '{name}' added."))
 
 @app.post("/settings/edit-bill")
@@ -2845,6 +2846,7 @@ def settings_edit_bill():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("manage", msg="Bill updated."))
 
 @app.post("/settings/delete-bill")
@@ -2860,6 +2862,7 @@ def settings_delete_bill():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("manage", msg="Bill deleted."))
 
 @app.post("/settings/add-savings-rule")
@@ -2892,6 +2895,7 @@ def settings_add_savings_rule():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("manage", msg=f"Savings rule '{name}' added."))
 
 @app.post("/settings/edit-savings-rule")
@@ -2923,6 +2927,7 @@ def settings_edit_savings_rule():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("manage", msg="Savings rule updated."))
 
 @app.post("/settings/delete-savings-rule")
@@ -2938,6 +2943,7 @@ def settings_delete_savings_rule():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("manage", msg="Savings rule deleted."))
 
 @app.post("/settings/add-future-event")
@@ -2966,6 +2972,7 @@ def settings_add_future_event():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("manage", msg=f"Future event '{name}' added."))
 
 @app.post("/settings/edit-future-event")
@@ -2993,6 +3000,7 @@ def settings_edit_future_event():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("manage", msg="Future event updated."))
 
 @app.post("/settings/add-income")
@@ -3024,6 +3032,7 @@ def settings_add_income():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("manage", msg=f"Income source '{name}' added."))
 
 @app.post("/settings/edit-income")
@@ -3058,6 +3067,7 @@ def settings_edit_income():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("manage", msg="Income updated."))
 
 @app.post("/settings/delete-income")
@@ -3073,6 +3083,7 @@ def settings_delete_income():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("manage", msg="Income source deleted."))
 
 @app.post("/settings/add-investment")
