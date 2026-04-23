@@ -45,9 +45,11 @@ FORECAST_CACHE_TTL = 300  # 5 minutes in seconds
 
 
 def bust_forecast_cache(user_id):
-    """Remove the forecast cache entry for a user so the next page load recomputes."""
-    key = f"forecast_{user_id}_{date.today().isoformat()}"
-    forecast_cache.pop(key, None)
+    """Remove all forecast cache entries for a user so the next page load recomputes."""
+    prefix = f"forecast_{user_id}_"
+    stale = [k for k in list(forecast_cache.keys()) if k.startswith(prefix)]
+    for k in stale:
+        forecast_cache.pop(k, None)
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "Data"
@@ -2709,6 +2711,7 @@ def settings_add_account():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("manage", msg=f"Account '{name}' created."))
 
 @app.post("/settings/deactivate-account")
