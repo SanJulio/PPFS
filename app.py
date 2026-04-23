@@ -2621,6 +2621,8 @@ def settings_save_notifications():
     digest = request.form.get("notification_digest", "off")
     if digest not in ("off", "weekly", "monthly"):
         digest = "off"
+    if digest != "off" and not user_is_pro():
+        digest = "off"
     db = get_db()
     cursor = db.cursor()
     try:
@@ -2692,11 +2694,10 @@ def settings_add_account():
     except ValueError:
         return redirect(url_for("manage", msg="Invalid balance."))
 
-    # Free tier limit: max 3 accounts
-    # Check current account count before inserting
+    # Free tier limit: max 2 accounts
     if not user_is_pro():
         existing = get_active_accounts(current_user.id)
-        if len(existing) >= 3:
+        if len(existing) >= 2:
             return redirect(url_for("manage", msg="FREE_LIMIT_ACCOUNTS"))
 
     db = get_db()
@@ -2861,6 +2862,8 @@ def settings_delete_bill():
 @app.post("/settings/add-savings-rule")
 @login_required
 def settings_add_savings_rule():
+    if not user_is_pro():
+        return redirect(url_for("manage", msg="PRO_REQUIRED"))
     name = (request.form.get("name") or "").strip()
     amount = (request.form.get("amount") or "").strip()
     day = (request.form.get("day") or "1").strip()
@@ -2937,6 +2940,8 @@ def settings_delete_savings_rule():
 @app.post("/settings/add-future-event")
 @login_required
 def settings_add_future_event():
+    if not user_is_pro():
+        return redirect(url_for("manage", msg="PRO_REQUIRED"))
     name = (request.form.get("name") or "").strip()
     amount = (request.form.get("amount") or "").strip()
     date_input = (request.form.get("date") or "").strip()
@@ -3070,6 +3075,8 @@ def settings_delete_income():
 @app.post("/settings/add-investment")
 @login_required
 def settings_add_investment():
+    if not user_is_pro():
+        return redirect(url_for("manage", msg="PRO_REQUIRED"))
     name = (request.form.get("name") or "").strip()
     inv_type = (request.form.get("type") or "").strip()
     initial_amount = (request.form.get("initial_amount") or "").strip()
@@ -3250,7 +3257,9 @@ def forecast():
 
     track('page_view.forecast')
     today = date.today()
-    cache_key = f"forecast_{current_user.id}_{today.isoformat()}"
+    is_pro = user_is_pro()
+    forecast_days = 90 if is_pro else 30
+    cache_key = f"forecast_{current_user.id}_{today.isoformat()}_{forecast_days}"
     force_refresh = request.args.get("refresh") == "1"
 
     # return cached result if still fresh (skip if ?refresh=1 after marking paid)
@@ -3266,6 +3275,7 @@ def forecast():
                 upcoming=cached_data.get("upcoming", "[]"),
                 hist_snapshots=cached_data.get("hist_snapshots", "[]"),
                 savings_rates=cached_data.get("savings_rates", "{}"),
+                is_pro=cached_data.get("is_pro", True),
                 message=request.args.get("msg", ""),
                 today=today.isoformat()
             )
@@ -3390,7 +3400,7 @@ def forecast():
         today_snapshot[acc] = round(simulated[acc], 2)
     snapshots = [today_snapshot]
 
-    for day_offset in range(1, 91):
+    for day_offset in range(1, forecast_days + 1):
         sim_day = today + timedelta(days=day_offset)
 
         if sim_day.weekday() == 4:
@@ -3450,9 +3460,9 @@ def forecast():
     account_types_json = json.dumps(account_types)
     initial_balances_json = json.dumps(initial_balances)
 
-    # Build upcoming bills/income for the next 90 days (for forecast pay buttons)
+    # Build upcoming bills/income for the forecast horizon
     upcoming_items = []
-    end_date = today + timedelta(days=90)
+    end_date = today + timedelta(days=forecast_days)
 
     for bill in scheduled:
         if bill.get("day") is None:
@@ -3522,7 +3532,8 @@ def forecast():
         "initial_balances": initial_balances_json,
         "upcoming": upcoming_json,
         "hist_snapshots": hist_snapshots_json,
-        "savings_rates": savings_rates_json
+        "savings_rates": savings_rates_json,
+        "is_pro": is_pro
     })
 
     return render_template(
@@ -3534,6 +3545,7 @@ def forecast():
         upcoming=upcoming_json,
         hist_snapshots=hist_snapshots_json,
         savings_rates=savings_rates_json,
+        is_pro=is_pro,
         message=request.args.get("msg", ""),
         today=today.isoformat()
     )

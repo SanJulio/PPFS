@@ -113,7 +113,12 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   {% if message == 'FREE_LIMIT_ACCOUNTS' %}
     <div class="alert rounded-4" style="background:#fff3cd; border:none;">
       <div class="fw-bold">Account limit reached</div>
-      <div class="small mt-1">Free accounts are limited to 3 accounts. <a href="/billing/upgrade" class="fw-bold text-dark">Upgrade to Pro for £1.99/month</a> to add unlimited accounts.</div>
+      <div class="small mt-1">Free accounts are limited to 2 accounts. <a href="/billing/upgrade" class="fw-bold text-dark">Upgrade to Pro for £4.99/month</a> to add unlimited accounts.</div>
+    </div>
+  {% elif message == 'PRO_REQUIRED' %}
+    <div class="alert rounded-4" style="background:#f3f0ff; border:none;">
+      <div class="fw-bold">⭐ Pro feature</div>
+      <div class="small mt-1">This feature is available on Pro. <a href="/billing/upgrade" class="fw-bold text-dark">Upgrade for £4.99/month</a>.</div>
     </div>
   {% elif message == 'DELETE_EMAIL_MISMATCH' %}
     <div class="alert alert-danger rounded-4">The email you entered didn't match. Account not deleted.</div>
@@ -138,7 +143,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         <h5 class="mb-0">Accounts</h5>
         <div class="d-flex align-items-center gap-2">
           {% if not is_pro %}
-            <span class="badge-soft">{{ accounts|length }}/3 free</span>
+            <span class="badge-soft">{{ accounts|length }}/2 free</span>
           {% else %}
             <span class="badge-soft">{{ accounts|length }} accounts</span>
             <span class="badge text-bg-dark">Pro</span>
@@ -225,11 +230,11 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         </table>
       </div>
 
-      {% if not is_pro and accounts|length >= 3 %}
+      {% if not is_pro and accounts|length >= 2 %}
         <div class="rounded-4 p-3 text-center" style="background:#f8f9fa; border: 2px dashed #dee2e6;">
-          <div class="fw-bold mb-1">3 account limit reached</div>
+          <div class="fw-bold mb-1">2 account limit reached</div>
           <div class="text-muted small mb-3">Upgrade to Pro for unlimited accounts</div>
-          <a href="/billing/upgrade" class="btn btn-dark w-100 py-3">Upgrade to Pro — £1.99/month</a>
+          <a href="/billing/upgrade" class="btn btn-dark w-100 py-3">Upgrade to Pro — £4.99/month</a>
         </div>
       {% else %}
         <button class="btn btn-dark w-100 py-3" onclick="document.getElementById('addAccountModal').style.display='flex'">+ Add Account</button>
@@ -542,7 +547,15 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         </table>
       </div>
 
+      {% if is_pro %}
       <button class="btn btn-dark w-100 py-3" onclick="document.getElementById('addSavingsRuleModal').style.display='flex'">+ Add Savings Rule</button>
+      {% else %}
+      <div class="rounded-4 p-3 text-center" style="background:#f8f9fa; border:2px dashed #dee2e6;">
+        <div class="fw-bold mb-1">⭐ Pro feature</div>
+        <div class="text-muted small mb-3">Savings rules are available on Pro.</div>
+        <a href="/billing/upgrade" class="btn btn-dark w-100 py-2">Upgrade to Pro — £4.99/month</a>
+      </div>
+      {% endif %}
     </div>
 
     <!-- Future Events -->
@@ -610,7 +623,15 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       <hr>
       {% endif %}
 
+      {% if is_pro %}
       <button class="btn btn-dark w-100 py-3" onclick="document.getElementById('addFutureEventModal').style.display='flex'">+ Add Future Event</button>
+      {% else %}
+      <div class="rounded-4 p-3 text-center" style="background:#f8f9fa; border:2px dashed #dee2e6;">
+        <div class="fw-bold mb-1">⭐ Pro feature</div>
+        <div class="text-muted small mb-3">Future events are available on Pro.</div>
+        <a href="/billing/upgrade" class="btn btn-dark w-100 py-2">Upgrade to Pro — £4.99/month</a>
+      </div>
+      {% endif %}
     </div>
 
     <!-- Investments -->
@@ -654,6 +675,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       <hr>
       {% endif %}
 
+      {% if is_pro %}
       <div class="small fw-bold mb-2">Add New Investment</div>
       <form method="POST" action="/settings/add-investment">
         <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
@@ -677,6 +699,13 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         </div>
         <button class="btn btn-dark w-100 py-3">Add Investment</button>
       </form>
+      {% else %}
+      <div class="rounded-4 p-3 text-center" style="background:#f8f9fa; border:2px dashed #dee2e6;">
+        <div class="fw-bold mb-1">⭐ Pro feature</div>
+        <div class="text-muted small mb-3">Investment tracking is available on Pro.</div>
+        <a href="/billing/upgrade" class="btn btn-dark w-100 py-2">Upgrade to Pro — £4.99/month</a>
+      </div>
+      {% endif %}
     </div>
 
   </div>

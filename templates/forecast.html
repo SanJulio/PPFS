@@ -99,6 +99,16 @@ body { background: #f2f4f7; padding-bottom: 140px; }
   </div>
   {% endif %}
 
+  {% if not is_pro %}
+  <div class="rounded-4 p-3 mb-3 d-flex align-items-center justify-content-between gap-3" style="background:#f3f0ff; border:1.5px solid #c4b5fd;">
+    <div>
+      <div class="fw-semibold" style="font-size:14px;">⭐ 30-day forecast (Free)</div>
+      <div class="text-muted" style="font-size:12px;">Upgrade to Pro for the full 90-day view with warnings.</div>
+    </div>
+    <a href="/billing/upgrade" class="btn btn-dark btn-sm text-nowrap">Upgrade</a>
+  </div>
+  {% endif %}
+
   <div class="d-flex gap-2 mb-2 flex-wrap">
     <button class="btn btn-outline-secondary btn-filter" id="filterAll" onclick="setFilter('all', this)">All</button>
     <button class="btn btn-outline-secondary btn-filter active" id="filterCurrent" onclick="setFilter('current', this)">Current</button>
