@@ -57,6 +57,11 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   color: #aaa;
   min-height: 18px;
 }
+body { animation: pageFadeIn 0.2s ease forwards; }
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 </style>
 </head>
 <body>
@@ -656,6 +661,19 @@ function sendFeedback() {
       } else { msg.textContent = d.error || 'Could not send.'; msg.style.color='#c00'; msg.style.display='block'; }
     });
 }
+</script>
+<script>
+document.querySelectorAll('.navbar a').forEach(function(link) {
+  link.addEventListener('click', function(e) {
+    var href = this.getAttribute('href');
+    if (!href || href.startsWith('#') || href.startsWith('javascript')) return;
+    e.preventDefault();
+    document.body.style.opacity = '0';
+    document.body.style.transform = 'translateY(6px)';
+    document.body.style.transition = 'opacity 0.15s ease, transform 0.15s ease';
+    setTimeout(function() { window.location.href = href; }, 150);
+  });
+});
 </script>
 </body>
 </html>
