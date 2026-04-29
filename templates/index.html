@@ -250,7 +250,7 @@ body.privacy-invisible .amounts-visible .amount-private {
         </div>
         <div class="mb-3">
           <label class="form-label">Frequency</label>
-          <select class="form-select" id="obIncomeFreq" onchange="document.getElementById('obIncomeDayRow').style.display=this.value==='monthly'?'':'none'">
+          <select class="form-select" id="obIncomeFreq" onchange="obToggleIncomeDay(this.value)">
             <option value="monthly">Monthly</option>
             <option value="weekly">Weekly</option>
           </select>
@@ -258,6 +258,18 @@ body.privacy-invisible .amounts-visible .amount-private {
         <div class="mb-3" id="obIncomeDayRow">
           <label class="form-label">Day of month received</label>
           <input class="form-control" id="obIncomeDay" type="number" min="1" max="31" placeholder="e.g. 25">
+        </div>
+        <div class="mb-3" id="obIncomeWeeklyDayRow" style="display:none;">
+          <label class="form-label">Day of week received</label>
+          <select class="form-select" id="obIncomeWeeklyDay">
+            <option value="0">Monday</option>
+            <option value="1">Tuesday</option>
+            <option value="2">Wednesday</option>
+            <option value="3">Thursday</option>
+            <option value="4" selected>Friday</option>
+            <option value="5">Saturday</option>
+            <option value="6">Sunday</option>
+          </select>
         </div>
         <button type="button" class="btn btn-dark w-100 py-3" onclick="createOnboardingIncome(this)">Add income →</button>
         <button type="button" class="btn btn-link text-muted w-100 mt-2" onclick="onboardingStep(4)">Skip →</button>
@@ -1429,18 +1441,24 @@ function createOnboardingAccount(btn) {
   });
 }
 
+function obToggleIncomeDay(freq) {
+  document.getElementById('obIncomeDayRow').style.display = freq === 'monthly' ? '' : 'none';
+  document.getElementById('obIncomeWeeklyDayRow').style.display = freq === 'weekly' ? '' : 'none';
+}
+
 function createOnboardingIncome(btn) {
   const name = document.getElementById('obIncomeName').value.trim();
   const amount = document.getElementById('obIncomeAmount').value.trim();
   const freq = document.getElementById('obIncomeFreq').value;
   const day = document.getElementById('obIncomeDay').value.trim() || '1';
+  const weeklyDay = document.getElementById('obIncomeWeeklyDay').value;
   if (!name || !amount) { alert('Please fill in name and amount'); return; }
   btn.disabled = true; btn.textContent = 'Adding...';
   const fd = new URLSearchParams();
   fd.append('csrf_token', HOME_CSRF);
   fd.append('name', name); fd.append('amount', amount);
   fd.append('frequency', freq); fd.append('account', onboardingAccountName);
-  fd.append('day', day);
+  fd.append('day', day); fd.append('weekly_day', weeklyDay);
   fetch('/settings/add-income', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: fd.toString(), redirect: 'follow' })
     .then(r => { onboardingStep(4); })
     .catch(() => { onboardingStep(4); });

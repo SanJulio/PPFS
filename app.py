@@ -2405,7 +2405,7 @@ def api_snapshot():
             applies = False
             if freq == "monthly" and row.get("day") == sim_day.day:
                 applies = True
-            elif freq == "weekly" and sim_day.weekday() == 4:
+            elif freq == "weekly" and sim_day.weekday() == int(row.get("weekly_day") if row.get("weekly_day") is not None else 4):
                 applies = True
             if applies:
                 income_arriving.append({"name": row["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc})
@@ -3011,6 +3011,10 @@ def settings_add_income():
     frequency = (request.form.get("frequency") or "").strip()
     account = (request.form.get("account") or "").strip()
     day_raw = (request.form.get("day") or "1").strip()
+    try:
+        weekly_day = max(0, min(6, int(request.form.get("weekly_day") or 4)))
+    except ValueError:
+        weekly_day = 4
 
     if not name or not amount or not frequency or not account:
         return redirect(url_for("manage", msg="Missing fields."))
@@ -3026,9 +3030,14 @@ def settings_add_income():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("INSERT INTO income (name, amount, frequency, account, user_id, day) VALUES (%s, %s, %s, %s, %s, %s)", (name, amount, frequency, account, current_user.id, day))
+        cursor.execute("ALTER TABLE income ADD COLUMN IF NOT EXISTS weekly_day INTEGER DEFAULT 4")
+        cursor.execute("INSERT INTO income (name, amount, frequency, account, user_id, day, weekly_day) VALUES (%s, %s, %s, %s, %s, %s, %s)", (name, amount, frequency, account, current_user.id, day, weekly_day))
     else:
-        cursor.execute("INSERT INTO income (name, amount, frequency, account, user_id, day) VALUES (?, ?, ?, ?, ?, ?)", (name, amount, frequency, account, current_user.id, day))
+        try:
+            cursor.execute("ALTER TABLE income ADD COLUMN weekly_day INTEGER DEFAULT 4")
+        except Exception:
+            pass
+        cursor.execute("INSERT INTO income (name, amount, frequency, account, user_id, day, weekly_day) VALUES (?, ?, ?, ?, ?, ?, ?)", (name, amount, frequency, account, current_user.id, day, weekly_day))
     db.commit()
     cursor.close()
     release_db(db)
@@ -3044,6 +3053,10 @@ def settings_edit_income():
     frequency = (request.form.get("frequency") or "").strip()
     account = (request.form.get("account") or "").strip()
     day_raw = (request.form.get("day") or "1").strip()
+    try:
+        weekly_day = max(0, min(6, int(request.form.get("weekly_day") or 4)))
+    except ValueError:
+        weekly_day = 4
 
     if not name or not amount or not frequency or not account:
         return redirect(url_for("manage", msg="Missing fields."))
@@ -3059,11 +3072,16 @@ def settings_edit_income():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("UPDATE income SET name=%s, amount=%s, frequency=%s, account=%s, day=%s WHERE id=%s AND user_id=%s",
-                       (name, amount, frequency, account, day, income_id, current_user.id))
+        cursor.execute("ALTER TABLE income ADD COLUMN IF NOT EXISTS weekly_day INTEGER DEFAULT 4")
+        cursor.execute("UPDATE income SET name=%s, amount=%s, frequency=%s, account=%s, day=%s, weekly_day=%s WHERE id=%s AND user_id=%s",
+                       (name, amount, frequency, account, day, weekly_day, income_id, current_user.id))
     else:
-        cursor.execute("UPDATE income SET name=?, amount=?, frequency=?, account=?, day=? WHERE id=? AND user_id=?",
-                       (name, amount, frequency, account, day, income_id, current_user.id))
+        try:
+            cursor.execute("ALTER TABLE income ADD COLUMN weekly_day INTEGER DEFAULT 4")
+        except Exception:
+            pass
+        cursor.execute("UPDATE income SET name=?, amount=?, frequency=?, account=?, day=?, weekly_day=? WHERE id=? AND user_id=?",
+                       (name, amount, frequency, account, day, weekly_day, income_id, current_user.id))
     db.commit()
     cursor.close()
     release_db(db)
@@ -3417,9 +3435,10 @@ def forecast():
     for day_offset in range(1, forecast_days + 1):
         sim_day = today + timedelta(days=day_offset)
 
-        if sim_day.weekday() == 4:
-            for inc in income_rows:
-                if inc["frequency"] == "weekly" and inc["account"] in simulated:
+        for inc in income_rows:
+            if inc["frequency"] == "weekly" and inc["account"] in simulated:
+                pay_weekday = int(inc.get("weekly_day") if inc.get("weekly_day") is not None else 4)
+                if sim_day.weekday() == pay_weekday:
                     simulated[inc["account"]] += float(inc["amount"])
 
         for inc in income_rows:
@@ -3511,9 +3530,10 @@ def forecast():
     for inc in income_rows:
         freq = inc.get("frequency") or "monthly"
         if freq == "weekly":
+            pay_weekday = int(inc.get("weekly_day") if inc.get("weekly_day") is not None else 4)
             d = today
             while d <= end_date:
-                if d.weekday() == 4:  # Friday
+                if d.weekday() == pay_weekday:
                     upcoming_items.append({"date": d.isoformat(), "name": inc["name"], "amount": float(inc["amount"]), "account": inc["account"], "type": "income", "id": inc["id"]})
                 d += timedelta(days=1)
         else:  # monthly — use user's specified pay day

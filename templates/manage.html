@@ -403,7 +403,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                       <input class="form-control form-control-sm" name="amount" value="{{ '%.2f'|format(i.amount) }}" placeholder="Amount" required>
                     </div>
                     <div class="col-6">
-                      <select class="form-select form-select-sm" name="frequency" required onchange="toggleIncomeDay(this, 'edit-day-{{ i.id }}')">
+                      <select class="form-select form-select-sm" name="frequency" required onchange="toggleIncomeDay(this, 'edit-day-{{ i.id }}', 'edit-weekly-day-{{ i.id }}')">
                         <option value="weekly" {% if i.frequency == 'weekly' %}selected{% endif %}>Weekly</option>
                         <option value="monthly" {% if i.frequency == 'monthly' %}selected{% endif %}>Monthly</option>
                       </select>
@@ -411,7 +411,13 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                     <div class="col-6" id="edit-day-{{ i.id }}" {% if i.frequency != 'monthly' %}style="display:none"{% endif %}>
                       <input class="form-control form-control-sm" name="day" type="number" min="1" max="31" value="{{ i.day if i.day else 1 }}" placeholder="Pay day (1–31)">
                     </div>
-                    <div class="col-6 {% if i.frequency == 'monthly' %}d-none{% endif %}"><!-- spacer --></div>
+                    <div class="col-6" id="edit-weekly-day-{{ i.id }}" {% if i.frequency != 'weekly' %}style="display:none"{% endif %}>
+                      <select class="form-select form-select-sm" name="weekly_day">
+                        {% for val, label in [(0,'Monday'),(1,'Tuesday'),(2,'Wednesday'),(3,'Thursday'),(4,'Friday'),(5,'Saturday'),(6,'Sunday')] %}
+                        <option value="{{ val }}" {% if (i.weekly_day if i.weekly_day is not none else 4) == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
                     <div class="col-6">
                       <select class="form-select form-select-sm" name="account" required>
                         {% for a in accounts %}
@@ -768,9 +774,11 @@ function toggleMonthField(select, targetId) {
   if (el) el.style.display = select.value === 'yearly' ? 'block' : 'none';
 }
 
-function toggleIncomeDay(select, targetId) {
-  const el = document.getElementById(targetId);
-  if (el) el.style.display = select.value === 'monthly' ? '' : 'none';
+function toggleIncomeDay(select, monthlyId, weeklyId) {
+  const monthly = document.getElementById(monthlyId);
+  const weekly = weeklyId ? document.getElementById(weeklyId) : null;
+  if (monthly) monthly.style.display = select.value === 'monthly' ? '' : 'none';
+  if (weekly) weekly.style.display = select.value === 'weekly' ? '' : 'none';
 }
 
 function toggleEdit(id) {
@@ -842,7 +850,7 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
       <div class="mb-2"><input class="form-control" name="name" placeholder="e.g. Salary, Freelance" required></div>
       <div class="mb-2"><input class="form-control" name="amount" inputmode="decimal" placeholder="Amount (£)" required></div>
       <div class="mb-2">
-        <select class="form-select" name="frequency" required onchange="toggleIncomeDay(this, 'modal-income-day')">
+        <select class="form-select" name="frequency" required onchange="toggleIncomeDay(this, 'modal-income-day', 'modal-income-weekly-day')">
           <option value="">Select frequency</option>
           <option value="weekly">Weekly</option>
           <option value="monthly">Monthly</option>
@@ -850,6 +858,17 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
       </div>
       <div class="mb-2" id="modal-income-day" style="display:none;">
         <input class="form-control" name="day" type="number" min="1" max="31" placeholder="Which day of the month? (e.g. 25)">
+      </div>
+      <div class="mb-2" id="modal-income-weekly-day" style="display:none;">
+        <select class="form-select" name="weekly_day">
+          <option value="0">Monday</option>
+          <option value="1">Tuesday</option>
+          <option value="2">Wednesday</option>
+          <option value="3">Thursday</option>
+          <option value="4" selected>Friday</option>
+          <option value="5">Saturday</option>
+          <option value="6">Sunday</option>
+        </select>
       </div>
       <div class="mb-3">
         <select class="form-select" name="account" required>
