@@ -138,7 +138,7 @@ body.privacy-invisible .amount-private {
 body.privacy-invisible .amounts-visible .amount-private {
   visibility: visible;
 }
-body { animation: pageFadeIn 0.2s ease forwards; }
+.page-wrapper { animation: pageFadeIn 0.2s ease forwards; }
 @keyframes pageFadeIn {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -146,6 +146,7 @@ body { animation: pageFadeIn 0.2s ease forwards; }
 </style>
 </head>
 <body>
+<div class="page-wrapper">
 <!-- Top bar -->
 <div class="top-bar">
 <div class="container d-flex align-items-center justify-content-between" style="padding-top:clamp(14px,4vw,30px);padding-bottom:clamp(14px,4vw,30px);">
@@ -1026,6 +1027,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
   </div>
 </div>
 
+</div>
 <nav class="navbar fixed-bottom bg-white border-top">
   <div class="container-fluid d-flex justify-content-around text-center">
     <a href="/" class="text-decoration-none nav-active">
@@ -1764,9 +1766,12 @@ document.querySelectorAll('.navbar a').forEach(function(link) {
     var href = this.getAttribute('href');
     if (!href || href.startsWith('#') || href.startsWith('javascript')) return;
     e.preventDefault();
-    document.body.style.opacity = '0';
-    document.body.style.transform = 'translateY(6px)';
-    document.body.style.transition = 'opacity 0.15s ease, transform 0.15s ease';
+    var wrapper = document.querySelector('.page-wrapper');
+    if (wrapper) {
+      wrapper.style.opacity = '0';
+      wrapper.style.transform = 'translateY(6px)';
+      wrapper.style.transition = 'opacity 0.15s ease, transform 0.15s ease';
+    }
     setTimeout(function() { window.location.href = href; }, 150);
   });
 });
