@@ -66,7 +66,7 @@ body { background: #f2f4f7; padding-bottom: 110px; }
 #dayDetail { transition: opacity 0.15s; }
 .tx-row { display:flex; align-items:center; justify-content:space-between; padding: 9px 0; border-bottom: 1px solid #f0f0f0; gap:10px; }
 .tx-row:last-child { border-bottom: none; }
-.page-wrapper { animation: pageFadeIn 0.2s ease forwards; }
+.page-wrapper { animation: pageFadeIn 0.2s ease; }
 @keyframes pageFadeIn {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -78,7 +78,7 @@ body { background: #f2f4f7; padding-bottom: 110px; }
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
-html, body { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
+html, body { overscroll-behavior: none; }
 </style>
 </head>
 <body>
