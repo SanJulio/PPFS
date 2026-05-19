@@ -169,20 +169,21 @@ class TestWeeklyIncome:
 
     def test_no_weekly_income_when_no_friday(self):
         today = date.today()
-        # Find a Tuesday; simulate Mon-Tue (no Friday)
-        days_to_monday = (7 - today.weekday()) % 7 + 1  # next Monday
-        next_monday = today + timedelta(days=days_to_monday)
-        next_tuesday = next_monday + timedelta(days=1)
+        # Target the Thursday just before next Friday.
+        # The range [today+1 .. Thursday] is guaranteed to contain no Friday.
+        days_to_friday = (4 - today.weekday()) % 7
+        if days_to_friday == 0:
+            days_to_friday = 7
+        target = today + timedelta(days=days_to_friday - 1)
 
-        if next_tuesday.weekday() == 4:
-            # Edge case: skip
-            return
+        if target <= today:
+            # today is Thursday — tomorrow is Friday, impossible to construct a Friday-free range
+            pytest.skip("today is Thursday; simulation always starts on a Friday")
 
         accounts = {"Current": {"balance": 500.0, "type": "current", "active": True}}
         weekly_income = [{"account": "Current", "amount": 1000.0}]
 
-        final, _ = _simulate(next_tuesday, accounts, weekly_income=weekly_income)
-        # No Friday in range Mon→Tue → no income applied
+        final, _ = _simulate(target, accounts, weekly_income=weekly_income)
         assert abs(final["Current"] - 500.0) < 0.01
 
 
