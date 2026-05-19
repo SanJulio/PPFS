@@ -1,0 +1,29 @@
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      SECRET_KEY: ci-test-secret-key-spendara
+      # DATABASE_URL intentionally absent — tests use SQLite
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest pytest-mock
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
