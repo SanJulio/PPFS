@@ -1,3 +1,4 @@
+# Spendara - tested and protected
 from __future__ import annotations
 
 # --- IMPORTS ---
