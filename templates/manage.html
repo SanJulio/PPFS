@@ -754,7 +754,7 @@ function openAddIncomeModal() {
   document.getElementById('incomeForm').action = '/settings/add-income';
   document.getElementById('incomeSubmitBtn').textContent = 'Add Income Source';
   document.getElementById('incomeModal').style.display = 'flex';
-  updateIncomePreview();
+  _doUpdateIncomePreview();
 }
 
 function openEditIncomeModal(id) {
@@ -796,10 +796,14 @@ function openEditIncomeModal(id) {
     document.getElementById('incomeYearlyMonth').value = cfg.month || 1;
     document.getElementById('incomeYearlyDay').value = cfg.day || 1;
   }
-  setWeekendRule(inc.weekend_rule || 'before');
-  setBHRule(inc.bank_holiday_rule || 'before');
+  // If rules differ from default, auto-expand so user can see them
+  var wr = inc.weekend_rule || 'before';
+  var bh = inc.bank_holiday_rule || 'before';
+  setWeekendRule(wr);
+  setBHRule(bh);
+  if (wr !== 'before' || bh !== 'before') togglePaymentRules();
   document.getElementById('incomeModal').style.display = 'flex';
-  updateIncomePreview();
+  _doUpdateIncomePreview();
 }
 
 function closeIncomeModal() {
@@ -813,6 +817,10 @@ function resetIncomeModal() {
   document.getElementById('incomeId').value = '';
   document.getElementById('incomeNextPayment').value = '';
   document.getElementById('incomeFixedDay').value = 25;
+  var adjExp = document.getElementById('incomeAdjExpanded');
+  if (adjExp) adjExp.style.display = 'none';
+  var chevron = document.getElementById('incomeAdjChevron');
+  if (chevron) chevron.textContent = '▼';
   var radio = document.querySelector('[name="_rule_type_ui"][value="fixed_date"]');
   if (radio) radio.checked = true;
   incomeRuleTypeChanged('fixed_date');
@@ -831,6 +839,8 @@ function incomeFreqChanged(freq) {
   document.getElementById('incomeWeekdayRow').style.display = isWeeklyGroup ? '' : 'none';
   document.getElementById('incomeMonthlySection').style.display = freq === 'monthly' ? '' : 'none';
   document.getElementById('incomeYearlySection').style.display = freq === 'yearly' ? '' : 'none';
+  var adjEl = document.getElementById('incomeAdjRulesSection');
+  if (adjEl) adjEl.style.display = (freq === 'monthly' || freq === 'yearly') ? '' : 'none';
   buildIncomeRuleConfig();
   updateIncomePreview();
 }
@@ -849,6 +859,7 @@ function setWeekendRule(rule) {
     btn.classList.remove('btn-dark', 'btn-outline-secondary');
     btn.classList.add(btn.dataset.wr === rule ? 'btn-dark' : 'btn-outline-secondary');
   });
+  _updateAdjSummary();
   buildIncomeRuleConfig();
   updateIncomePreview();
 }
@@ -859,8 +870,26 @@ function setBHRule(rule) {
     btn.classList.remove('btn-dark', 'btn-outline-secondary');
     btn.classList.add(btn.dataset.bh === rule ? 'btn-dark' : 'btn-outline-secondary');
   });
+  _updateAdjSummary();
   buildIncomeRuleConfig();
   updateIncomePreview();
+}
+
+function _updateAdjSummary() {
+  var wr = document.getElementById('incomeWeekendRule').value;
+  var bh = document.getElementById('incomeBHRule').value;
+  var wrLabels = {before: 'pay Friday before', after: 'pay Monday after', nearest: 'nearest'};
+  var bhLabels = {before: 'pay day before', after: 'pay day after', nearest: 'nearest'};
+  var el = document.getElementById('incomeAdjSummary');
+  if (el) el.textContent = 'Weekends: ' + (wrLabels[wr] || wr) + ' · Bank holidays: ' + (bhLabels[bh] || bh);
+}
+
+function togglePaymentRules() {
+  var section = document.getElementById('incomeAdjExpanded');
+  var chevron = document.getElementById('incomeAdjChevron');
+  var isOpen = section && section.style.display !== 'none';
+  if (section) section.style.display = isOpen ? 'none' : '';
+  if (chevron) chevron.textContent = isOpen ? '▼' : '▲';
 }
 
 function buildIncomeRuleConfig() {
@@ -896,50 +925,68 @@ function incomeFieldChanged() {
 
 function updateIncomePreview() {
   clearTimeout(_incomePreviewTimer);
-  _incomePreviewTimer = setTimeout(function() {
-    buildIncomeRuleConfig();
-    var freq = document.getElementById('incomeFreqValue').value;
-    var ruleType = document.getElementById('incomeRuleType').value || null;
-    var ruleConfig = document.getElementById('incomeRuleConfig').value || '{}';
-    var weeklyDay = parseInt(document.getElementById('incomeWeeklyDay').value) || 4;
-    var weekendRule = document.getElementById('incomeWeekendRule').value || 'before';
-    var bhRule = document.getElementById('incomeBHRule').value || 'before';
-    var firstPayment = document.getElementById('incomeNextPayment').value || null;
-    var cfg = {};
-    try { cfg = JSON.parse(ruleConfig); } catch(e) {}
-    var csrfToken = document.querySelector('#incomeForm [name="csrf_token"]').value;
-    fetch('/api/income-preview', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        csrf_token: csrfToken,
-        frequency: freq,
-        rule_type: ruleType,
-        rule_config: ruleConfig,
-        weekend_rule: weekendRule,
-        bank_holiday_rule: bhRule,
-        weekly_day: weeklyDay,
-        first_payment_date: firstPayment,
-        day: cfg.day || 25,
-        from_date: firstPayment || null
-      })
+  _incomePreviewTimer = setTimeout(_doUpdateIncomePreview, 350);
+}
+
+function _doUpdateIncomePreview() {
+  var el = document.getElementById('incomePreviewDates');
+  if (!el) return;
+  var csrfEl = document.querySelector('#incomeForm [name="csrf_token"]');
+  if (!csrfEl) return;
+
+  buildIncomeRuleConfig();
+
+  var freq = document.getElementById('incomeFreqValue').value;
+  var ruleType = document.getElementById('incomeRuleType').value || null;
+  var ruleConfig = document.getElementById('incomeRuleConfig').value || '{}';
+  var weeklyDay = parseInt(document.getElementById('incomeWeeklyDay').value) || 4;
+  var weekendRule = document.getElementById('incomeWeekendRule').value || 'before';
+  var bhRule = document.getElementById('incomeBHRule').value || 'before';
+  var firstPayment = document.getElementById('incomeNextPayment').value || null;
+  var amountVal = parseFloat(document.getElementById('incomeAmount').value) || 0;
+  var cfg = {};
+  try { cfg = JSON.parse(ruleConfig); } catch(e) {}
+
+  el.innerHTML = '<span style="color:#999;font-size:12px;">Calculating…</span>';
+
+  fetch('/api/income-preview', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      csrf_token: csrfEl.value,
+      frequency: freq,
+      rule_type: ruleType,
+      rule_config: ruleConfig,
+      weekend_rule: weekendRule,
+      bank_holiday_rule: bhRule,
+      weekly_day: weeklyDay,
+      first_payment_date: firstPayment,
+      day: cfg.day || 25,
+      from_date: firstPayment || null
     })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      var el = document.getElementById('incomePreviewDates');
-      if (data.dates && data.dates.length) {
-        el.innerHTML = data.dates.map(function(d) {
-          var dt = new Date(d + 'T00:00:00');
-          return '<span class="badge text-bg-light me-1">' + dt.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short', year:'numeric'}) + '</span>';
-        }).join('');
-      } else {
-        el.textContent = 'No dates found in the next 2 years';
-      }
-    })
-    .catch(function() {
-      document.getElementById('incomePreviewDates').textContent = 'Preview unavailable';
-    });
-  }, 400);
+  })
+  .then(function(r) {
+    if (!r.ok) return Promise.reject('http ' + r.status);
+    return r.json();
+  })
+  .then(function(data) {
+    if (!data.dates || !data.dates.length) {
+      el.innerHTML = '<span style="color:#999;font-size:12px;">No upcoming dates found</span>';
+      return;
+    }
+    var amtLabel = amountVal > 0 ? '£' + amountVal.toLocaleString('en-GB', {minimumFractionDigits: 0, maximumFractionDigits: 2}) : '';
+    el.innerHTML = data.dates.map(function(d) {
+      var dt = new Date(d + 'T00:00:00');
+      var dateStr = dt.toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'});
+      return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e9ecef;font-size:13px;">' +
+             '<span>' + dateStr + '</span>' +
+             (amtLabel ? '<span style="color:#198754;font-weight:600;">' + amtLabel + '</span>' : '') +
+             '</div>';
+    }).join('') + '<div style="font-size:11px;color:#bbb;margin-top:4px;">Based on your payment schedule</div>';
+  })
+  .catch(function() {
+    el.innerHTML = '<span style="color:#999;font-size:12px;">Enter your details above to see upcoming dates</span>';
+  });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -1055,10 +1102,10 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
 
       <!-- Frequency pills -->
       <div class="mb-3">
-        <label class="form-label small fw-semibold mb-1">Frequency</label>
-        <div class="d-flex gap-2 flex-wrap">
+        <label class="form-label small fw-semibold mb-1">How often?</label>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
           {% for val, lbl in [('weekly','Weekly'),('fortnightly','Fortnightly'),('4-weekly','4-Weekly'),('monthly','Monthly'),('yearly','Yearly')] %}
-          <button type="button" class="btn btn-sm income-freq-pill {% if val == 'monthly' %}btn-dark{% else %}btn-outline-secondary{% endif %}"
+          <button type="button" class="btn btn-sm income-freq-pill py-2 {% if val == 'monthly' %}btn-dark{% else %}btn-outline-secondary{% endif %}"
             data-freq="{{ val }}" onclick="incomeFreqChanged('{{ val }}')">{{ lbl }}</button>
           {% endfor %}
         </div>
@@ -1066,7 +1113,7 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
 
       <!-- Weekday row (weekly / fortnightly / 4-weekly) -->
       <div id="incomeWeekdayRow" class="mb-3" style="display:none;">
-        <label class="form-label small fw-semibold mb-1">Pay day</label>
+        <label class="form-label small fw-semibold mb-1">Which day?</label>
         <select class="form-select" name="weekly_day" id="incomeWeeklyDay" onchange="incomeFieldChanged()">
           <option value="0">Monday</option>
           <option value="1">Tuesday</option>
@@ -1098,7 +1145,7 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
 
         <!-- Fixed date config -->
         <div id="incomeCfgFixedDate" class="mb-3">
-          <label class="form-label small fw-semibold mb-1">Day of month (1–28)</label>
+          <label class="form-label small fw-semibold mb-1">Which day?</label>
           <input class="form-control" id="incomeFixedDay" type="number" min="1" max="28" value="25" oninput="incomeFieldChanged()">
         </div>
 
@@ -1151,23 +1198,6 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
           </div>
         </div>
 
-        <!-- Weekend & BH rules (monthly) -->
-        <div class="mb-2">
-          <label class="form-label small fw-semibold mb-1">If it falls on a weekend</label>
-          <div class="d-flex gap-2 flex-wrap">
-            <button type="button" class="btn btn-sm income-wr-pill btn-dark" data-wr="before" onclick="setWeekendRule('before')">Pay Friday before</button>
-            <button type="button" class="btn btn-sm income-wr-pill btn-outline-secondary" data-wr="after" onclick="setWeekendRule('after')">Pay Monday after</button>
-            <button type="button" class="btn btn-sm income-wr-pill btn-outline-secondary" data-wr="nearest" onclick="setWeekendRule('nearest')">Nearest</button>
-          </div>
-        </div>
-        <div class="mb-3">
-          <label class="form-label small fw-semibold mb-1">If it falls on a bank holiday</label>
-          <div class="d-flex gap-2 flex-wrap">
-            <button type="button" class="btn btn-sm income-bh-pill btn-dark" data-bh="before" onclick="setBHRule('before')">Pay day before</button>
-            <button type="button" class="btn btn-sm income-bh-pill btn-outline-secondary" data-bh="after" onclick="setBHRule('after')">Pay day after</button>
-            <button type="button" class="btn btn-sm income-bh-pill btn-outline-secondary" data-bh="nearest" onclick="setBHRule('nearest')">Nearest</button>
-          </div>
-        </div>
       </div><!-- /monthly section -->
 
       <!-- Yearly section -->
@@ -1182,27 +1212,37 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
             </select>
           </div>
           <div class="col-6">
-            <label class="form-label small fw-semibold mb-1">Day</label>
+            <label class="form-label small fw-semibold mb-1">Which day?</label>
             <input class="form-control" id="incomeYearlyDay" type="number" min="1" max="31" value="1" oninput="incomeFieldChanged()">
           </div>
         </div>
-        <div class="mb-2">
-          <label class="form-label small fw-semibold mb-1">If it falls on a weekend</label>
-          <div class="d-flex gap-2 flex-wrap">
-            <button type="button" class="btn btn-sm income-wr-pill btn-dark" data-wr="before" onclick="setWeekendRule('before')">Pay Friday before</button>
-            <button type="button" class="btn btn-sm income-wr-pill btn-outline-secondary" data-wr="after" onclick="setWeekendRule('after')">Pay Monday after</button>
-            <button type="button" class="btn btn-sm income-wr-pill btn-outline-secondary" data-wr="nearest" onclick="setWeekendRule('nearest')">Nearest</button>
-          </div>
-        </div>
-        <div class="mb-3">
-          <label class="form-label small fw-semibold mb-1">If it falls on a bank holiday</label>
-          <div class="d-flex gap-2 flex-wrap">
-            <button type="button" class="btn btn-sm income-bh-pill btn-dark" data-bh="before" onclick="setBHRule('before')">Pay day before</button>
-            <button type="button" class="btn btn-sm income-bh-pill btn-outline-secondary" data-bh="after" onclick="setBHRule('after')">Pay day after</button>
-            <button type="button" class="btn btn-sm income-bh-pill btn-outline-secondary" data-bh="nearest" onclick="setBHRule('nearest')">Nearest</button>
-          </div>
-        </div>
       </div><!-- /yearly section -->
+
+      <!-- Adjustment rules (collapsed by default) -->
+      <div id="incomeAdjRulesSection" class="mb-3" style="display:none;">
+        <button type="button" class="btn btn-link btn-sm text-muted ps-0 mb-2 d-flex align-items-center gap-1" onclick="togglePaymentRules()" style="text-decoration:none; font-size:13px;">
+          <span id="incomeAdjChevron">▼</span> <span>Customise payment rules</span>
+        </button>
+        <div class="small text-muted mb-2" id="incomeAdjSummary">Weekends: pay Friday before · Bank holidays: pay day before</div>
+        <div id="incomeAdjExpanded" style="display:none;">
+          <div class="mb-2">
+            <label class="form-label small fw-semibold mb-1">If it falls on a weekend</label>
+            <div class="d-flex gap-2 flex-wrap">
+              <button type="button" class="btn btn-sm income-wr-pill btn-dark" data-wr="before" onclick="setWeekendRule('before')">Pay Friday before</button>
+              <button type="button" class="btn btn-sm income-wr-pill btn-outline-secondary" data-wr="after" onclick="setWeekendRule('after')">Pay Monday after</button>
+              <button type="button" class="btn btn-sm income-wr-pill btn-outline-secondary" data-wr="nearest" onclick="setWeekendRule('nearest')">Nearest</button>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold mb-1">If it falls on a bank holiday</label>
+            <div class="d-flex gap-2 flex-wrap">
+              <button type="button" class="btn btn-sm income-bh-pill btn-dark" data-bh="before" onclick="setBHRule('before')">Pay day before</button>
+              <button type="button" class="btn btn-sm income-bh-pill btn-outline-secondary" data-bh="after" onclick="setBHRule('after')">Pay day after</button>
+              <button type="button" class="btn btn-sm income-bh-pill btn-outline-secondary" data-bh="nearest" onclick="setBHRule('nearest')">Nearest</button>
+            </div>
+          </div>
+        </div>
+      </div><!-- /adjustment rules -->
 
       <!-- Next payment date -->
       <div class="mb-3">
@@ -1212,9 +1252,9 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
       </div>
 
       <!-- Live preview -->
-      <div class="rounded-3 p-3 mb-3" style="background:#f8f9fa;">
+      <div class="rounded-3 p-3 mb-3" style="background:#f8f9fa; min-height:64px;">
         <div class="small fw-semibold mb-2" style="color:#666;">Next 3 payment dates</div>
-        <div id="incomePreviewDates" class="text-muted small">Fill in the details above to see your dates</div>
+        <div id="incomePreviewDates" class="text-muted small">Enter your details above to see upcoming dates</div>
       </div>
 
       <button type="submit" class="btn btn-dark w-100 py-3" id="incomeSubmitBtn">Add Income Source</button>
