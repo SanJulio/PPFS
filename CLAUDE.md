@@ -151,6 +151,14 @@ The income modal (`id="incomeModal"`) is a full-screen overlay with scrollable c
 
 ## What was last worked on (May 2026)
 
+### UX fixes batch (May 2026)
+- **Fix 1 — Bill tab redirect**: `settings_add_bill`, `settings_edit_bill`, `settings_delete_bill` all now redirect to `/manage?tab=bills` (was going to the default Accounts tab).
+- **Fix 2 — Landing page SEO**: `<meta name="description">` updated to `"Spendara · See the future of your money"` (under 155 chars). No OG tags existed.
+- **Fix 3 — Dismiss banner bug**: Root cause was the banner's "Dismiss" button doing `style.display='none'` only — no DB write. Fixed to call `dismissAutoApply()` which POSTs to `/dismiss-auto-apply` (updates `last_applied` in DB). Added `.then()` to hide the banner only after server confirms success.
+- **Fix 4 — Safe to spend in day view**: The "See transactions" flow in Future Balances now shows `· Safe: £X.XX` alongside the balance on every row. Computed as `running_balance − remaining_bills_in_period`; turns green/red based on sign.
+- **Fix 6 — Middle dots in title tags**: All 18 `<title>` tags across all templates updated from `—` (em-dash) to `·` (middle dot).
+- **Fix 5 — Editable date range on Financial Overview**: Parked. The server logic (`calculate_monthly_spending`) is already parameterised by `cycle_start_date`/`cycle_end_date` — it's ready. Only the UI plumbing is missing. Options when resuming: (a) URL params + page reload (simplest), (b) `/api/overview` JSON endpoint + AJAX re-render (no flash).
+
 ### Income recurrence engine (income_engine.py)
 Built from scratch. Handles all frequency/rule combinations. Weekend and UK bank holiday adjustments. Backward-compatible legacy path for old rows. All existing routes (forecast, snapshot, auto-apply, home, manage) migrated to use it.
 
@@ -178,5 +186,5 @@ Built from scratch. Handles all frequency/rule combinations. Weekend and UK bank
 ## What's next
 - Income modal is feature-complete and polished — no known remaining issues
 - Consider adding a "next payment" column to the income table view in manage.html (using `describe_rule` + `get_next_dates`)
-- Landing page: Hero → Features → How it works → CTA → Footer; goal is to tighten further
-- Any remaining polish on auto-apply feature if needed
+- **Fix 5 — Editable date range on Financial Overview**: server logic ready, UI plumbing needed (URL params + reload, or AJAX re-render)
+- Landing page: further tightening if needed

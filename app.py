@@ -2783,15 +2783,15 @@ def settings_add_bill():
     month_raw = (request.form.get("month") or "").strip()
 
     if not name or not amount or not day or not account:
-        return redirect(url_for("manage", msg="Missing fields."))
+        return redirect(url_for("manage", msg="Missing fields.", tab="bills"))
     if frequency == "yearly" and not month_raw:
-        return redirect(url_for("manage", msg="Please select a month for yearly bills."))
+        return redirect(url_for("manage", msg="Please select a month for yearly bills.", tab="bills"))
     amount, err = validate_amount(amount)
     if err:
-        return redirect(url_for("manage", msg=err))
+        return redirect(url_for("manage", msg=err, tab="bills"))
     day, err = validate_day(day)
     if err:
-        return redirect(url_for("manage", msg=err))
+        return redirect(url_for("manage", msg=err, tab="bills"))
     bill_month = int(month_raw) if month_raw and frequency == "yearly" else None
 
     db = get_db()
@@ -2804,7 +2804,7 @@ def settings_add_bill():
     cursor.close()
     release_db(db)
     bust_forecast_cache(current_user.id)
-    return redirect(url_for("manage", msg=f"Bill '{name}' added."))
+    return redirect(url_for("manage", msg=f"Bill '{name}' added.", tab="bills"))
 
 @app.post("/settings/edit-bill")
 @login_required
@@ -2818,13 +2818,13 @@ def settings_edit_bill():
     month_raw = (request.form.get("month") or "").strip()
 
     if not name or not amount or not day or not account:
-        return redirect(url_for("manage", msg="Missing fields."))
+        return redirect(url_for("manage", msg="Missing fields.", tab="bills"))
     amount, err = validate_amount(amount)
     if err:
-        return redirect(url_for("manage", msg=err))
+        return redirect(url_for("manage", msg=err, tab="bills"))
     day, err = validate_day(day)
     if err:
-        return redirect(url_for("manage", msg=err))
+        return redirect(url_for("manage", msg=err, tab="bills"))
     bill_month = int(month_raw) if month_raw and frequency == "yearly" else None
 
     db = get_db()
@@ -2837,7 +2837,7 @@ def settings_edit_bill():
     cursor.close()
     release_db(db)
     bust_forecast_cache(current_user.id)
-    return redirect(url_for("manage", msg="Bill updated."))
+    return redirect(url_for("manage", msg="Bill updated.", tab="bills"))
 
 @app.post("/settings/delete-bill")
 @login_required
@@ -2853,7 +2853,7 @@ def settings_delete_bill():
     cursor.close()
     release_db(db)
     bust_forecast_cache(current_user.id)
-    return redirect(url_for("manage", msg="Bill deleted."))
+    return redirect(url_for("manage", msg="Bill deleted.", tab="bills"))
 
 @app.post("/settings/add-savings-rule")
 @login_required
