@@ -533,5 +533,111 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: income.rule_type ---
+    # Stores the payment rule type for monthly income (fixed_date, relative_month_end,
+    # last_working_day, nth_weekday).  NULL on pre-migration rows → legacy behaviour.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='income' AND column_name='rule_type'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE income ADD COLUMN rule_type TEXT")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE income ADD COLUMN rule_type TEXT")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (income.rule_type): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: income.rule_config ---
+    # JSON blob storing rule-specific parameters (day, offset, nth weekday pattern, etc.)
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='income' AND column_name='rule_config'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE income ADD COLUMN rule_config TEXT DEFAULT '{}'")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE income ADD COLUMN rule_config TEXT DEFAULT '{}'")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (income.rule_config): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: income.weekend_rule ---
+    # How to handle paydays falling on a weekend: before / after / nearest
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='income' AND column_name='weekend_rule'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE income ADD COLUMN weekend_rule TEXT DEFAULT 'before'")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE income ADD COLUMN weekend_rule TEXT DEFAULT 'before'")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (income.weekend_rule): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: income.bank_holiday_rule ---
+    # How to handle paydays falling on a UK bank holiday: before / after / nearest
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='income' AND column_name='bank_holiday_rule'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE income ADD COLUMN bank_holiday_rule TEXT DEFAULT 'before'")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE income ADD COLUMN bank_holiday_rule TEXT DEFAULT 'before'")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (income.bank_holiday_rule): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: income.first_payment_date ---
+    # ISO date of the next / anchor payment.  Required anchor for fortnightly and 4-weekly.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='income' AND column_name='first_payment_date'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE income ADD COLUMN first_payment_date TEXT")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE income ADD COLUMN first_payment_date TEXT")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (income.first_payment_date): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

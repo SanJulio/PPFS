@@ -28,6 +28,7 @@ from werkzeug.datastructures import CallbackDict
 
 # simulate_balances_until is used for forecast and "can I afford it" features
 from Tracker import simulate_balances_until
+import income_engine
 
 from models import (
     add_transaction,
@@ -565,9 +566,7 @@ def run_auto_apply_backfill(user_id):
             logger.debug(f"Backfill bill last_applied error: {e}")
 
     for inc in income_items:
-        if inc.get('day') is None:
-            continue
-        for d in _get_occurrences_between(inc, backfill_start, yesterday):
+        for d in income_engine.get_payment_dates(inc, backfill_start, yesterday):
             try:
                 add_transaction(d.isoformat(), inc['name'], abs(float(inc['amount'])), inc['account'], user_id, type='income', category='Income')
             except Exception as e:
@@ -634,13 +633,11 @@ def get_pending_auto_apply_items(user_id):
             })
 
     for inc in income_items:
-        if inc.get('day') is None:
-            continue
         last_applied = _date.fromisoformat(inc['last_applied'])
         search_from = last_applied + timedelta(days=1)
         if search_from > today:
             continue
-        for d in _get_occurrences_between(inc, search_from, today):
+        for d in income_engine.get_payment_dates(inc, search_from, today):
             pending.append({
                 'type': 'income',
                 'item_id': inc['id'],
@@ -788,35 +785,24 @@ def calculate_financial_overview(accounts):
         db = get_db()
         cursor = db.cursor()
         if USE_POSTGRES:
-            cursor.execute("SELECT name, amount, frequency, account, day FROM income WHERE user_id = %s", (current_user.id,))
+            cursor.execute("SELECT * FROM income WHERE user_id = %s", (current_user.id,))
         else:
-            cursor.execute("SELECT name, amount, frequency, account, day FROM income WHERE user_id = ?", (current_user.id,))
+            cursor.execute("SELECT * FROM income WHERE user_id = ?", (current_user.id,))
         cols = [d[0] for d in cursor.description]
         income_rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
         cursor.close()
         release_db(db)
 
         import calendar as _cal
-        days_in_month = _cal.monthrange(today.year, today.month)[1]
+        month_end = date(today.year, today.month, _cal.monthrange(today.year, today.month)[1])
+        tomorrow = today + timedelta(days=1)
 
         for inc in income_rows:
-            freq = inc.get("frequency") or "monthly"
-            acc = inc.get("account") or ""
             amount = float(inc.get("amount") or 0)
-            if freq == "monthly":
-                day = int(inc.get("day") or 1)
-                if day > current_day:
-                    future_income += amount
-                    future_income_list.append({"name": inc["name"], "amount": amount, "day": day})
-            elif freq == "weekly":
-                # Count how many weekly payments fall on remaining days this month
-                day = int(inc.get("day") or 1)  # day of week (1=Mon, 7=Sun) — stored as day of month for weekly
-                # For weekly, count remaining full weeks
-                remaining_days = days_in_month - current_day
-                weekly_count = remaining_days // 7
-                if weekly_count > 0:
-                    future_income += amount * weekly_count
-                    future_income_list.append({"name": inc["name"], "amount": amount * weekly_count, "day": current_day + 7})
+            dates = income_engine.get_payment_dates(inc, tomorrow, month_end)
+            for d in dates:
+                future_income += amount
+                future_income_list.append({"name": inc["name"], "amount": amount, "day": d.day})
     except Exception as e:
         logger.debug(f"Could not load future income for overview: {e}")
 
@@ -2394,24 +2380,23 @@ def api_snapshot():
     income_arriving = []
     bills_due = []
 
+    # Pre-compute income dates for the snapshot window
+    snap_income_by_date: dict = {}
+    for row in income_rows:
+        for d in income_engine.get_payment_dates(row, today + timedelta(days=1), target):
+            snap_income_by_date.setdefault(d, []).append(row)
+
     sim_day = today + timedelta(days=1)
     while sim_day <= target:
         day_str = f"{sim_day.day} {sim_day.strftime('%b')}"
 
         # Income
-        for row in income_rows:
-            freq = row.get("frequency", "monthly")
+        for row in snap_income_by_date.get(sim_day, []):
             acc = row.get("account", "")
             amt = float(row["amount"])
-            applies = False
-            if freq == "monthly" and row.get("day") == sim_day.day:
-                applies = True
-            elif freq == "weekly" and sim_day.weekday() == int(row.get("weekly_day") if row.get("weekly_day") is not None else 4):
-                applies = True
-            if applies:
-                income_arriving.append({"name": row["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc})
-                if acc in simulated:
-                    simulated[acc] += amt
+            income_arriving.append({"name": row["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc})
+            if acc in simulated:
+                simulated[acc] += amt
 
         # Scheduled expenses
         for expense in scheduled:
@@ -2671,6 +2656,10 @@ def manage():
     release_db(db)
 
     is_pro = user_is_pro()
+
+    # Pre-compute human-readable rule descriptions for income rows
+    for inc in income:
+        inc["description"] = income_engine.describe_rule(inc)
 
     return render_template("manage.html",
         accounts=accounts,
@@ -3009,36 +2998,47 @@ def settings_edit_future_event():
 def settings_add_income():
     name = (request.form.get("name") or "").strip()
     amount = (request.form.get("amount") or "").strip()
-    frequency = (request.form.get("frequency") or "").strip()
+    frequency = (request.form.get("frequency") or "monthly").strip()
     account = (request.form.get("account") or "").strip()
-    day_raw = (request.form.get("day") or "1").strip()
+    rule_type = (request.form.get("rule_type") or "").strip() or None
+    rule_config = (request.form.get("rule_config") or "{}").strip()
+    weekend_rule = (request.form.get("weekend_rule") or "before").strip()
+    bh_rule = (request.form.get("bank_holiday_rule") or "before").strip()
+    first_payment_date = (request.form.get("first_payment_date") or "").strip() or None
+
     try:
         weekly_day = max(0, min(6, int(request.form.get("weekly_day") or 4)))
     except ValueError:
         weekly_day = 4
 
-    if not name or not amount or not frequency or not account:
+    # derive day from rule_config for fixed_date (backward compat column)
+    try:
+        cfg = json.loads(rule_config)
+    except (TypeError, ValueError):
+        cfg = {}
+        rule_config = "{}"
+    day = int(cfg.get("day") or request.form.get("day") or 1)
+    day = max(1, min(31, day))
+
+    if not name or not amount or not account:
         return redirect(url_for("manage", msg="Missing fields."))
     try:
         amount = float(amount)
     except ValueError:
         return redirect(url_for("manage", msg="Invalid amount."))
-    try:
-        day = max(1, min(31, int(day_raw)))
-    except ValueError:
-        day = 1
 
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("ALTER TABLE income ADD COLUMN IF NOT EXISTS weekly_day INTEGER DEFAULT 4")
-        cursor.execute("INSERT INTO income (name, amount, frequency, account, user_id, day, weekly_day) VALUES (%s, %s, %s, %s, %s, %s, %s)", (name, amount, frequency, account, current_user.id, day, weekly_day))
+        cursor.execute(
+            "INSERT INTO income (name, amount, frequency, account, user_id, day, weekly_day, rule_type, rule_config, weekend_rule, bank_holiday_rule, first_payment_date) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (name, amount, frequency, account, current_user.id, day, weekly_day, rule_type, rule_config, weekend_rule, bh_rule, first_payment_date)
+        )
     else:
-        try:
-            cursor.execute("ALTER TABLE income ADD COLUMN weekly_day INTEGER DEFAULT 4")
-        except Exception:
-            pass
-        cursor.execute("INSERT INTO income (name, amount, frequency, account, user_id, day, weekly_day) VALUES (?, ?, ?, ?, ?, ?, ?)", (name, amount, frequency, account, current_user.id, day, weekly_day))
+        cursor.execute(
+            "INSERT INTO income (name, amount, frequency, account, user_id, day, weekly_day, rule_type, rule_config, weekend_rule, bank_holiday_rule, first_payment_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (name, amount, frequency, account, current_user.id, day, weekly_day, rule_type, rule_config, weekend_rule, bh_rule, first_payment_date)
+        )
     db.commit()
     cursor.close()
     release_db(db)
@@ -3051,38 +3051,46 @@ def settings_edit_income():
     income_id = request.form.get("id")
     name = (request.form.get("name") or "").strip()
     amount = (request.form.get("amount") or "").strip()
-    frequency = (request.form.get("frequency") or "").strip()
+    frequency = (request.form.get("frequency") or "monthly").strip()
     account = (request.form.get("account") or "").strip()
-    day_raw = (request.form.get("day") or "1").strip()
+    rule_type = (request.form.get("rule_type") or "").strip() or None
+    rule_config = (request.form.get("rule_config") or "{}").strip()
+    weekend_rule = (request.form.get("weekend_rule") or "before").strip()
+    bh_rule = (request.form.get("bank_holiday_rule") or "before").strip()
+    first_payment_date = (request.form.get("first_payment_date") or "").strip() or None
+
     try:
         weekly_day = max(0, min(6, int(request.form.get("weekly_day") or 4)))
     except ValueError:
         weekly_day = 4
 
-    if not name or not amount or not frequency or not account:
+    try:
+        cfg = json.loads(rule_config)
+    except (TypeError, ValueError):
+        cfg = {}
+        rule_config = "{}"
+    day = int(cfg.get("day") or request.form.get("day") or 1)
+    day = max(1, min(31, day))
+
+    if not name or not amount or not account:
         return redirect(url_for("manage", msg="Missing fields."))
     try:
         amount = float(amount)
     except ValueError:
         return redirect(url_for("manage", msg="Invalid amount."))
-    try:
-        day = max(1, min(31, int(day_raw)))
-    except ValueError:
-        day = 1
 
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("ALTER TABLE income ADD COLUMN IF NOT EXISTS weekly_day INTEGER DEFAULT 4")
-        cursor.execute("UPDATE income SET name=%s, amount=%s, frequency=%s, account=%s, day=%s, weekly_day=%s WHERE id=%s AND user_id=%s",
-                       (name, amount, frequency, account, day, weekly_day, income_id, current_user.id))
+        cursor.execute(
+            "UPDATE income SET name=%s, amount=%s, frequency=%s, account=%s, day=%s, weekly_day=%s, rule_type=%s, rule_config=%s, weekend_rule=%s, bank_holiday_rule=%s, first_payment_date=%s WHERE id=%s AND user_id=%s",
+            (name, amount, frequency, account, day, weekly_day, rule_type, rule_config, weekend_rule, bh_rule, first_payment_date, income_id, current_user.id)
+        )
     else:
-        try:
-            cursor.execute("ALTER TABLE income ADD COLUMN weekly_day INTEGER DEFAULT 4")
-        except Exception:
-            pass
-        cursor.execute("UPDATE income SET name=?, amount=?, frequency=?, account=?, day=?, weekly_day=? WHERE id=? AND user_id=?",
-                       (name, amount, frequency, account, day, weekly_day, income_id, current_user.id))
+        cursor.execute(
+            "UPDATE income SET name=?, amount=?, frequency=?, account=?, day=?, weekly_day=?, rule_type=?, rule_config=?, weekend_rule=?, bank_holiday_rule=?, first_payment_date=? WHERE id=? AND user_id=?",
+            (name, amount, frequency, account, day, weekly_day, rule_type, rule_config, weekend_rule, bh_rule, first_payment_date, income_id, current_user.id)
+        )
     db.commit()
     cursor.close()
     release_db(db)
@@ -3104,6 +3112,33 @@ def settings_delete_income():
     release_db(db)
     bust_forecast_cache(current_user.id)
     return redirect(url_for("manage", msg="Income source deleted."))
+
+
+@app.post("/api/income-preview")
+@login_required
+def api_income_preview():
+    data = request.get_json(silent=True) or {}
+    if data.get("csrf_token") != session.get("csrf_token"):
+        return jsonify({"error": "CSRF"}), 403
+    try:
+        inc = {
+            "frequency": data.get("frequency", "monthly"),
+            "rule_type": data.get("rule_type") or None,
+            "rule_config": data.get("rule_config") or "{}",
+            "weekend_rule": data.get("weekend_rule", "before"),
+            "bank_holiday_rule": data.get("bank_holiday_rule", "before"),
+            "weekly_day": data.get("weekly_day", 4),
+            "first_payment_date": data.get("first_payment_date") or None,
+            "day": data.get("day", 25),
+        }
+        from_date_str = data.get("from_date")
+        from_date = date.fromisoformat(from_date_str) if from_date_str else date.today()
+        next_dates = income_engine.get_next_dates(inc, n=3, from_date=from_date)
+        return jsonify({"dates": [d.isoformat() for d in next_dates]})
+    except Exception as exc:
+        logger.warning("income-preview error: %s", exc)
+        return jsonify({"dates": []}), 200
+
 
 @app.post("/settings/add-investment")
 @login_required
@@ -3433,20 +3468,19 @@ def forecast():
         today_snapshot[acc] = round(simulated[acc], 2)
     snapshots = [today_snapshot]
 
+    # Pre-compute all income payment dates in the forecast window using income_engine
+    forecast_end = today + timedelta(days=forecast_days)
+    income_by_date: dict = {}  # date -> list of (account, amount)
+    for inc in income_rows:
+        for d in income_engine.get_payment_dates(inc, today + timedelta(days=1), forecast_end):
+            income_by_date.setdefault(d, []).append((inc["account"], float(inc["amount"])))
+
     for day_offset in range(1, forecast_days + 1):
         sim_day = today + timedelta(days=day_offset)
 
-        for inc in income_rows:
-            if inc["frequency"] == "weekly" and inc["account"] in simulated:
-                pay_weekday = int(inc.get("weekly_day") if inc.get("weekly_day") is not None else 4)
-                if sim_day.weekday() == pay_weekday:
-                    simulated[inc["account"]] += float(inc["amount"])
-
-        for inc in income_rows:
-            if inc["frequency"] == "monthly" and inc["account"] in simulated:
-                pay_day = int(inc.get("day") or 1)
-                if sim_day.day == pay_day:
-                    simulated[inc["account"]] += float(inc["amount"])
+        for acc, amt in income_by_date.get(sim_day, []):
+            if acc in simulated:
+                simulated[acc] += amt
 
         for expense in scheduled:
             freq = expense.get("frequency") or "monthly"
@@ -3529,30 +3563,8 @@ def forecast():
                     m_year += 1
 
     for inc in income_rows:
-        freq = inc.get("frequency") or "monthly"
-        if freq == "weekly":
-            pay_weekday = int(inc.get("weekly_day") if inc.get("weekly_day") is not None else 4)
-            d = today
-            while d <= end_date:
-                if d.weekday() == pay_weekday:
-                    upcoming_items.append({"date": d.isoformat(), "name": inc["name"], "amount": float(inc["amount"]), "account": inc["account"], "type": "income", "id": inc["id"]})
-                d += timedelta(days=1)
-        else:  # monthly — use user's specified pay day
-            pay_day = int(inc.get("day") or 1)
-            m_year, m_month = today.year, today.month
-            for _ in range(4):
-                max_day = calendar.monthrange(m_year, m_month)[1]
-                actual_day = min(pay_day, max_day)
-                try:
-                    occurrence = date(m_year, m_month, actual_day)
-                    if today <= occurrence <= end_date:
-                        upcoming_items.append({"date": occurrence.isoformat(), "name": inc["name"], "amount": float(inc["amount"]), "account": inc["account"], "type": "income", "id": inc["id"]})
-                except ValueError:
-                    pass
-                m_month += 1
-                if m_month > 12:
-                    m_month = 1
-                    m_year += 1
+        for d in income_engine.get_payment_dates(inc, today, end_date):
+            upcoming_items.append({"date": d.isoformat(), "name": inc["name"], "amount": float(inc["amount"]), "account": inc["account"], "type": "income", "id": inc["id"]})
 
     upcoming_items.sort(key=lambda x: x["date"])
     upcoming_json = json.dumps(upcoming_items)

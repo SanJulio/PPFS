@@ -95,7 +95,13 @@ def _create_test_schema(db_path: Path):
             frequency TEXT NOT NULL,
             account TEXT NOT NULL,
             day INTEGER NOT NULL DEFAULT 1,
+            weekly_day INTEGER DEFAULT 4,
             last_applied TEXT,
+            rule_type TEXT,
+            rule_config TEXT DEFAULT '{}',
+            weekend_rule TEXT DEFAULT 'before',
+            bank_holiday_rule TEXT DEFAULT 'before',
+            first_payment_date TEXT,
             user_id INTEGER NOT NULL
         )""",
         """CREATE TABLE IF NOT EXISTS savings_rules (

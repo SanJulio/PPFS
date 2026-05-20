@@ -381,7 +381,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             <tr>
               <th>Name</th>
               <th class="text-end">Amount</th>
-              <th class="text-end">Frequency</th>
+              <th class="text-end">Schedule</th>
               <th></th>
             </tr>
           </thead>
@@ -390,62 +390,16 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             <tr>
               <td>{{ i.name }}</td>
               <td class="text-end money">£{{ "%.2f"|format(i.amount) }}</td>
-              <td class="text-end">
-                <span class="badge text-bg-light">{{ i.frequency }}</span>
-                {% if i.frequency == 'monthly' %}<span class="text-muted small ms-1">day {{ i.day if i.day else 1 }}</span>{% endif %}
-              </td>
+              <td class="text-end"><span class="text-muted small">{{ i.description }}</span></td>
               <td class="text-end">
                 <div class="d-flex gap-3 justify-content-end manage-actions">
-                  <button class="btn btn-sm btn-outline-secondary" onclick="toggleEdit('income-{{ i.id }}')">Edit</button>
+                  <button class="btn btn-sm btn-outline-secondary" onclick="openEditIncomeModal({{ i.id }})">Edit</button>
                   <form method="POST" action="/settings/delete-income" onsubmit="return confirm('Delete {{ i.name }}?')">
                     <input type="hidden" name="id" value="{{ i.id }}">
                     <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
                     <button class="btn btn-sm btn-outline-secondary text-danger">Delete</button>
                   </form>
                 </div>
-              </td>
-            </tr>
-            <tr id="income-{{ i.id }}" style="display:none; background:#f8f9fa;">
-              <td colspan="4">
-                <form method="POST" action="/settings/edit-income" class="p-2">
-                  <input type="hidden" name="id" value="{{ i.id }}">
-                  <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
-                  <div class="row g-2">
-                    <div class="col-6">
-                      <input class="form-control form-control-sm" name="name" value="{{ i.name }}" placeholder="Name" required>
-                    </div>
-                    <div class="col-6">
-                      <input class="form-control form-control-sm" name="amount" value="{{ '%.2f'|format(i.amount) }}" placeholder="Amount" required>
-                    </div>
-                    <div class="col-6">
-                      <select class="form-select form-select-sm" name="frequency" required onchange="toggleIncomeDay(this, 'edit-day-{{ i.id }}', 'edit-weekly-day-{{ i.id }}')">
-                        <option value="weekly" {% if i.frequency == 'weekly' %}selected{% endif %}>Weekly</option>
-                        <option value="monthly" {% if i.frequency == 'monthly' %}selected{% endif %}>Monthly</option>
-                      </select>
-                    </div>
-                    <div class="col-6" id="edit-day-{{ i.id }}" {% if i.frequency != 'monthly' %}style="display:none"{% endif %}>
-                      <input class="form-control form-control-sm" name="day" type="number" min="1" max="31" value="{{ i.day if i.day else 1 }}" placeholder="Pay day (1–31)">
-                    </div>
-                    <div class="col-6" id="edit-weekly-day-{{ i.id }}" {% if i.frequency != 'weekly' %}style="display:none"{% endif %}>
-                      <select class="form-select form-select-sm" name="weekly_day">
-                        {% for val, label in [(0,'Monday'),(1,'Tuesday'),(2,'Wednesday'),(3,'Thursday'),(4,'Friday'),(5,'Saturday'),(6,'Sunday')] %}
-                        <option value="{{ val }}" {% if (i.weekly_day if i.weekly_day is not none else 4) == val %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                      </select>
-                    </div>
-                    <div class="col-6">
-                      <select class="form-select form-select-sm" name="account" required>
-                        {% for a in accounts %}
-                          <option value="{{ a.name }}" {% if a.name == i.account %}selected{% endif %}>{{ a.name }}</option>
-                        {% endfor %}
-                      </select>
-                    </div>
-                    <div class="col-12 d-flex gap-2">
-                      <button class="btn btn-sm btn-dark">Save</button>
-                      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleEdit('income-{{ i.id }}')">Cancel</button>
-                    </div>
-                  </div>
-                </form>
               </td>
             </tr>
             {% endfor %}
@@ -469,7 +423,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         </table>
       </div>
 
-      <button class="btn btn-dark w-100 py-3" onclick="document.getElementById('addIncomeModal').style.display='flex'">+ Add Income Source</button>
+      <button class="btn btn-dark w-100 py-3" onclick="openAddIncomeModal()">+ Add Income Source</button>
     </div>
   </div>
 
@@ -790,12 +744,219 @@ function toggleMonthField(select, targetId) {
   if (el) el.style.display = select.value === 'yearly' ? 'block' : 'none';
 }
 
-function toggleIncomeDay(select, monthlyId, weeklyId) {
-  const monthly = document.getElementById(monthlyId);
-  const weekly = weeklyId ? document.getElementById(weeklyId) : null;
-  if (monthly) monthly.style.display = select.value === 'monthly' ? '' : 'none';
-  if (weekly) weekly.style.display = select.value === 'weekly' ? '' : 'none';
+// ── INCOME MODAL ─────────────────────────────────────────────────────────────
+var _incomeData = {{ income | tojson }};
+var _incomePreviewTimer = null;
+
+function openAddIncomeModal() {
+  resetIncomeModal();
+  document.getElementById('incomeModalTitle').textContent = 'Add Income Source';
+  document.getElementById('incomeForm').action = '/settings/add-income';
+  document.getElementById('incomeSubmitBtn').textContent = 'Add Income Source';
+  document.getElementById('incomeModal').style.display = 'flex';
+  updateIncomePreview();
 }
+
+function openEditIncomeModal(id) {
+  var inc = _incomeData.find(function(x) { return x.id == id; });
+  if (!inc) return;
+  resetIncomeModal();
+  document.getElementById('incomeModalTitle').textContent = 'Edit Income Source';
+  document.getElementById('incomeForm').action = '/settings/edit-income';
+  document.getElementById('incomeSubmitBtn').textContent = 'Save Changes';
+  document.getElementById('incomeId').value = id;
+  document.getElementById('incomeName').value = inc.name || '';
+  document.getElementById('incomeAmount').value = inc.amount ? parseFloat(inc.amount).toFixed(2) : '';
+  document.getElementById('incomeAccount').value = inc.account || '';
+  if (inc.first_payment_date) document.getElementById('incomeNextPayment').value = inc.first_payment_date;
+  var freq = inc.frequency || 'monthly';
+  incomeFreqChanged(freq);
+  if (inc.weekly_day !== null && inc.weekly_day !== undefined) {
+    document.getElementById('incomeWeeklyDay').value = inc.weekly_day;
+  }
+  var ruleType = inc.rule_type;
+  var cfg = {};
+  try { cfg = JSON.parse(inc.rule_config || '{}'); } catch(e) {}
+  if (freq === 'monthly') {
+    var rt = ruleType || 'fixed_date';
+    var radio = document.querySelector('[name="_rule_type_ui"][value="' + rt + '"]');
+    if (radio) radio.checked = true;
+    incomeRuleTypeChanged(rt);
+    if (rt === 'fixed_date') {
+      document.getElementById('incomeFixedDay').value = cfg.day || inc.day || 25;
+    } else if (rt === 'nth_weekday') {
+      document.getElementById('incomeNth').value = cfg.nth || 'last';
+      document.getElementById('incomeNthWeekday').value = cfg.weekday !== undefined ? cfg.weekday : 4;
+    } else if (rt === 'relative_month_end') {
+      document.getElementById('incomeRelOffset').value = cfg.offset !== undefined ? cfg.offset : 0;
+      document.getElementById('incomeRelDirection').value = cfg.direction || 'before';
+      document.getElementById('incomeRelWorkingOnly').checked = !!cfg.working_days_only;
+    }
+  } else if (freq === 'yearly') {
+    document.getElementById('incomeYearlyMonth').value = cfg.month || 1;
+    document.getElementById('incomeYearlyDay').value = cfg.day || 1;
+  }
+  setWeekendRule(inc.weekend_rule || 'before');
+  setBHRule(inc.bank_holiday_rule || 'before');
+  document.getElementById('incomeModal').style.display = 'flex';
+  updateIncomePreview();
+}
+
+function closeIncomeModal() {
+  document.getElementById('incomeModal').style.display = 'none';
+}
+
+function resetIncomeModal() {
+  document.getElementById('incomeName').value = '';
+  document.getElementById('incomeAmount').value = '';
+  document.getElementById('incomeAccount').value = '';
+  document.getElementById('incomeId').value = '';
+  document.getElementById('incomeNextPayment').value = '';
+  document.getElementById('incomeFixedDay').value = 25;
+  var radio = document.querySelector('[name="_rule_type_ui"][value="fixed_date"]');
+  if (radio) radio.checked = true;
+  incomeRuleTypeChanged('fixed_date');
+  incomeFreqChanged('monthly');
+  setWeekendRule('before');
+  setBHRule('before');
+}
+
+function incomeFreqChanged(freq) {
+  document.getElementById('incomeFreqValue').value = freq;
+  document.querySelectorAll('.income-freq-pill').forEach(function(btn) {
+    btn.classList.remove('btn-dark', 'btn-outline-secondary');
+    btn.classList.add(btn.dataset.freq === freq ? 'btn-dark' : 'btn-outline-secondary');
+  });
+  var isWeeklyGroup = ['weekly', 'fortnightly', '4-weekly'].indexOf(freq) >= 0;
+  document.getElementById('incomeWeekdayRow').style.display = isWeeklyGroup ? '' : 'none';
+  document.getElementById('incomeMonthlySection').style.display = freq === 'monthly' ? '' : 'none';
+  document.getElementById('incomeYearlySection').style.display = freq === 'yearly' ? '' : 'none';
+  buildIncomeRuleConfig();
+  updateIncomePreview();
+}
+
+function incomeRuleTypeChanged(ruleType) {
+  document.getElementById('incomeCfgFixedDate').style.display = ruleType === 'fixed_date' ? '' : 'none';
+  document.getElementById('incomeCfgNthWeekday').style.display = ruleType === 'nth_weekday' ? '' : 'none';
+  document.getElementById('incomeCfgRelative').style.display = ruleType === 'relative_month_end' ? '' : 'none';
+  buildIncomeRuleConfig();
+  updateIncomePreview();
+}
+
+function setWeekendRule(rule) {
+  document.getElementById('incomeWeekendRule').value = rule;
+  document.querySelectorAll('.income-wr-pill').forEach(function(btn) {
+    btn.classList.remove('btn-dark', 'btn-outline-secondary');
+    btn.classList.add(btn.dataset.wr === rule ? 'btn-dark' : 'btn-outline-secondary');
+  });
+  buildIncomeRuleConfig();
+  updateIncomePreview();
+}
+
+function setBHRule(rule) {
+  document.getElementById('incomeBHRule').value = rule;
+  document.querySelectorAll('.income-bh-pill').forEach(function(btn) {
+    btn.classList.remove('btn-dark', 'btn-outline-secondary');
+    btn.classList.add(btn.dataset.bh === rule ? 'btn-dark' : 'btn-outline-secondary');
+  });
+  buildIncomeRuleConfig();
+  updateIncomePreview();
+}
+
+function buildIncomeRuleConfig() {
+  var freq = document.getElementById('incomeFreqValue').value;
+  var ruleType = null;
+  var cfg = {};
+  if (freq === 'monthly') {
+    var checked = document.querySelector('[name="_rule_type_ui"]:checked');
+    ruleType = checked ? checked.value : 'fixed_date';
+    if (ruleType === 'fixed_date') {
+      cfg.day = parseInt(document.getElementById('incomeFixedDay').value) || 25;
+    } else if (ruleType === 'nth_weekday') {
+      cfg.nth = document.getElementById('incomeNth').value;
+      cfg.weekday = parseInt(document.getElementById('incomeNthWeekday').value);
+    } else if (ruleType === 'relative_month_end') {
+      cfg.offset = parseInt(document.getElementById('incomeRelOffset').value) || 0;
+      cfg.direction = document.getElementById('incomeRelDirection').value;
+      cfg.working_days_only = document.getElementById('incomeRelWorkingOnly').checked;
+    }
+  } else if (freq === 'yearly') {
+    ruleType = 'yearly';
+    cfg.month = parseInt(document.getElementById('incomeYearlyMonth').value);
+    cfg.day = parseInt(document.getElementById('incomeYearlyDay').value) || 1;
+  }
+  document.getElementById('incomeRuleType').value = ruleType || '';
+  document.getElementById('incomeRuleConfig').value = JSON.stringify(cfg);
+}
+
+function incomeFieldChanged() {
+  buildIncomeRuleConfig();
+  updateIncomePreview();
+}
+
+function updateIncomePreview() {
+  clearTimeout(_incomePreviewTimer);
+  _incomePreviewTimer = setTimeout(function() {
+    buildIncomeRuleConfig();
+    var freq = document.getElementById('incomeFreqValue').value;
+    var ruleType = document.getElementById('incomeRuleType').value || null;
+    var ruleConfig = document.getElementById('incomeRuleConfig').value || '{}';
+    var weeklyDay = parseInt(document.getElementById('incomeWeeklyDay').value) || 4;
+    var weekendRule = document.getElementById('incomeWeekendRule').value || 'before';
+    var bhRule = document.getElementById('incomeBHRule').value || 'before';
+    var firstPayment = document.getElementById('incomeNextPayment').value || null;
+    var cfg = {};
+    try { cfg = JSON.parse(ruleConfig); } catch(e) {}
+    var csrfToken = document.querySelector('#incomeForm [name="csrf_token"]').value;
+    fetch('/api/income-preview', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        csrf_token: csrfToken,
+        frequency: freq,
+        rule_type: ruleType,
+        rule_config: ruleConfig,
+        weekend_rule: weekendRule,
+        bank_holiday_rule: bhRule,
+        weekly_day: weeklyDay,
+        first_payment_date: firstPayment,
+        day: cfg.day || 25,
+        from_date: firstPayment || null
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var el = document.getElementById('incomePreviewDates');
+      if (data.dates && data.dates.length) {
+        el.innerHTML = data.dates.map(function(d) {
+          var dt = new Date(d + 'T00:00:00');
+          return '<span class="badge text-bg-light me-1">' + dt.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short', year:'numeric'}) + '</span>';
+        }).join('');
+      } else {
+        el.textContent = 'No dates found in the next 2 years';
+      }
+    })
+    .catch(function() {
+      document.getElementById('incomePreviewDates').textContent = 'Preview unavailable';
+    });
+  }, 400);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var form = document.getElementById('incomeForm');
+  if (form) {
+    form.addEventListener('submit', function() {
+      buildIncomeRuleConfig();
+      var cfg = {};
+      try { cfg = JSON.parse(document.getElementById('incomeRuleConfig').value); } catch(e) {}
+      if (!form.querySelector('[name="day"]')) {
+        var h = document.createElement('input');
+        h.type = 'hidden'; h.name = 'day'; h.value = cfg.day || 25;
+        form.appendChild(h);
+      }
+    });
+  }
+});
 
 function toggleEdit(id) {
   const row = document.getElementById(id);
@@ -854,45 +1015,209 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
   </div>
 </div>
 
-<!-- Add Income Modal -->
-<div id="addIncomeModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:20px;">
-  <div class="card p-4" style="max-width:480px; width:100%; border-radius:24px 24px 24px 24px;">
+<!-- Add / Edit Income Modal -->
+<div id="incomeModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:center; justify-content:center; padding:16px;" onclick="if(event.target===this)closeIncomeModal()">
+  <div class="card p-4" style="max-width:560px; width:100%; border-radius:20px; max-height:92vh; overflow-y:auto;">
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <h5 class="mb-0 fw-bold">Add Income Source</h5>
-      <button onclick="document.getElementById('addIncomeModal').style.display='none'" class="btn btn-sm btn-outline-secondary rounded-3">✕</button>
+      <h5 class="mb-0 fw-bold" id="incomeModalTitle">Add Income Source</h5>
+      <button type="button" onclick="closeIncomeModal()" class="btn btn-sm btn-outline-secondary rounded-3">✕</button>
     </div>
-    <form method="POST" action="/settings/add-income">
+
+    <form method="POST" id="incomeForm" action="/settings/add-income">
       <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
-      <div class="mb-2"><input class="form-control" name="name" placeholder="e.g. Salary, Freelance" required></div>
-      <div class="mb-2"><input class="form-control" name="amount" inputmode="decimal" placeholder="Amount (£)" required></div>
-      <div class="mb-2">
-        <select class="form-select" name="frequency" required onchange="toggleIncomeDay(this, 'modal-income-day', 'modal-income-weekly-day')">
-          <option value="">Select frequency</option>
-          <option value="weekly">Weekly</option>
-          <option value="monthly">Monthly</option>
+      <input type="hidden" name="id" id="incomeId">
+      <input type="hidden" name="frequency" id="incomeFreqValue" value="monthly">
+      <input type="hidden" name="rule_type" id="incomeRuleType">
+      <input type="hidden" name="rule_config" id="incomeRuleConfig" value="{}">
+      <input type="hidden" name="weekend_rule" id="incomeWeekendRule" value="before">
+      <input type="hidden" name="bank_holiday_rule" id="incomeBHRule" value="before">
+
+      <!-- Name & Amount -->
+      <div class="row g-2 mb-3">
+        <div class="col-7">
+          <label class="form-label small fw-semibold mb-1">Name</label>
+          <input class="form-control" id="incomeName" name="name" placeholder="e.g. Salary, Freelance" required oninput="incomeFieldChanged()">
+        </div>
+        <div class="col-5">
+          <label class="form-label small fw-semibold mb-1">Amount (£)</label>
+          <input class="form-control" id="incomeAmount" name="amount" inputmode="decimal" placeholder="0.00" required oninput="incomeFieldChanged()">
+        </div>
+      </div>
+
+      <!-- Account -->
+      <div class="mb-3">
+        <label class="form-label small fw-semibold mb-1">Account</label>
+        <select class="form-select" id="incomeAccount" name="account" required onchange="incomeFieldChanged()">
+          <option value="">Select account</option>
+          {% for a in accounts %}<option value="{{ a.name }}">{{ a.name }}</option>{% endfor %}
         </select>
       </div>
-      <div class="mb-2" id="modal-income-day" style="display:none;">
-        <input class="form-control" name="day" type="number" min="1" max="31" placeholder="Which day of the month? (e.g. 25)">
+
+      <!-- Frequency pills -->
+      <div class="mb-3">
+        <label class="form-label small fw-semibold mb-1">Frequency</label>
+        <div class="d-flex gap-2 flex-wrap">
+          {% for val, lbl in [('weekly','Weekly'),('fortnightly','Fortnightly'),('4-weekly','4-Weekly'),('monthly','Monthly'),('yearly','Yearly')] %}
+          <button type="button" class="btn btn-sm income-freq-pill {% if val == 'monthly' %}btn-dark{% else %}btn-outline-secondary{% endif %}"
+            data-freq="{{ val }}" onclick="incomeFreqChanged('{{ val }}')">{{ lbl }}</button>
+          {% endfor %}
+        </div>
       </div>
-      <div class="mb-2" id="modal-income-weekly-day" style="display:none;">
-        <select class="form-select" name="weekly_day">
+
+      <!-- Weekday row (weekly / fortnightly / 4-weekly) -->
+      <div id="incomeWeekdayRow" class="mb-3" style="display:none;">
+        <label class="form-label small fw-semibold mb-1">Pay day</label>
+        <select class="form-select" name="weekly_day" id="incomeWeeklyDay" onchange="incomeFieldChanged()">
           <option value="0">Monday</option>
           <option value="1">Tuesday</option>
           <option value="2">Wednesday</option>
           <option value="3">Thursday</option>
           <option value="4" selected>Friday</option>
-          <option value="5">Saturday</option>
-          <option value="6">Sunday</option>
         </select>
       </div>
+
+      <!-- Monthly section -->
+      <div id="incomeMonthlySection">
+        <label class="form-label small fw-semibold mb-1">Payment rule</label>
+        <div class="d-flex flex-column gap-2 mb-3">
+          {% for val, title, sub in [
+            ('fixed_date','Fixed date','Same day every month, e.g. the 25th'),
+            ('last_working_day','Last working day','Last Mon–Fri of the month, skipping bank holidays'),
+            ('nth_weekday','Nth weekday','E.g. last Friday of the month'),
+            ('relative_month_end','Relative to month end','X days before or after the last day')
+          ] %}
+          <label class="border rounded-3 p-2 d-flex align-items-start gap-2" style="cursor:pointer;">
+            <input type="radio" name="_rule_type_ui" value="{{ val }}" class="mt-1" {% if val == 'fixed_date' %}checked{% endif %} onchange="incomeRuleTypeChanged('{{ val }}')">
+            <div>
+              <div class="fw-semibold small">{{ title }}</div>
+              <div class="text-muted" style="font-size:12px;">{{ sub }}</div>
+            </div>
+          </label>
+          {% endfor %}
+        </div>
+
+        <!-- Fixed date config -->
+        <div id="incomeCfgFixedDate" class="mb-3">
+          <label class="form-label small fw-semibold mb-1">Day of month (1–28)</label>
+          <input class="form-control" id="incomeFixedDay" type="number" min="1" max="28" value="25" oninput="incomeFieldChanged()">
+        </div>
+
+        <!-- Nth weekday config -->
+        <div id="incomeCfgNthWeekday" class="mb-3" style="display:none;">
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label small fw-semibold mb-1">Which</label>
+              <select class="form-select" id="incomeNth" onchange="incomeFieldChanged()">
+                <option value="first">First</option>
+                <option value="second">Second</option>
+                <option value="third">Third</option>
+                <option value="fourth">Fourth</option>
+                <option value="last" selected>Last</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-semibold mb-1">Weekday</label>
+              <select class="form-select" id="incomeNthWeekday" onchange="incomeFieldChanged()">
+                <option value="0">Monday</option>
+                <option value="1">Tuesday</option>
+                <option value="2">Wednesday</option>
+                <option value="3">Thursday</option>
+                <option value="4" selected>Friday</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Relative to month end config -->
+        <div id="incomeCfgRelative" class="mb-3" style="display:none;">
+          <div class="row g-2 align-items-end">
+            <div class="col-4">
+              <label class="form-label small fw-semibold mb-1">Days</label>
+              <input class="form-control" id="incomeRelOffset" type="number" min="0" max="15" value="0" oninput="incomeFieldChanged()">
+            </div>
+            <div class="col-4">
+              <label class="form-label small fw-semibold mb-1">Direction</label>
+              <select class="form-select" id="incomeRelDirection" onchange="incomeFieldChanged()">
+                <option value="before" selected>Before</option>
+                <option value="after">After</option>
+              </select>
+            </div>
+            <div class="col-4">
+              <div class="form-check mt-3">
+                <input class="form-check-input" type="checkbox" id="incomeRelWorkingOnly" onchange="incomeFieldChanged()">
+                <label class="form-check-label small" for="incomeRelWorkingOnly">Working days</label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Weekend & BH rules (monthly) -->
+        <div class="mb-2">
+          <label class="form-label small fw-semibold mb-1">If it falls on a weekend</label>
+          <div class="d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-sm income-wr-pill btn-dark" data-wr="before" onclick="setWeekendRule('before')">Pay Friday before</button>
+            <button type="button" class="btn btn-sm income-wr-pill btn-outline-secondary" data-wr="after" onclick="setWeekendRule('after')">Pay Monday after</button>
+            <button type="button" class="btn btn-sm income-wr-pill btn-outline-secondary" data-wr="nearest" onclick="setWeekendRule('nearest')">Nearest</button>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold mb-1">If it falls on a bank holiday</label>
+          <div class="d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-sm income-bh-pill btn-dark" data-bh="before" onclick="setBHRule('before')">Pay day before</button>
+            <button type="button" class="btn btn-sm income-bh-pill btn-outline-secondary" data-bh="after" onclick="setBHRule('after')">Pay day after</button>
+            <button type="button" class="btn btn-sm income-bh-pill btn-outline-secondary" data-bh="nearest" onclick="setBHRule('nearest')">Nearest</button>
+          </div>
+        </div>
+      </div><!-- /monthly section -->
+
+      <!-- Yearly section -->
+      <div id="incomeYearlySection" style="display:none;">
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label small fw-semibold mb-1">Month</label>
+            <select class="form-select" id="incomeYearlyMonth" onchange="incomeFieldChanged()">
+              {% for m, mn in [(1,'January'),(2,'February'),(3,'March'),(4,'April'),(5,'May'),(6,'June'),(7,'July'),(8,'August'),(9,'September'),(10,'October'),(11,'November'),(12,'December')] %}
+              <option value="{{ m }}">{{ mn }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold mb-1">Day</label>
+            <input class="form-control" id="incomeYearlyDay" type="number" min="1" max="31" value="1" oninput="incomeFieldChanged()">
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold mb-1">If it falls on a weekend</label>
+          <div class="d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-sm income-wr-pill btn-dark" data-wr="before" onclick="setWeekendRule('before')">Pay Friday before</button>
+            <button type="button" class="btn btn-sm income-wr-pill btn-outline-secondary" data-wr="after" onclick="setWeekendRule('after')">Pay Monday after</button>
+            <button type="button" class="btn btn-sm income-wr-pill btn-outline-secondary" data-wr="nearest" onclick="setWeekendRule('nearest')">Nearest</button>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold mb-1">If it falls on a bank holiday</label>
+          <div class="d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-sm income-bh-pill btn-dark" data-bh="before" onclick="setBHRule('before')">Pay day before</button>
+            <button type="button" class="btn btn-sm income-bh-pill btn-outline-secondary" data-bh="after" onclick="setBHRule('after')">Pay day after</button>
+            <button type="button" class="btn btn-sm income-bh-pill btn-outline-secondary" data-bh="nearest" onclick="setBHRule('nearest')">Nearest</button>
+          </div>
+        </div>
+      </div><!-- /yearly section -->
+
+      <!-- Next payment date -->
       <div class="mb-3">
-        <select class="form-select" name="account" required>
-          <option value="">Select account</option>
-          {% for a in accounts %}<option value="{{ a.name }}">{{ a.name }}</option>{% endfor %}
-        </select>
+        <label class="form-label small fw-semibold mb-1">When is your next payment?</label>
+        <input class="form-control" id="incomeNextPayment" name="first_payment_date" type="date" onchange="incomeFieldChanged()">
+        <div class="text-muted mt-1" style="font-size:12px;">This helps us align your forecast accurately</div>
       </div>
-      <button class="btn btn-dark w-100 py-3">Add Income Source</button>
+
+      <!-- Live preview -->
+      <div class="rounded-3 p-3 mb-3" style="background:#f8f9fa;">
+        <div class="small fw-semibold mb-2" style="color:#666;">Next 3 payment dates</div>
+        <div id="incomePreviewDates" class="text-muted small">Fill in the details above to see your dates</div>
+      </div>
+
+      <button type="submit" class="btn btn-dark w-100 py-3" id="incomeSubmitBtn">Add Income Source</button>
     </form>
   </div>
 </div>
