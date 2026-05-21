@@ -22,7 +22,7 @@ import random
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from flask import Flask, request, redirect, url_for, render_template, jsonify
+from flask import Flask, request, redirect, url_for, render_template, jsonify, Response
 from flask.sessions import SessionInterface, SessionMixin
 from werkzeug.datastructures import CallbackDict
 
@@ -4552,6 +4552,20 @@ def export_data():
 @app.get("/privacy")
 def privacy():
     return render_template("privacy.html")
+
+
+# --- SITEMAP ---
+@app.get("/sitemap.xml")
+def sitemap():
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    xml += '  <url><loc>https://spendara.co.uk/</loc><priority>1.0</priority><changefreq>weekly</changefreq></url>\n'
+    xml += '  <url><loc>https://spendara.co.uk/register</loc><priority>0.9</priority><changefreq>monthly</changefreq></url>\n'
+    xml += '  <url><loc>https://spendara.co.uk/login</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>\n'
+    xml += '  <url><loc>https://spendara.co.uk/forgot-password</loc><priority>0.3</priority><changefreq>yearly</changefreq></url>\n'
+    xml += '  <url><loc>https://spendara.co.uk/privacy</loc><priority>0.3</priority><changefreq>yearly</changefreq></url>\n'
+    xml += '</urlset>'
+    return Response(xml, mimetype='application/xml')
 
 
 # --- TRUELAYER OPEN BANKING ---
