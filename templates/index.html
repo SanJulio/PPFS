@@ -881,8 +881,16 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
         });
 
       var running = todayBal;
-      var remainingBills = events.reduce(function(s, e) { return s + (e.type === 'bill' ? e.item.amount : 0); }, 0);
-      function safeColor(v) { return v >= 0 ? '#065f46' : '#991b1b'; }
+      function safeColor(v) { return v > 0 ? '#065f46' : '#991b1b'; }
+      function calcSafe(bal, futureEvts) {
+        var fInc = futureEvts.filter(function(e) { return e.type === 'income' && e.item.iso; });
+        var fBills = futureEvts.filter(function(e) { return e.type === 'bill' && e.item.iso; });
+        var N = fInc.length > 0 ? fInc[0].item.iso : null;
+        var billsDed = fBills.reduce(function(s, e) {
+          return s + (N === null || e.item.iso < N ? e.item.amount : 0);
+        }, 0);
+        return bal - billsDed;
+      }
 
       // Today row — balance only, no safe-to-spend
       var flowLines = '<div style="font-size:13px;padding:6px 0;border-bottom:2px solid #e5e7eb;color:#111;">' +
@@ -898,6 +906,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
         byDate[key].push(e);
       });
 
+      var eventIndex = 0;
       dateKeys.forEach(function(key) {
         var sample = byDate[key][0];
         var displayDate = sample.item.iso ? formatDate(sample.item.iso) : (sample.item.date || key);
@@ -909,9 +918,9 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
         byDate[key].forEach(function(e) {
           var isIncome = e.type === 'income';
           var amt = e.item.amount;
-          if (!isIncome) remainingBills -= amt;
           running += isIncome ? amt : -amt;
-          var safe = running - remainingBills;
+          var safe = calcSafe(running, events.slice(eventIndex + 1));
+          eventIndex++;
           var sign = isIncome ? '+' : '-';
           var txColor = isIncome ? '#065f46' : '#991b1b';
 
@@ -924,8 +933,8 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
                 ' <span style="color:#bbb;">→</span>' +
                 ' <span style="font-weight:600;color:#111;">£' + running.toFixed(2) + '</span>' +
               '</div>' +
-              // Line 2: Safe: £-208.83
-              '<div style="font-size:11px;color:' + safeColor(safe) + ';margin-top:2px;">Safe: £' + safe.toFixed(2) + '</div>' +
+              // Line 2: Safe: £X.XX (floored at 0; red if 0 or tight)
+              '<div style="font-size:11px;color:' + safeColor(safe) + ';margin-top:2px;">Safe: £' + Math.max(0, safe).toFixed(2) + (safe < 0 ? ' ⚠' : '') + '</div>' +
             '</div>';
         });
       });

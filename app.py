@@ -795,7 +795,7 @@ def calculate_financial_overview(accounts):
 
         import calendar as _cal
         month_end = date(today.year, today.month, _cal.monthrange(today.year, today.month)[1])
-        tomorrow = today + timedelta(days=1)
+        tomorrow = today.date() + timedelta(days=1)
 
         for inc in income_rows:
             amount = float(inc.get("amount") or 0)
@@ -803,10 +803,39 @@ def calculate_financial_overview(accounts):
             for d in dates:
                 future_income += amount
                 future_income_list.append({"name": inc["name"], "amount": amount, "day": d.day})
+
+        # Per-account safe-to-spend: balance minus bills due before next income for that account
+        _dim = _cal.monthrange(today.year, today.month)[1]
+        safe_spending = 0.0
+        for acc_info in spending_accounts:
+            acc_name = acc_info["name"]
+            acc_balance = acc_info["balance"]
+            acc_bills = sorted(
+                [b for b in future_bills_list if b["account"] == acc_name],
+                key=lambda b: b["day"]
+            )
+            acc_income_events = []
+            for inc in income_rows:
+                if inc.get("account") != acc_name:
+                    continue
+                amt = float(inc.get("amount") or 0)
+                for d in income_engine.get_payment_dates(inc, tomorrow, month_end):
+                    acc_income_events.append((d, amt))
+            acc_income_events.sort(key=lambda x: x[0])
+            N_date = acc_income_events[0][0] if acc_income_events else None
+            if N_date is None:
+                bills_total = sum(b["amount"] for b in acc_bills)
+                acc_safe = max(0.0, acc_balance - bills_total)
+            else:
+                bills_before_N = sum(
+                    b["amount"] for b in acc_bills
+                    if date(today.year, today.month, min(b["day"], _dim)) < N_date
+                )
+                acc_safe = max(0.0, acc_balance - bills_before_N)
+            safe_spending += acc_safe
     except Exception as e:
         logger.debug(f"Could not load future income for overview: {e}")
-
-    safe_spending = spending_balance - spending_future_bills
+        safe_spending = max(0.0, spending_balance - spending_future_bills)
     net_worth = spending_balance + savings_balance
 
     return {
@@ -2425,7 +2454,7 @@ def api_snapshot():
             if event["date"] == sim_day:
                 acc = event["account"]
                 amt = float(event["amount"])
-                bills_due.append({"name": event["name"], "amount": amt, "date": day_str, "account": acc})
+                bills_due.append({"name": event["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc})
                 if acc in simulated:
                     simulated[acc] -= amt
 

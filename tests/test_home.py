@@ -250,3 +250,148 @@ class TestAffordFutureBalance:
             cur = db_conn.cursor()
             cur.execute("DELETE FROM scheduled_expenses WHERE id = ?", (bill_id,))
             cur.close()
+
+
+# ── SAFE TO SPEND ─────────────────────────────────────────────────────────────
+
+class TestSafeToSpend:
+    def test_snapshot_future_events_bills_have_iso(self, auth_client, db_conn, test_user, test_account):
+        """Bills from future_events in bills_due must include an iso date field."""
+        from datetime import date, timedelta
+        target = (date.today() + timedelta(days=5)).isoformat()
+        cur = db_conn.cursor()
+        cur.execute(
+            "INSERT INTO future_events (date, name, amount, account, user_id)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (target, "One-off Expense", 150.0, test_account["name"], test_user["id"]),
+        )
+        ev_id = cur.lastrowid
+        cur.close()
+        try:
+            resp = auth_client.get("/api/snapshot?days=30")
+            data = resp.get_json()
+            matches = [b for b in data["bills_due"] if b["name"] == "One-off Expense"]
+            assert len(matches) == 1
+            assert "iso" in matches[0]
+            assert matches[0]["iso"] == target
+        finally:
+            cur = db_conn.cursor()
+            cur.execute("DELETE FROM future_events WHERE id = ?", (ev_id,))
+            cur.close()
+
+    def test_safe_spending_no_income_deducts_future_bill(self, auth_client, db_conn, test_user, test_account):
+        """With no income this month, safe_spending = balance − future bills (floored at 0)."""
+        from datetime import date
+        today = date.today()
+        bill_day = today.day + 1 if today.day < 28 else today.day - 1
+        if bill_day <= today.day:
+            return
+        cur = db_conn.cursor()
+        cur.execute(
+            "INSERT INTO scheduled_expenses (name, amount, day, account, frequency, user_id)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            ("Safe Test Bill", 163.00, bill_day, test_account["name"], "monthly", test_user["id"]),
+        )
+        bill_id = cur.lastrowid
+        cur.close()
+        try:
+            resp = auth_client.get("/")
+            assert resp.status_code == 200
+            # balance=1000, no income, bill=163 → safe = 837.00
+            assert "837.00" in resp.data.decode("utf-8")
+        finally:
+            cur = db_conn.cursor()
+            cur.execute("DELETE FROM scheduled_expenses WHERE id = ?", (bill_id,))
+            cur.close()
+
+    def test_safe_spending_bill_before_income_is_deducted(self, auth_client, db_conn, test_user, test_account):
+        """A bill due before payday is deducted from safe_spending."""
+        from datetime import date
+        today = date.today()
+        bill_day = today.day + 1 if today.day < 26 else None
+        income_day = today.day + 4 if today.day < 26 else None
+        if bill_day is None or income_day is None or bill_day >= income_day:
+            return
+        cur = db_conn.cursor()
+        cur.execute(
+            "INSERT INTO scheduled_expenses (name, amount, day, account, frequency, user_id)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            ("PrePay Bill", 600.00, bill_day, test_account["name"], "monthly", test_user["id"]),
+        )
+        bill_id = cur.lastrowid
+        cur.execute(
+            "INSERT INTO income (name, amount, frequency, account, day, user_id)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            ("Test Pay", 2000.0, "monthly", test_account["name"], income_day, test_user["id"]),
+        )
+        inc_id = cur.lastrowid
+        cur.close()
+        try:
+            resp = auth_client.get("/")
+            assert resp.status_code == 200
+            # balance=1000, bill=600 before income → safe = 400 → "Looking tight" banner (101–500 range)
+            assert "Looking tight" in resp.data.decode("utf-8")
+        finally:
+            cur = db_conn.cursor()
+            cur.execute("DELETE FROM scheduled_expenses WHERE id = ?", (bill_id,))
+            cur.execute("DELETE FROM income WHERE id = ?", (inc_id,))
+            cur.close()
+
+    def test_safe_spending_bill_after_income_not_deducted(self, auth_client, db_conn, test_user, test_account):
+        """A bill due after payday is NOT deducted from safe_spending."""
+        from datetime import date
+        today = date.today()
+        income_day = today.day + 1 if today.day < 26 else None
+        bill_day = today.day + 4 if today.day < 26 else None
+        if income_day is None or bill_day is None or income_day >= bill_day:
+            return
+        cur = db_conn.cursor()
+        cur.execute(
+            "INSERT INTO income (name, amount, frequency, account, day, user_id)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            ("Test Pay", 2000.0, "monthly", test_account["name"], income_day, test_user["id"]),
+        )
+        inc_id = cur.lastrowid
+        cur.execute(
+            "INSERT INTO scheduled_expenses (name, amount, day, account, frequency, user_id)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            ("PostPay Bill", 600.00, bill_day, test_account["name"], "monthly", test_user["id"]),
+        )
+        bill_id = cur.lastrowid
+        cur.close()
+        try:
+            resp = auth_client.get("/")
+            assert resp.status_code == 200
+            # balance=1000, bill=211 AFTER income → safe = 1000 → "on track" banner (> 500)
+            assert "on track" in resp.data.decode("utf-8")
+        finally:
+            cur = db_conn.cursor()
+            cur.execute("DELETE FROM income WHERE id = ?", (inc_id,))
+            cur.execute("DELETE FROM scheduled_expenses WHERE id = ?", (bill_id,))
+            cur.close()
+
+    def test_safe_spending_never_negative(self, auth_client, db_conn, test_user, test_account):
+        """safe_spending floors at 0 even when bills exceed balance."""
+        from datetime import date
+        today = date.today()
+        bill_day = today.day + 1 if today.day < 28 else today.day - 1
+        if bill_day <= today.day:
+            return
+        cur = db_conn.cursor()
+        cur.execute(
+            "INSERT INTO scheduled_expenses (name, amount, day, account, frequency, user_id)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            ("Huge Bill", 9999.00, bill_day, test_account["name"], "monthly", test_user["id"]),
+        )
+        bill_id = cur.lastrowid
+        cur.close()
+        try:
+            resp = auth_client.get("/")
+            assert resp.status_code == 200
+            html = resp.data.decode("utf-8")
+            # safe_spending is floored at 0 — "Very tight" banner confirms range [0, 100)
+            assert "Very tight" in html
+        finally:
+            cur = db_conn.cursor()
+            cur.execute("DELETE FROM scheduled_expenses WHERE id = ?", (bill_id,))
+            cur.close()
