@@ -1,8 +1,9 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
 <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
 <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
 <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}">
@@ -68,9 +69,9 @@ table td { font-size: 13px; vertical-align: middle; }
       <table class="w-100" style="border-collapse:collapse;">
         {% for row in signups %}
         <tr>
-          <td style="width:70px; font-size:12px; color:#888; padding:3px 8px 3px 0;">{{ row.day }}</td>
+          <td style="width:90px; font-size:12px; color:#888; padding:3px 8px 3px 0;">{{ row.day | dateformat }}</td>
           <td style="padding:3px 0;">
-            <div class="bar-wrap"><div class="bar-fill green" style="width:{{ [1, (row.n * 100 // signup_max)]|max }}%"></div></div>
+            <div class="bar-wrap"><div class="bar-fill green" style="width:{{ [1, ((row.n / signup_max * 100)|round|int)]|max }}%"></div></div>
           </td>
           <td style="width:30px; font-size:12px; font-weight:600; text-align:right; padding-left:8px;">{{ row.n }}</td>
         </tr>
@@ -88,9 +89,9 @@ table td { font-size: 13px; vertical-align: middle; }
       <table class="w-100" style="border-collapse:collapse;">
         {% for row in dau_series %}
         <tr>
-          <td style="width:70px; font-size:12px; color:#888; padding:3px 8px 3px 0;">{{ row.day }}</td>
+          <td style="width:90px; font-size:12px; color:#888; padding:3px 8px 3px 0;">{{ row.day | dateformat }}</td>
           <td style="padding:3px 0;">
-            <div class="bar-wrap"><div class="bar-fill" style="width:{{ [1, (row.n * 100 // dau_max)]|max }}%"></div></div>
+            <div class="bar-wrap"><div class="bar-fill" style="width:{{ [1, ((row.n / dau_max * 100)|round|int)]|max }}%"></div></div>
           </td>
           <td style="width:30px; font-size:12px; font-weight:600; text-align:right; padding-left:8px;">{{ row.n }}</td>
         </tr>
@@ -137,7 +138,7 @@ table td { font-size: 13px; vertical-align: middle; }
         <h6 class="fw-bold mb-1">Week-1 retention</h6>
         <div class="text-muted small mb-3">Users registered 14+ days ago who came back after day 7</div>
         <div class="stat-val mb-1">{{ retention_pct }}%</div>
-        <div class="small text-muted">{{ retention.returned }} of {{ retention.total }} users returned</div>
+        <div class="small text-muted">{{ retention.returned or 0 }} of {{ retention.total or 0 }} users returned</div>
       </div>
     </div>
     <div class="col-md-6">
@@ -145,7 +146,7 @@ table td { font-size: 13px; vertical-align: middle; }
         <h6 class="fw-bold mb-1">Activation funnel</h6>
         <div class="text-muted small mb-3">Registered users who took at least one action</div>
         <div class="stat-val mb-1">{{ funnel_pct }}%</div>
-        <div class="small text-muted">{{ funnel.took_action }} of {{ funnel.registered }} users activated</div>
+        <div class="small text-muted">{{ funnel.took_action or 0 }} of {{ funnel.registered or 0 }} users activated</div>
       </div>
     </div>
   </div>
@@ -160,7 +161,7 @@ table td { font-size: 13px; vertical-align: middle; }
       </div>
       <div class="col-6 col-md-4">
         <div class="text-muted">Oldest event</div>
-        <div class="fw-semibold">{{ table_stats.oldest or '—' }}</div>
+        <div class="fw-semibold">{{ (table_stats.oldest | dateformat) if table_stats.oldest else '—' }}</div>
       </div>
       <div class="col-12 col-md-4">
         <div class="text-muted">Auto-prune</div>
