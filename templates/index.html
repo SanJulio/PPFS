@@ -413,7 +413,7 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
 </div>
 
 <!-- FAB speed dial -->
-<div id="fab-container" style="position:fixed; bottom:90px; right:24px; left:auto; z-index:9998; display:flex; flex-direction:column; align-items:flex-end; gap:12px;">
+<div id="fab-container" style="position:fixed; bottom:90px; right:24px; left:auto; z-index:9998; display:flex; flex-direction:column; align-items:flex-end; gap:12px; pointer-events:none;">
   <!-- Sub-button: Adjust balance -->
   <div id="fab-adjust" style="display:flex; align-items:center; gap:8px; opacity:0; transform:translateY(10px); transition:opacity 0.2s ease, transform 0.2s ease; pointer-events:none;">
     <span style="background:#fff; color:#333; font-size:12px; font-weight:600; padding:5px 10px; border-radius:999px; box-shadow:0 2px 8px rgba(0,0,0,0.15); white-space:nowrap;">Adjust balance</span>
@@ -425,7 +425,7 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
     <button onclick="closeFab();openQuickAdd();" style="width:46px; height:46px; border-radius:50%; background:#111; color:#fff; border:none; font-size:22px; box-shadow:0 4px 14px rgba(0,0,0,0.25); cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1;">+</button>
   </div>
   <!-- Main FAB -->
-  <button id="fab-main" onclick="toggleFab()" style="width:54px; height:54px; border-radius:50%; background:#111; color:#fff; border:none; font-size:26px; box-shadow:0 4px 14px rgba(0,0,0,0.25); cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; transition:transform 0.2s ease;">+</button>
+  <button id="fab-main" onclick="toggleFab()" style="width:54px; height:54px; border-radius:50%; background:#111; color:#fff; border:none; font-size:26px; box-shadow:0 4px 14px rgba(0,0,0,0.25); cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; transition:transform 0.2s ease; pointer-events:auto;">+</button>
 </div>
 <!-- FAB backdrop (tap outside to close) -->
 <div id="fab-backdrop" onclick="closeFab()" style="display:none; position:fixed; inset:0; z-index:9997;"></div>
@@ -592,7 +592,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0">Financial Overview</h5>
     <div class="d-flex align-items-center gap-2">
-      <span class="text-muted" style="font-size:12px;">{{ cycle_start_date.strftime('%-d %b') }} – {{ cycle_end_date.strftime('%-d %b') }}</span>
+      <span class="text-muted" style="font-size:12px;">{{ cycle_start_date.day }} {{ cycle_start_date.strftime('%b') }} – {{ cycle_end_date.day }} {{ cycle_end_date.strftime('%b') }}</span>
       <button id="toggleAmountsBtn" onclick="toggleAmounts()" class="btn btn-sm" style="border-radius:999px; padding:6px 14px; font-size:13px; font-weight:600; background:white; border:2px solid #dee2e6; color:#555;">Show</button>
     </div>
   </div>
@@ -947,45 +947,131 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
     if (btn) btn.textContent = (expanded ? '▶' : '▼') + ' See transactions';
   };
 
+  // Afford basket state
+  var affordItems = [];
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  window.addAffordItem = function() {
+    var nameEl = document.getElementById('affordItemName');
+    var amtEl = document.getElementById('affordItemAmount');
+    var name = nameEl.value.trim();
+    var amt = parseFloat(amtEl.value);
+    if (!name || !amt || amt <= 0) {
+      nameEl.style.border = name ? '' : '1.5px solid #dc3545';
+      amtEl.style.border = (amt > 0) ? '' : '1.5px solid #dc3545';
+      return;
+    }
+    nameEl.style.border = '';
+    amtEl.style.border = '';
+    affordItems.push({name: name, amount: amt});
+    nameEl.value = '';
+    amtEl.value = '';
+    nameEl.focus();
+    renderAffordBasket();
+  };
+
+  window.removeAffordItem = function(i) {
+    affordItems.splice(i, 1);
+    renderAffordBasket();
+  };
+
+  function renderAffordBasket() {
+    var basket = document.getElementById('affordBasket');
+    var total = affordItems.reduce(function(s, it) { return s + it.amount; }, 0);
+    if (affordItems.length === 0) {
+      basket.innerHTML = '<div class="text-muted small text-center py-2" style="font-size:13px;">No items yet — add some above</div>';
+    } else {
+      basket.innerHTML = affordItems.map(function(it, i) {
+        return '<div class="d-flex justify-content-between align-items-center py-2" style="border-bottom:1px solid #f0f0f0;">' +
+          '<span style="font-size:14px;">' + escHtml(it.name) + '</span>' +
+          '<div class="d-flex align-items-center gap-2">' +
+            '<span class="fw-semibold" style="font-size:14px;">£' + it.amount.toFixed(2) + '</span>' +
+            '<button onclick="removeAffordItem(' + i + ')" style="background:none;border:none;color:#bbb;font-size:15px;cursor:pointer;padding:0 2px;line-height:1;">✕</button>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    }
+    document.getElementById('affordTotal').textContent = '£' + total.toFixed(2);
+    document.getElementById('snapshotAffordResult').innerHTML = '';
+  }
+
   window.checkSnapshotAfford = function() {
     var affordResult = document.getElementById('snapshotAffordResult');
-    var amount = parseFloat(document.getElementById('snapshotAffordInput').value);
-    if (!amount || amount <= 0) { affordResult.innerHTML = '<div class="text-danger small">Enter a valid amount</div>'; return; }
+    var total = affordItems.reduce(function(s, it) { return s + it.amount; }, 0);
+    if (affordItems.length === 0 || total <= 0) {
+      affordResult.innerHTML = '<div class="text-danger small">Add at least one item above</div>';
+      return;
+    }
     var accName = document.getElementById('snapshotAffordAccount').value;
     var affordDate = document.getElementById('affordDateInput').value;
-    var days = affordDate ? dateToDays(affordDate) : (snapshotData ? dateToDays(dateInput.value) : 30);
+    var days = affordDate ? dateToDays(affordDate) : 30;
 
     affordResult.innerHTML = '<div class="text-muted small">Checking...</div>';
 
-    function showAffordResult(data) {
+    function showAffordResult(data, data90) {
       var acc = data.accounts[accName];
       if (!acc) { affordResult.innerHTML = '<div class="text-danger small">Account not found</div>'; return; }
-      var after = acc.balance_on_date - amount;
+      var after = acc.balance_on_date - total;
       var safe = after >= 0;
       var tight = safe && after < 200;
-      if (safe) {
-        affordResult.innerHTML = '<div class="rounded-4 p-3 mt-2" style="background:' + (tight ? '#fff3cd' : '#d1fae5') + ';">' +
-          '<div class="fw-bold" style="color:' + (tight ? '#856404' : '#065f46') + ';">' + (tight ? '⚠️ Tight but possible' : '✅ Yes, you can afford it') + '</div>' +
-          '<div class="small mt-1" style="color:' + (tight ? '#856404' : '#065f46') + ';">Leaves £' + after.toFixed(2) + ' in ' + accName + ' on ' + data.date + '</div>' +
-          '</div>';
-      } else {
-        affordResult.innerHTML = '<div class="rounded-4 p-3 mt-2" style="background:#fde8e8;">' +
-          '<div class="fw-bold" style="color:#991b1b;">❌ Not safe — ' + accName + '</div>' +
-          '<div class="small mt-1" style="color:#991b1b;">You\'d be £' + Math.abs(after).toFixed(2) + ' short on ' + data.date + '</div>' +
-          '</div>';
+
+      var breakdown = '';
+      if (affordItems.length > 1) {
+        breakdown = '<div class="mt-2" style="border-top:1px solid rgba(0,0,0,0.08);padding-top:6px;">';
+        affordItems.forEach(function(it) {
+          breakdown += '<div class="d-flex justify-content-between small"><span>' + escHtml(it.name) + '</span><span class="fw-semibold">£' + it.amount.toFixed(2) + '</span></div>';
+        });
+        breakdown += '</div>';
       }
+
+      var lowestHtml = '';
+      if (data90) {
+        var acc90 = data90.accounts[accName];
+        if (acc90) {
+          var lowestRaw = Math.min(acc90.balance_today, acc90.min_balance) - total;
+          var lowestDateStr = (acc90.min_balance <= acc90.balance_today) ? acc90.min_balance_date : 'Today';
+          var lowestColor = lowestRaw >= 0 ? '#065f46' : '#991b1b';
+          lowestHtml = '<div class="small mt-2" style="color:' + lowestColor + ';">📉 Lowest future balance: <strong>£' + Math.abs(lowestRaw).toFixed(2) + (lowestRaw < 0 ? ' overdrawn' : '') + '</strong> on ' + lowestDateStr + '</div>';
+        }
+      }
+
+      var bg = safe ? (tight ? '#fff3cd' : '#d1fae5') : '#fde8e8';
+      var color = safe ? (tight ? '#856404' : '#065f46') : '#991b1b';
+      var icon = safe ? (tight ? '⚠️ Tight but possible' : '✅ Yes, you can afford it') : '❌ Not safe';
+      var itemsLabel = affordItems.length === 1 ? '1 item' : affordItems.length + ' items';
+
+      affordResult.innerHTML = '<div class="rounded-4 p-3 mt-2" style="background:' + bg + ';">' +
+        '<div class="fw-bold" style="color:' + color + ';">' + icon + '</div>' +
+        '<div class="small mt-1" style="color:' + color + ';">Total £' + total.toFixed(2) + ' (' + itemsLabel + ')</div>' +
+        '<div class="small" style="color:' + color + ';">' + (safe ? 'Leaves £' + after.toFixed(2) : 'Short by £' + Math.abs(after).toFixed(2)) + ' in ' + escHtml(accName) + ' on ' + data.date + '</div>' +
+        breakdown +
+        '</div>' +
+        lowestHtml;
     }
 
-    // If we already have data for this date, use it; otherwise fetch
-    if (snapshotData && (!affordDate || days === dateToDays(dateInput.value))) {
-      showAffordResult(snapshotData);
-    } else {
-      fetch('/api/snapshot?days=' + days)
-        .then(function(r) { return r.json(); })
-        .then(function(data) { showAffordResult(data); })
-        .catch(function() { affordResult.innerHTML = '<div class="text-danger small">Failed to load</div>'; });
-    }
+    var mainFetch = (snapshotData && days === dateToDays(dateInput.value))
+      ? Promise.resolve(snapshotData)
+      : fetch('/api/snapshot?days=' + days).then(function(r) { return r.json(); });
+
+    var fetch90 = (snapshotData && days === 90)
+      ? Promise.resolve(snapshotData)
+      : fetch('/api/snapshot?days=90').then(function(r) { return r.json(); });
+
+    Promise.all([mainFetch, fetch90])
+      .then(function(results) { showAffordResult(results[0], results[1]); })
+      .catch(function() { affordResult.innerHTML = '<div class="text-danger small">Failed to load</div>'; });
   };
+
+  // Allow Enter key in afford item amount field to add the item
+  (function() {
+    var amtEl = document.getElementById('affordItemAmount');
+    if (amtEl) amtEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); window.addAffordItem(); } });
+    var nameEl = document.getElementById('affordItemName');
+    if (nameEl) nameEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('affordItemAmount').focus(); } });
+  })();
 
   // Set affordDateInput defaults
   (function() {
@@ -1011,35 +1097,51 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
 
 </div>
 <!-- Can I afford this modal (fixed, outside tabs so it always renders) -->
-<div id="affordModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:20px;">
-  <div class="card p-4" style="max-width:480px; width:100%; border-radius:24px 24px 24px 24px;">
+<div id="affordModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:16px;">
+  <div class="card p-4" style="max-width:480px; width:100%; border-radius:24px; max-height:88vh; overflow-y:auto;">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h5 class="mb-0 fw-bold">Can I afford this?</h5>
       <button onclick="document.getElementById('affordModal').style.display='none'" class="btn btn-sm btn-outline-secondary rounded-3">✕</button>
     </div>
-    <div class="mb-2 text-muted small">Based on your projected balance on the selected date.</div>
+
+    <!-- Account + date row -->
     <div class="row g-2 mb-3">
       <div class="col">
-        <input id="snapshotAffordInput" class="form-control" inputmode="decimal"
-          placeholder="Amount (e.g. 200)" style="border-radius:12px !important; font-size:15px !important;">
-      </div>
-      <div class="col-auto">
-        <select id="snapshotAffordAccount" class="form-select"
-          style="border-radius:12px !important; font-size:13px !important; padding:10px 12px !important;">
-          {% for b in balances %}
-          {% if b.type in ['current', 'cash'] %}
+        <label class="form-label small fw-semibold mb-1">Account</label>
+        <select id="snapshotAffordAccount" class="form-select" style="border-radius:12px !important; font-size:13px !important; padding:8px 12px !important;">
+          {% for b in balances %}{% if b.type in ['current', 'cash'] %}
           <option value="{{ b.name }}">{{ b.name }}</option>
-          {% endif %}
-          {% endfor %}
+          {% endif %}{% endfor %}
         </select>
       </div>
+      <div class="col">
+        <label class="form-label small fw-semibold mb-1">On date</label>
+        <input type="date" id="affordDateInput" class="form-control" style="border-radius:12px !important; font-size:13px !important; padding:8px !important;">
+      </div>
     </div>
-    <div class="mb-3">
-      <label class="form-label small fw-semibold mb-1">On date</label>
-      <input type="date" id="affordDateInput" class="form-control"
-        style="border-radius:12px !important; font-size:14px !important; padding:10px !important;">
+
+    <!-- Add item row -->
+    <div class="mb-2">
+      <label class="form-label small fw-semibold mb-1">Add items</label>
+      <div class="d-flex gap-2">
+        <input id="affordItemName" class="form-control" placeholder="Name" style="font-size:14px !important; padding:8px 12px !important;">
+        <input id="affordItemAmount" class="form-control" inputmode="decimal" placeholder="£ amount" style="width:100px; flex-shrink:0; font-size:14px !important; padding:8px 10px !important;">
+        <button onclick="addAffordItem()" class="btn btn-dark rounded-3 px-3" style="white-space:nowrap; font-size:14px;">+ Add</button>
+      </div>
     </div>
-    <button onclick="checkSnapshotAfford()" class="btn btn-dark w-100 py-2 rounded-3 mb-2">Check</button>
+
+    <!-- Basket -->
+    <div id="affordBasket" style="min-height:36px; margin-bottom:8px;">
+      <div class="text-muted small text-center py-2" style="font-size:13px;">No items yet — add some above</div>
+    </div>
+
+    <!-- Total row -->
+    <div class="d-flex justify-content-between align-items-center py-2 mb-3" style="border-top:2px solid #f0f0f0; border-bottom:2px solid #f0f0f0;">
+      <span class="fw-bold">Total</span>
+      <span class="fw-bold" id="affordTotal">£0.00</span>
+    </div>
+
+    <button onclick="checkSnapshotAfford()" class="btn btn-dark w-100 py-2 rounded-3 mb-2" style="font-size:15px;">Check affordability</button>
     <div id="snapshotAffordResult"></div>
   </div>
 </div>

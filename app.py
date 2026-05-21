@@ -937,14 +937,14 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
             db2 = get_db()
             cursor2 = db2.cursor()
             cursor2.execute(
-                "SELECT amount, description, date, account FROM transactions WHERE date::date >= %s AND date::date <= %s AND user_id = %s AND amount > 0 AND type != 'transfer'",
+                "SELECT amount, description, date, account FROM transactions WHERE date::date >= %s AND date::date <= %s AND user_id = %s AND amount > 0 AND type != 'transfer' AND type != 'adjustment'",
                 (cycle_start_date.isoformat(), cycle_end_date.isoformat(), current_user.id)
             )
         else:
             db2 = get_db()
             cursor2 = db2.cursor()
             cursor2.execute(
-                "SELECT amount, description, date, account FROM transactions WHERE date >= ? AND date <= ? AND user_id = ? AND amount > 0 AND type != 'transfer'",
+                "SELECT amount, description, date, account FROM transactions WHERE date >= ? AND date <= ? AND user_id = ? AND amount > 0 AND type != 'transfer' AND type != 'adjustment'",
                 (cycle_start_date.isoformat(), cycle_end_date.isoformat(), current_user.id)
             )
         for r2 in cursor2.fetchall():
@@ -2377,6 +2377,8 @@ def api_snapshot():
             continue
 
     simulated = {name: float(info["balance"]) for name, info in accounts.items()}
+    min_balances = {name: float(info["balance"]) for name, info in accounts.items()}
+    min_balance_dates = {name: "Today" for name in accounts}
     income_arriving = []
     bills_due = []
 
@@ -2427,6 +2429,12 @@ def api_snapshot():
                 if acc in simulated:
                     simulated[acc] -= amt
 
+        # Track minimum balance per account across the simulation
+        for name in simulated:
+            if simulated[name] < min_balances[name]:
+                min_balances[name] = simulated[name]
+                min_balance_dates[name] = f"{sim_day.day} {sim_day.strftime('%b %Y')}"
+
         sim_day += timedelta(days=1)
 
     return jsonify({
@@ -2437,7 +2445,9 @@ def api_snapshot():
                 "balance_today": round(accounts[name]["balance"], 2),
                 "balance_on_date": round(simulated[name], 2),
                 "change": round(simulated[name] - accounts[name]["balance"], 2),
-                "type": accounts[name]["type"]
+                "type": accounts[name]["type"],
+                "min_balance": round(min_balances[name], 2),
+                "min_balance_date": min_balance_dates[name],
             }
             for name in accounts
         },
