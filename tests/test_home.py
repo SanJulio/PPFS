@@ -95,17 +95,9 @@ class TestSnapshotAPI:
 
 class TestIncomeCardExcludesAdjustments:
     def test_adjustment_not_counted_as_income(self, auth_client, db_conn, test_user, test_account):
-        """Balance adjustment (type='adjustment') must not appear in the Income card total."""
+        """Balance adjustment transactions must not appear in the Income card total."""
         today_str = date.today().isoformat()
         cur = db_conn.cursor()
-        # Real income: distinctive amount that will show in the income tile
-        cur.execute(
-            "INSERT INTO transactions (date, description, amount, account, type, category, user_id)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (today_str, "Salary", 777.00, test_account["name"], "income", "Income", test_user["id"]),
-        )
-        inc_id = cur.lastrowid
-        # Balance adjustment with a very large unique amount — must NOT appear as income
         cur.execute(
             "INSERT INTO transactions (date, description, amount, account, type, category, user_id)"
             " VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -116,34 +108,30 @@ class TestIncomeCardExcludesAdjustments:
         try:
             resp = auth_client.get("/")
             assert resp.status_code == 200
-            html = resp.data.decode("utf-8")
-            # The combined total (777 + 88888 = 89665) must not appear — would show if adjustment was included
-            assert "89665" not in html
-            # Sanity: the correct income amount should appear somewhere on the page
-            assert "777.00" in html
+            assert "88888" not in resp.data.decode("utf-8")
         finally:
             cur = db_conn.cursor()
-            cur.execute("DELETE FROM transactions WHERE id IN (?, ?)", (inc_id, adj_id))
+            cur.execute("DELETE FROM transactions WHERE id = ?", (adj_id,))
             cur.close()
 
-    def test_income_transaction_counted_normally(self, auth_client, db_conn, test_user, test_account):
-        """Regular type='income' transactions ARE counted in the income card."""
-        today_str = date.today().isoformat()
+    def test_income_from_scheduled_source_counted(self, auth_client, db_conn, test_user, test_account):
+        """Scheduled income with a payment date in the current cycle appears in the Income card."""
         cur = db_conn.cursor()
+        # day=1 → payment on 1st of month = cycle_start, always within [cycle_start, today]
         cur.execute(
-            "INSERT INTO transactions (date, description, amount, account, type, category, user_id)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (today_str, "Freelance", 333.00, test_account["name"], "income", "Income", test_user["id"]),
+            "INSERT INTO income (name, amount, frequency, account, day, user_id)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            ("Test Salary", 1234.00, "monthly", test_account["name"], 1, test_user["id"]),
         )
-        tx_id = cur.lastrowid
+        inc_id = cur.lastrowid
         cur.close()
         try:
             resp = auth_client.get("/")
             assert resp.status_code == 200
-            assert "333.00" in resp.data.decode("utf-8")
+            assert "1234.00" in resp.data.decode("utf-8")
         finally:
             cur = db_conn.cursor()
-            cur.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
+            cur.execute("DELETE FROM income WHERE id = ?", (inc_id,))
             cur.close()
 
     def test_transfer_not_counted_as_income(self, auth_client, db_conn, test_user, test_account):

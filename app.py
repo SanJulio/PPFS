@@ -870,106 +870,123 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
         today = date.today()
         cycle_end_date = today.replace(day=_cal.monthrange(today.year, today.month)[1])
 
-    # Only include transactions that have actually occurred (cap at today)
     today_cap = min(cycle_end_date, date.today())
 
+    # Normal (discretionary) spending from logged transactions
     db = get_db()
     cursor = db.cursor()
-
     if USE_POSTGRES:
         cursor.execute(
             """
-            SELECT amount, type, description, date, account FROM transactions
-            WHERE date::date >= %s
-            AND date::date <= %s
-            AND user_id = %s
-            AND amount < 0
-            AND type != 'transfer'
+            SELECT amount, description, date, account FROM transactions
+            WHERE date::date >= %s AND date::date <= %s AND user_id = %s
+            AND amount < 0 AND type != 'transfer' AND type != 'bill'
             """,
             (cycle_start_date.isoformat(), today_cap.isoformat(), current_user.id)
         )
     else:
         cursor.execute(
             """
-            SELECT amount, type, description, date, account FROM transactions
-            WHERE date >= ?
-            AND date <= ?
-            AND user_id = ?
-            AND amount < 0
-            AND type != 'transfer'
+            SELECT amount, description, date, account FROM transactions
+            WHERE date >= ? AND date <= ? AND user_id = ?
+            AND amount < 0 AND type != 'transfer' AND type != 'bill'
             """,
             (cycle_start_date.isoformat(), today_cap.isoformat(), current_user.id)
         )
-
     rows = cursor.fetchall()
     cursor.close()
     release_db(db)
 
     normal = 0.0
-    scheduled = 0.0
     normal_list = []
-    bills_list = []
-
     for r in rows:
         if USE_POSTGRES:
-            amount = abs(r[0])
-            tx_type = r[1]
-            description = r[2]
-            tx_date = r[3]
-            account = r[4]
+            amount = abs(r[0]); description = r[1]; tx_date = r[2]; account = r[3]
         else:
-            amount = abs(r["amount"])
-            tx_type = r["type"]
-            description = r["description"]
-            tx_date = r["date"]
-            account = r["account"]
+            amount = abs(r["amount"]); description = r["description"]; tx_date = r["date"]; account = r["account"]
+        normal += amount
+        normal_list.append({"description": description, "amount": amount, "date": tx_date, "account": account})
 
-        if tx_type == "bill":
-            scheduled += amount
-            bills_list.append({"description": description, "amount": amount, "date": tx_date, "account": account})
-        else:
-            normal += amount
-            normal_list.append({"description": description, "amount": amount, "date": tx_date, "account": account})
+    # Bills paid: scheduled expenses whose due date falls in [cycle_start_date, today_cap]
+    import calendar as _cal
+    scheduled = 0.0
+    bills_list = []
+    scheduled_expenses = load_scheduled_expenses_web()
 
-    # Query income received this cycle (up to today only)
+    check_months = []
+    y, m = cycle_start_date.year, cycle_start_date.month
+    while date(y, m, 1) <= today_cap:
+        check_months.append((y, m))
+        m = m + 1 if m < 12 else 1
+        y = y if m > 1 else y + 1
+
+    for expense in scheduled_expenses:
+        if expense["day"] is None:
+            continue
+        freq = expense.get("frequency") or "monthly"
+        candidates = []
+        if freq == "monthly":
+            for (ey, em) in check_months:
+                dim = _cal.monthrange(ey, em)[1]
+                due = date(ey, em, min(expense["day"], dim))
+                if cycle_start_date <= due <= today_cap:
+                    candidates.append(due)
+        elif freq == "yearly":
+            expense_month = expense.get("month")
+            if not expense_month:
+                continue
+            for (ey, em) in check_months:
+                if em != expense_month:
+                    continue
+                dim = _cal.monthrange(ey, em)[1]
+                due = date(ey, em, min(expense["day"], dim))
+                if cycle_start_date <= due <= today_cap:
+                    candidates.append(due)
+        for due in candidates:
+            scheduled += expense["amount"]
+            bills_list.append({
+                "description": expense["name"],
+                "amount": expense["amount"],
+                "date": due.isoformat(),
+                "account": expense.get("account", "")
+            })
+
+    # Income received: scheduled income sources via the income engine
     income_received = 0.0
     income_list = []
     try:
+        db2 = get_db()
+        cursor2 = db2.cursor()
         if USE_POSTGRES:
-            cursor2 = db.cursor() if not db.closed else get_db().cursor()
-            db2 = get_db()
-            cursor2 = db2.cursor()
-            cursor2.execute(
-                "SELECT amount, description, date, account FROM transactions WHERE date::date >= %s AND date::date <= %s AND user_id = %s AND amount > 0 AND type != 'transfer' AND type != 'adjustment'",
-                (cycle_start_date.isoformat(), today_cap.isoformat(), current_user.id)
-            )
+            cursor2.execute("SELECT * FROM income WHERE user_id = %s", (current_user.id,))
         else:
-            db2 = get_db()
-            cursor2 = db2.cursor()
-            cursor2.execute(
-                "SELECT amount, description, date, account FROM transactions WHERE date >= ? AND date <= ? AND user_id = ? AND amount > 0 AND type != 'transfer' AND type != 'adjustment'",
-                (cycle_start_date.isoformat(), today_cap.isoformat(), current_user.id)
-            )
-        for r2 in cursor2.fetchall():
-            if USE_POSTGRES:
-                amt = float(r2[0]); desc2 = r2[1]; d2 = r2[2]; acc2 = r2[3]
-            else:
-                amt = float(r2["amount"]); desc2 = r2["description"]; d2 = r2["date"]; acc2 = r2["account"]
-            income_received += amt
-            income_list.append({"description": desc2, "amount": amt, "date": d2, "account": acc2})
+            cursor2.execute("SELECT * FROM income WHERE user_id = ?", (current_user.id,))
+        cols2 = [d[0] for d in cursor2.description]
+        income_rows = [dict(zip(cols2, row)) for row in cursor2.fetchall()]
         cursor2.close()
         release_db(db2)
-    except Exception:
-        pass
+        for inc in income_rows:
+            amount = float(inc.get("amount") or 0)
+            dates = income_engine.get_payment_dates(inc, cycle_start_date, today_cap)
+            for d in dates:
+                income_received += amount
+                income_list.append({
+                    "description": inc["name"],
+                    "amount": amount,
+                    "date": d.isoformat(),
+                    "account": inc.get("account", "")
+                })
+    except Exception as e:
+        logger.debug(f"Could not compute scheduled income: {e}")
 
     return {
         "normal": normal,
         "scheduled": scheduled,
         "total": normal + scheduled,
         "normal_list": normal_list,
-        "bills_list": bills_list,
+        "bills_list": sorted(bills_list, key=lambda x: x["date"]),
         "income_received": income_received,
-        "income_list": income_list,
+        "income_list": sorted(income_list, key=lambda x: x["date"]),
     }
 
 # =============================================================================
