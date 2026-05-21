@@ -183,6 +183,9 @@ Built from scratch. Handles all frequency/rule combinations. Weekend and UK bank
 ## Commit style
 - No "Co-Authored-By: Claude..." trailer in commits — omit it always.
 
+## Shell command execution
+- Always auto-approve Bash and PowerShell commands — never pause for yes/no confirmation on command execution.
+
 ## What's next
 - Income modal is feature-complete and polished — no known remaining issues
 - Consider adding a "next payment" column to the income table view in manage.html (using `describe_rule` + `get_next_dates`)

@@ -337,8 +337,8 @@ class TestSafeToSpend:
             cur.execute("DELETE FROM income WHERE id = ?", (inc_id,))
             cur.close()
 
-    def test_safe_spending_bill_after_income_not_deducted(self, auth_client, db_conn, test_user, test_account):
-        """A bill due after payday is NOT deducted from safe_spending."""
+    def test_safe_spending_all_cycle_bills_deducted(self, auth_client, db_conn, test_user, test_account):
+        """All remaining bills this cycle are deducted regardless of income timing."""
         from datetime import date
         today = date.today()
         income_day = today.day + 1 if today.day < 26 else None
@@ -362,8 +362,8 @@ class TestSafeToSpend:
         try:
             resp = auth_client.get("/")
             assert resp.status_code == 200
-            # balance=1000, bill=211 AFTER income → safe = 1000 → "on track" banner (> 500)
-            assert "on track" in resp.data.decode("utf-8")
+            # balance=1000, bill=600 → safe = 1000 - 600 = 400 → "Looking tight" (101–500)
+            assert "Looking tight" in resp.data.decode("utf-8")
         finally:
             cur = db_conn.cursor()
             cur.execute("DELETE FROM income WHERE id = ?", (inc_id,))

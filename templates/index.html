@@ -762,12 +762,13 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
       </div>
     </div>
 
-    <!-- Row 5: Progress bar -->
-    {% set total_pot = monthly.total + [overview.safe_spending, 0]|max %}
-    {% if total_pot > 0 %}
-    {% set pct = (monthly.total / total_pot * 100)|round(0)|int %}
+    <!-- Row 5: Progress bar — bills paid ÷ income received -->
+    {% set _bills_paid = monthly.scheduled %}
+    {% set _income_received = monthly.income_received %}
+    {% if _income_received > 0 or _bills_paid > 0 %}
+    {% if _income_received > 0 %}{% set pct = (_bills_paid / _income_received * 100)|round(0)|int %}{% else %}{% set pct = 100 %}{% endif %}
     {% set pct_capped = [pct, 100]|min %}
-    {% if pct < 70 %}{% set bar_color = '#198754' %}{% elif pct < 90 %}{% set bar_color = '#f59e0b' %}{% else %}{% set bar_color = '#dc3545' %}{% endif %}
+    {% if pct < 50 %}{% set bar_color = '#198754' %}{% elif pct < 80 %}{% set bar_color = '#f59e0b' %}{% else %}{% set bar_color = '#dc3545' %}{% endif %}
     <div class="col-12">
       <div class="progress rounded-pill" style="height:6px; background:#e9ecef;">
         <div class="progress-bar rounded-pill" role="progressbar"

@@ -777,8 +777,7 @@ def calculate_financial_overview(accounts):
                     "account": expense["account"]
                 })
 
-    # --- Pending income arriving later this month ---
-    # Accounts for mid-month or end-of-month pay days so safe_spending is accurate
+    # --- Pending income arriving later this cycle (for display in breakdown only) ---
     future_income = 0.0
     future_income_list = []
     try:
@@ -803,39 +802,11 @@ def calculate_financial_overview(accounts):
             for d in dates:
                 future_income += amount
                 future_income_list.append({"name": inc["name"], "amount": amount, "day": d.day})
-
-        # Per-account safe-to-spend: balance minus bills due before next income for that account
-        _dim = _cal.monthrange(today.year, today.month)[1]
-        safe_spending = 0.0
-        for acc_info in spending_accounts:
-            acc_name = acc_info["name"]
-            acc_balance = acc_info["balance"]
-            acc_bills = sorted(
-                [b for b in future_bills_list if b["account"] == acc_name],
-                key=lambda b: b["day"]
-            )
-            acc_income_events = []
-            for inc in income_rows:
-                if inc.get("account") != acc_name:
-                    continue
-                amt = float(inc.get("amount") or 0)
-                for d in income_engine.get_payment_dates(inc, tomorrow, month_end):
-                    acc_income_events.append((d, amt))
-            acc_income_events.sort(key=lambda x: x[0])
-            N_date = acc_income_events[0][0] if acc_income_events else None
-            if N_date is None:
-                bills_total = sum(b["amount"] for b in acc_bills)
-                acc_safe = max(0.0, acc_balance - bills_total)
-            else:
-                bills_before_N = sum(
-                    b["amount"] for b in acc_bills
-                    if date(today.year, today.month, min(b["day"], _dim)) < N_date
-                )
-                acc_safe = max(0.0, acc_balance - bills_before_N)
-            safe_spending += acc_safe
     except Exception as e:
         logger.debug(f"Could not load future income for overview: {e}")
-        safe_spending = max(0.0, spending_balance - spending_future_bills)
+
+    # Safe to spend = total spending balance minus all bills still due this cycle
+    safe_spending = max(0.0, spending_balance - spending_future_bills)
     net_worth = spending_balance + savings_balance
 
     return {
@@ -899,6 +870,9 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
         today = date.today()
         cycle_end_date = today.replace(day=_cal.monthrange(today.year, today.month)[1])
 
+    # Only include transactions that have actually occurred (cap at today)
+    today_cap = min(cycle_end_date, date.today())
+
     db = get_db()
     cursor = db.cursor()
 
@@ -912,7 +886,7 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
             AND amount < 0
             AND type != 'transfer'
             """,
-            (cycle_start_date.isoformat(), cycle_end_date.isoformat(), current_user.id)
+            (cycle_start_date.isoformat(), today_cap.isoformat(), current_user.id)
         )
     else:
         cursor.execute(
@@ -924,7 +898,7 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
             AND amount < 0
             AND type != 'transfer'
             """,
-            (cycle_start_date.isoformat(), cycle_end_date.isoformat(), current_user.id)
+            (cycle_start_date.isoformat(), today_cap.isoformat(), current_user.id)
         )
 
     rows = cursor.fetchall()
@@ -957,7 +931,7 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
             normal += amount
             normal_list.append({"description": description, "amount": amount, "date": tx_date, "account": account})
 
-    # Query income received this cycle
+    # Query income received this cycle (up to today only)
     income_received = 0.0
     income_list = []
     try:
@@ -967,14 +941,14 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
             cursor2 = db2.cursor()
             cursor2.execute(
                 "SELECT amount, description, date, account FROM transactions WHERE date::date >= %s AND date::date <= %s AND user_id = %s AND amount > 0 AND type != 'transfer' AND type != 'adjustment'",
-                (cycle_start_date.isoformat(), cycle_end_date.isoformat(), current_user.id)
+                (cycle_start_date.isoformat(), today_cap.isoformat(), current_user.id)
             )
         else:
             db2 = get_db()
             cursor2 = db2.cursor()
             cursor2.execute(
                 "SELECT amount, description, date, account FROM transactions WHERE date >= ? AND date <= ? AND user_id = ? AND amount > 0 AND type != 'transfer' AND type != 'adjustment'",
-                (cycle_start_date.isoformat(), cycle_end_date.isoformat(), current_user.id)
+                (cycle_start_date.isoformat(), today_cap.isoformat(), current_user.id)
             )
         for r2 in cursor2.fetchall():
             if USE_POSTGRES:
