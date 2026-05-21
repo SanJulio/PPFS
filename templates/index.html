@@ -868,42 +868,66 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
     var cards = accs.map(function(name) {
       var a = accounts[name];
       var todayBal = a.balance_on_date - a.change;
-      var chg = a.change;
-      var chgStr = (chg >= 0 ? '+' : '') + '£' + Math.abs(chg).toFixed(2);
-      var chgColor = chg >= 0 ? '#065f46' : '#991b1b';
-      var chgBg = chg >= 0 ? '#d1fae5' : '#fde8e8';
       var balStyle = a.balance_on_date < 0 ? 'color:#991b1b;' : '';
       var safeId = name.replace(/[^a-zA-Z0-9]/g, '_');
 
       var events = []
         .concat(snapshotData.income_arriving.filter(function(i) { return i.account === name; }).map(function(i) { return {type:'income', item:i}; }))
         .concat(snapshotData.bills_due.filter(function(i) { return i.account === name; }).map(function(i) { return {type:'bill', item:i}; }))
-        .sort(function(x, y) { return x.item.iso < y.item.iso ? -1 : x.item.iso > y.item.iso ? 1 : 0; });
+        .sort(function(x, y) {
+          var a = x.item.iso || x.item.date || '';
+          var b = y.item.iso || y.item.date || '';
+          return a < b ? -1 : a > b ? 1 : 0;
+        });
 
       var running = todayBal;
       var remainingBills = events.reduce(function(s, e) { return s + (e.type === 'bill' ? e.item.amount : 0); }, 0);
       function safeColor(v) { return v >= 0 ? '#065f46' : '#991b1b'; }
-      var safe0 = running - remainingBills;
-      var flowLines = '<div style="font-size:13px;padding:5px 0;border-bottom:1px solid #f0f0f0;color:#111;">' +
+
+      // Today row — balance only, no safe-to-spend
+      var flowLines = '<div style="font-size:13px;padding:6px 0;border-bottom:2px solid #e5e7eb;color:#111;">' +
         'Today: <strong>£' + running.toFixed(2) + '</strong>' +
-        ' <span style="color:' + safeColor(safe0) + ';font-size:11px;"> · Safe: £' + safe0.toFixed(2) + '</span>' +
         '</div>';
+
+      // Group events by date (ISO key, fallback to display date string)
+      var dateKeys = [];
+      var byDate = {};
       events.forEach(function(e) {
-        var isIncome = e.type === 'income';
-        var amt = e.item.amount;
-        if (!isIncome) remainingBills -= amt;
-        running += isIncome ? amt : -amt;
-        var safe = running - remainingBills;
-        var sign = isIncome ? '+' : '-';
-        var color = isIncome ? '#065f46' : '#991b1b';
-        flowLines += '<div style="font-size:13px;padding:5px 0;border-bottom:1px solid #f0f0f0;">' +
-          '<span style="color:' + color + ';font-weight:600;">' + sign + '£' + amt.toFixed(2) + '</span>' +
-          ' <span style="color:#555;">(' + e.item.name + ')</span>' +
-          ' <span style="color:#888;">→</span>' +
-          ' <span style="font-weight:600;color:#111;">£' + running.toFixed(2) + '</span>' +
-          ' <span style="color:' + safeColor(safe) + ';font-size:11px;"> · Safe: £' + safe.toFixed(2) + '</span>' +
-          ' <span style="color:#aaa;font-size:11px;">' + formatDate(e.item.iso) + '</span>' +
-        '</div>';
+        var key = e.item.iso || e.item.date || '';
+        if (!byDate[key]) { byDate[key] = []; dateKeys.push(key); }
+        byDate[key].push(e);
+      });
+
+      dateKeys.forEach(function(key) {
+        var sample = byDate[key][0];
+        var displayDate = sample.item.iso ? formatDate(sample.item.iso) : (sample.item.date || key);
+
+        // Date section header
+        flowLines += '<div style="font-size:11px;font-weight:700;color:#999;letter-spacing:0.04em;padding:8px 0 2px 0;">' +
+          displayDate + '</div>';
+
+        byDate[key].forEach(function(e) {
+          var isIncome = e.type === 'income';
+          var amt = e.item.amount;
+          if (!isIncome) remainingBills -= amt;
+          running += isIncome ? amt : -amt;
+          var safe = running - remainingBills;
+          var sign = isIncome ? '+' : '-';
+          var txColor = isIncome ? '#065f46' : '#991b1b';
+
+          flowLines +=
+            '<div style="padding:3px 0 7px 0;border-bottom:1px solid #f3f4f6;">' +
+              // Line 1: +£394.30 (Salary) → £440.98
+              '<div style="font-size:13px;">' +
+                '<span style="color:' + txColor + ';font-weight:600;">' + sign + '£' + amt.toFixed(2) + '</span>' +
+                ' <span style="color:#555;">(' + escHtml(e.item.name) + ')</span>' +
+                ' <span style="color:#bbb;">→</span>' +
+                ' <span style="font-weight:600;color:#111;">£' + running.toFixed(2) + '</span>' +
+              '</div>' +
+              // Line 2: Safe: £-208.83
+              '<div style="font-size:11px;color:' + safeColor(safe) + ';margin-top:2px;">Safe: £' + safe.toFixed(2) + '</div>' +
+            '</div>';
+        });
       });
 
       var txToggle = events.length > 0
@@ -916,12 +940,11 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
       return '<div class="border rounded-4 p-3 bg-white mb-2">' +
         '<div onclick="window.toggleAccCard(\'' + safeId + '\')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">' +
           '<div>' +
-            '<div style="font-weight:600;font-size:14px;">' + name + '</div>' +
+            '<div style="font-weight:600;font-size:14px;">' + escHtml(name) + '</div>' +
             '<div style="color:#aaa;font-size:11px;">' + a.type + '</div>' +
           '</div>' +
           '<div style="text-align:right;">' +
             '<div style="font-weight:700;font-size:18px;' + balStyle + '">£' + a.balance_on_date.toFixed(2) + '</div>' +
-            '<span style="font-size:11px;font-weight:600;background:' + chgBg + ';color:' + chgColor + ';border-radius:999px;padding:2px 8px;">' + chgStr + '</span>' +
           '</div>' +
         '</div>' +
         '<div id="accBody_' + safeId + '" style="display:none;">' + txToggle + '</div>' +
