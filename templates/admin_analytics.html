@@ -71,7 +71,7 @@ table td { font-size: 13px; vertical-align: middle; }
         <tr>
           <td style="width:90px; font-size:12px; color:#888; padding:3px 8px 3px 0;">{{ row.day | dateformat }}</td>
           <td style="padding:3px 0;">
-            <div class="bar-wrap"><div class="bar-fill green" style="width:{{ [1, ((row.n / signup_max * 100)|round|int)]|max }}%"></div></div>
+            <div class="bar-wrap"><div class="bar-fill green" data-pct="{{ row.bar_pct }}"></div></div>
           </td>
           <td style="width:30px; font-size:12px; font-weight:600; text-align:right; padding-left:8px;">{{ row.n }}</td>
         </tr>
@@ -91,7 +91,7 @@ table td { font-size: 13px; vertical-align: middle; }
         <tr>
           <td style="width:90px; font-size:12px; color:#888; padding:3px 8px 3px 0;">{{ row.day | dateformat }}</td>
           <td style="padding:3px 0;">
-            <div class="bar-wrap"><div class="bar-fill" style="width:{{ [1, ((row.n / dau_max * 100)|round|int)]|max }}%"></div></div>
+            <div class="bar-wrap"><div class="bar-fill" data-pct="{{ row.bar_pct }}"></div></div>
           </td>
           <td style="width:30px; font-size:12px; font-weight:600; text-align:right; padding-left:8px;">{{ row.n }}</td>
         </tr>
@@ -171,5 +171,10 @@ table td { font-size: 13px; vertical-align: middle; }
   </div>
 
 </div>
+<script>
+document.querySelectorAll('.bar-fill[data-pct]').forEach(function(el) {
+  el.style.width = el.dataset.pct + '%';
+});
+</script>
 </body>
 </html>

@@ -4423,6 +4423,10 @@ def admin_analytics():
     funnel_pct    = round(100 * funnel["took_action"] / funnel["registered"]) if funnel["registered"] else 0
     signup_max    = max((r["n"] for r in signups), default=1) or 1
     dau_max       = max((r["n"] for r in dau_series), default=1) or 1
+    for r in signups:
+        r["bar_pct"] = max(1, round(r["n"] / signup_max * 100))
+    for r in dau_series:
+        r["bar_pct"] = max(1, round(r["n"] / dau_max * 100))
 
     return render_template("admin_analytics.html",
         mau=mau, wau=wau, dau=dau, total_users=total_users,
