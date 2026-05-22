@@ -2474,7 +2474,7 @@ def api_snapshot():
         for row in snap_income_by_date.get(sim_day, []):
             acc = row.get("account", "")
             amt = float(row["amount"])
-            income_arriving.append({"name": row["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc})
+            income_arriving.append({"name": row["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc, "item_id": row.get("id"), "item_type": "income"})
             if acc in simulated:
                 simulated[acc] += amt
 
@@ -2494,7 +2494,7 @@ def api_snapshot():
                 if exp_day == sim_day.day and exp_month == sim_day.month:
                     applies = True
             if applies:
-                bills_due.append({"name": expense["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc})
+                bills_due.append({"name": expense["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc, "item_id": expense.get("id"), "item_type": "bill"})
                 if acc in simulated:
                     simulated[acc] -= amt
 
@@ -2503,7 +2503,7 @@ def api_snapshot():
             if event["date"] == sim_day:
                 acc = event["account"]
                 amt = float(event["amount"])
-                bills_due.append({"name": event["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc})
+                bills_due.append({"name": event["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc, "item_id": None, "item_type": "event"})
                 if acc in simulated:
                     simulated[acc] -= amt
 

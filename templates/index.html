@@ -902,6 +902,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
 
   function renderSnapshot() {
     if (!snapshotData) return;
+    window._txRegistry = {};
     var accounts = snapshotData.accounts;
     var accs = Object.keys(accounts);
     var selected = accFilter.value;
@@ -962,21 +963,57 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
           var amt = e.item.amount;
           running += isIncome ? amt : -amt;
           var safe = calcSafe(running, events.slice(eventIndex + 1));
+          var txKey = 'tx_' + safeId + '_' + eventIndex;
+          window._txRegistry[txKey] = {
+            name: e.item.name,
+            amount: isIncome ? amt : -amt,
+            iso: e.item.iso || '',
+            date: e.item.date || '',
+            account: name,
+            listType: e.type,
+            item_id: e.item.item_id || null,
+            item_type: e.item.item_type || e.type
+          };
           eventIndex++;
           var sign = isIncome ? '+' : '-';
           var txColor = isIncome ? '#065f46' : '#991b1b';
 
+          // Change 2: caution message when safe floors at £0
+          var cautionLine = '';
+          if (safe < 0) {
+            var shortfall = Math.ceil(Math.abs(safe));
+            var otherAccs = Object.keys(accounts).filter(function(n2) { return n2 !== name; });
+            var covering = null; var bestCoverBal = -Infinity;
+            otherAccs.forEach(function(n2) {
+              var b2 = accounts[n2].balance_today;
+              if (b2 >= shortfall && b2 > bestCoverBal) { bestCoverBal = b2; covering = {name: n2, balance: b2}; }
+            });
+            var msgIdx = name.length % 3;
+            var cautionText;
+            if (covering) {
+              if (msgIdx === 0) cautionText = '💡 ' + escHtml(covering.name) + ' has £' + Math.round(covering.balance) + ' available — moving £' + shortfall + ' across would keep you in the clear';
+              else if (msgIdx === 1) cautionText = '🏦 ' + escHtml(covering.name) + ' could cover this — transfer £' + shortfall + ' to stay on track';
+              else cautionText = '👀 ' + escHtml(covering.name) + ' has £' + Math.round(covering.balance) + ' sitting there. Move £' + shortfall + ' across and you\'re sorted';
+            } else {
+              var highBal = -Infinity; var highAcc = null;
+              otherAccs.forEach(function(n2) { var b2 = accounts[n2].balance_today; if (b2 > highBal) { highBal = b2; highAcc = {name: n2, balance: b2}; } });
+              cautionText = (highAcc && highAcc.balance > 0)
+                ? '🏦 ' + escHtml(highAcc.name) + ' has £' + Math.round(highAcc.balance) + ' available — that\'s the most you could move across'
+                : '⚠️ All accounts are running low — review your forecast';
+            }
+            cautionLine = '<div style="font-size:11px;color:#92400e;background:#fef3c7;border-radius:6px;padding:4px 8px;margin-top:4px;">' + cautionText + '</div>';
+          }
+
           flowLines +=
-            '<div style="padding:3px 0 7px 0;border-bottom:1px solid #f3f4f6;">' +
-              // Line 1: +£394.30 (Salary) → £440.98
+            '<div style="padding:3px 0 7px 0;border-bottom:1px solid #f3f4f6;cursor:pointer;" onclick="openTxDetail(\'' + txKey + '\')">' +
               '<div style="font-size:13px;">' +
                 '<span style="color:' + txColor + ';font-weight:600;">' + sign + '£' + amt.toFixed(2) + '</span>' +
                 ' <span style="color:#555;">(' + escHtml(e.item.name) + ')</span>' +
                 ' <span style="color:#bbb;">→</span>' +
                 ' <span style="font-weight:600;color:#111;">£' + running.toFixed(2) + '</span>' +
               '</div>' +
-              // Line 2: Safe: £X.XX (floored at 0; red if 0 or tight)
               '<div style="font-size:11px;color:' + safeColor(safe) + ';margin-top:2px;">Safe: £' + Math.max(0, safe).toFixed(2) + (safe < 0 ? ' ⚠' : '') + '</div>' +
+              cautionLine +
             '</div>';
         });
       });
@@ -1020,6 +1057,9 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
     flow.style.display = expanded ? 'none' : 'block';
     if (btn) btn.textContent = (expanded ? '▶' : '▼') + ' See transactions';
   };
+
+  window.snapshotGetData = function() { return snapshotData; };
+  window.snapshotRender = function() { renderSnapshot(); };
 
   // Afford basket state
   var affordItems = [];
@@ -1170,6 +1210,88 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
   
 
 </div>
+<!-- Transaction detail popup (Change 1 — tappable future transactions) -->
+<div id="txDetailOverlay" onclick="if(event.target===this)closeTxDetail()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99999;align-items:flex-end;justify-content:center;padding:16px;">
+  <div class="card p-4" style="max-width:480px;width:100%;max-height:85vh;overflow-y:auto;border-radius:20px;">
+
+    <!-- View 1: Transaction detail -->
+    <div id="txDetailView">
+      <div class="d-flex justify-content-between align-items-start mb-3">
+        <h6 class="fw-bold mb-0" style="font-size:16px;">Transaction detail</h6>
+        <button onclick="closeTxDetail()" style="background:none;border:none;font-size:22px;line-height:1;padding:0 2px;color:#888;cursor:pointer;">×</button>
+      </div>
+      <div class="mb-2 py-2 border-bottom">
+        <div class="text-muted small mb-1">Description</div>
+        <div class="fw-semibold" id="txDetailName" style="font-size:15px;"></div>
+      </div>
+      <div class="mb-2 py-2 border-bottom">
+        <div class="text-muted small mb-1">Amount</div>
+        <div class="fw-semibold" id="txDetailAmount" style="font-size:15px;"></div>
+      </div>
+      <div class="mb-2 py-2 border-bottom">
+        <div class="text-muted small mb-1">Date</div>
+        <div class="fw-semibold" id="txDetailDate" style="font-size:15px;"></div>
+      </div>
+      <div class="mb-3 py-2 border-bottom">
+        <div class="text-muted small mb-1">Account</div>
+        <div class="fw-semibold" id="txDetailAccount" style="font-size:15px;"></div>
+      </div>
+      <button onclick="showTxEditOptions()" class="btn btn-outline-secondary w-100 rounded-3">Edit</button>
+    </div>
+
+    <!-- View 2: Edit options -->
+    <div id="txEditOptions" style="display:none;">
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <button onclick="showTxDetailView()" class="btn btn-sm btn-outline-secondary" style="border-radius:8px;">← Back</button>
+        <h6 class="fw-bold mb-0" style="font-size:16px;">Edit transaction</h6>
+      </div>
+      <div class="d-grid gap-2">
+        <button onclick="showTxEditForm()" class="btn btn-outline-secondary text-start p-3 rounded-4" style="line-height:1.4;">
+          <div class="fw-semibold">Update this occurrence only</div>
+          <div class="text-muted small mt-1">Edit this specific entry without changing the recurring schedule</div>
+        </button>
+        <button onclick="goToScheduleEdit()" class="btn rounded-4 text-start p-3" style="background:#f1f5f9;border:none;line-height:1.4;">
+          <div class="fw-semibold">Update recurring schedule</div>
+          <div class="text-muted small mt-1">Change the schedule going forward — opens My Money</div>
+        </button>
+      </div>
+    </div>
+
+    <!-- View 3: Edit occurrence form -->
+    <div id="txEditForm" style="display:none;">
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <button onclick="showTxEditOptions()" class="btn btn-sm btn-outline-secondary" style="border-radius:8px;">← Back</button>
+        <h6 class="fw-bold mb-0" style="font-size:16px;">This occurrence</h6>
+      </div>
+      <div class="mb-3">
+        <label class="form-label small fw-semibold mb-1">Description</label>
+        <input type="text" id="txEditName" class="form-control form-control-sm rounded-3">
+      </div>
+      <div class="mb-3">
+        <label class="form-label small fw-semibold mb-1">Amount (£)</label>
+        <input type="number" id="txEditAmount" class="form-control form-control-sm rounded-3" min="0.01" step="0.01">
+      </div>
+      <div class="mb-3">
+        <label class="form-label small fw-semibold mb-1">Date</label>
+        <input type="text" id="txEditDate" class="form-control form-control-sm rounded-3" readonly style="background:#f8f9fa;">
+      </div>
+      <div class="mb-3">
+        <label class="form-label small fw-semibold mb-1">Account</label>
+        <select id="txEditAccount" class="form-select form-select-sm rounded-3">
+          {% for b in balances %}
+          <option value="{{ b.name }}">{{ b.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="d-grid gap-2">
+        <button onclick="saveTxOccurrence()" class="btn btn-primary rounded-3">Save</button>
+        <button onclick="showTxEditOptions()" class="btn btn-outline-secondary rounded-3">Cancel</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <!-- Can I afford this modal (fixed, outside tabs so it always renders) -->
 <div id="affordModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:16px;">
   <div class="card p-4" style="max-width:480px; width:100%; border-radius:24px; max-height:88vh; overflow-y:auto;">
@@ -1791,6 +1913,79 @@ function submitAutoApply() {
     alert('Network error — check your connection and try again.');
   });
 }
+// --- Transaction detail popup (Future Balances) ---
+var _txCurrent = null;
+function openTxDetail(txKey) {
+  var data = (window._txRegistry || {})[txKey];
+  if (!data) return;
+  _txCurrent = data;
+  var isIncome = data.listType === 'income';
+  document.getElementById('txDetailName').textContent = data.name;
+  document.getElementById('txDetailAmount').textContent = (isIncome ? '+' : '–') + '£' + Math.abs(data.amount).toFixed(2);
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var dateLabel = data.iso ? (function(){ var d = new Date(data.iso + 'T00:00:00'); return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear(); })() : (data.date || '—');
+  document.getElementById('txDetailDate').textContent = dateLabel;
+  document.getElementById('txDetailAccount').textContent = data.account;
+  showTxDetailView();
+  document.getElementById('txDetailOverlay').style.display = 'flex';
+}
+function closeTxDetail() {
+  document.getElementById('txDetailOverlay').style.display = 'none';
+  _txCurrent = null;
+}
+function showTxDetailView() {
+  document.getElementById('txDetailView').style.display = 'block';
+  document.getElementById('txEditOptions').style.display = 'none';
+  document.getElementById('txEditForm').style.display = 'none';
+}
+function showTxEditOptions() {
+  document.getElementById('txDetailView').style.display = 'none';
+  document.getElementById('txEditOptions').style.display = 'block';
+  document.getElementById('txEditForm').style.display = 'none';
+}
+function showTxEditForm() {
+  if (!_txCurrent) return;
+  document.getElementById('txEditName').value = _txCurrent.name;
+  document.getElementById('txEditAmount').value = Math.abs(_txCurrent.amount).toFixed(2);
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var dateLabel = _txCurrent.iso ? (function(){ var d = new Date(_txCurrent.iso + 'T00:00:00'); return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear(); })() : (_txCurrent.date || '');
+  document.getElementById('txEditDate').value = dateLabel;
+  document.getElementById('txEditAccount').value = _txCurrent.account;
+  document.getElementById('txDetailView').style.display = 'none';
+  document.getElementById('txEditOptions').style.display = 'none';
+  document.getElementById('txEditForm').style.display = 'block';
+}
+function goToScheduleEdit() {
+  if (!_txCurrent) return;
+  var itype = _txCurrent.item_type || _txCurrent.listType;
+  var tab = itype === 'income' ? 'income' : (itype === 'event' ? 'events' : 'bills');
+  window.location.href = '/manage?tab=' + tab;
+}
+function saveTxOccurrence() {
+  if (!_txCurrent) return;
+  var name = document.getElementById('txEditName').value.trim();
+  var amount = parseFloat(document.getElementById('txEditAmount').value);
+  var account = document.getElementById('txEditAccount').value;
+  if (!name || isNaN(amount) || amount <= 0) { alert('Please fill in all fields correctly.'); return; }
+  var sd = window.snapshotGetData ? window.snapshotGetData() : null;
+  if (!sd) { closeTxDetail(); return; }
+  var listType = _txCurrent.listType;
+  var iso = _txCurrent.iso;
+  var oldName = _txCurrent.name;
+  var oldAcc = _txCurrent.account;
+  var arr = listType === 'income' ? sd.income_arriving : sd.bills_due;
+  for (var i = 0; i < arr.length; i++) {
+    if (arr[i].iso === iso && arr[i].name === oldName && arr[i].account === oldAcc) {
+      arr[i].name = name;
+      arr[i].amount = amount;
+      arr[i].account = account;
+      break;
+    }
+  }
+  closeTxDetail();
+  if (window.snapshotRender) window.snapshotRender();
+}
+
 var _editingCb = null;
 function openEditItem(cb) {
   _editingCb = cb;
