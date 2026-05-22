@@ -629,7 +629,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0">Financial Overview</h5>
     <div class="d-flex align-items-center gap-2">
-      <span class="text-muted" style="font-size:12px;">{{ cycle_start_date.day }} {{ cycle_start_date.strftime('%b') }} – {{ cycle_end_date.day }} {{ cycle_end_date.strftime('%b') }}</span>
+      <span id="dateRangeLabel" class="text-muted" onclick="openDateRangePicker()" style="font-size:12px;cursor:pointer;" title="Customise date range">{{ cycle_start_date.day }} {{ cycle_start_date.strftime('%b') }} – {{ cycle_end_date.day }} {{ cycle_end_date.strftime('%b') }}</span><span id="customRangeIndicator" style="display:none;font-size:11px;color:#6366f1;cursor:pointer;margin-left:3px;" onclick="openDateRangePicker()" title="Custom range active">✎</span>
       <button id="toggleAmountsBtn" onclick="toggleAmounts()" class="btn btn-sm" style="border-radius:999px; padding:6px 14px; font-size:13px; font-weight:600; background:white; border:2px solid #dee2e6; color:#555;">Show</button>
     </div>
   </div>
@@ -660,7 +660,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
           <div class="text-muted small">Bills left</div>
           <span id="arrow-bills" class="fw-bold" style="font-size:13px;color:#111">+</span>
         </div>
-        <div class="fs-4 fw-bold text-danger amount-private">£{{ "%.2f"|format(overview.future_bills) }}</div>
+        <div id="future-bills-val" class="fs-4 fw-bold text-danger amount-private">£{{ "%.2f"|format(overview.future_bills) }}</div>
       </div>
       <div id="tile-bills" class="d-none mt-2 px-1">
         {% for b in overview.future_bills_list %}
@@ -688,7 +688,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
           <div class="text-muted small">Safe to spend</div>
           <span id="arrow-safe" class="fw-bold" style="font-size:13px;color:#111">+</span>
         </div>
-        <div class="fs-4 fw-bold text-success amount-private">£{{ "%.2f"|format(overview.safe_spending) }}</div>
+        <div id="safe-spending-val" class="fs-4 fw-bold text-success amount-private">£{{ "%.2f"|format(overview.safe_spending) }}</div>
       </div>
       <div id="tile-safe" class="d-none mt-2 px-1">
         <div class="small text-muted py-1">
@@ -1230,6 +1230,28 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
   
 
 </div>
+<!-- Date range picker bottom sheet -->
+<div id="datePickerBackdrop" onclick="closeDatePicker()" style="display:none;position:fixed;inset:0;z-index:99996;background:rgba(0,0,0,0.35);"></div>
+<div id="datePickerSheet" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:99997;background:#fff;border-radius:20px 20px 0 0;padding:24px 20px 32px;max-width:480px;margin:0 auto;box-shadow:0 -4px 24px rgba(0,0,0,0.13);">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <span style="font-size:16px;font-weight:700;">Custom date range</span>
+    <button onclick="closeDatePicker()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#6b7280;line-height:1;">✕</button>
+  </div>
+  <div class="mb-3">
+    <label class="small fw-semibold text-muted d-block mb-1">Start date</label>
+    <input type="date" id="drpStart" class="form-control" style="font-size:15px;">
+  </div>
+  <div class="mb-4">
+    <label class="small fw-semibold text-muted d-block mb-1">End date</label>
+    <input type="date" id="drpEnd" class="form-control" style="font-size:15px;">
+  </div>
+  <div id="drpError" class="text-danger small mb-3" style="display:none;"></div>
+  <div class="d-flex gap-2">
+    <button onclick="applyCustomRange()" class="btn btn-dark flex-grow-1 fw-semibold">Apply</button>
+    <button onclick="resetDateRange()" class="btn btn-outline-secondary flex-grow-1">Reset to default</button>
+  </div>
+</div>
+
 <!-- Cycle item edit popup (Income / Bills Paid breakdown rows) -->
 <div id="cycleItemPopup" onclick="if(event.target===this)closeCycleItemPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:99998;align-items:flex-end;justify-content:center;">
   <div style="background:#fff;border-radius:20px 20px 0 0;padding:24px 20px 32px;width:100%;max-width:480px;box-shadow:0 -4px 24px rgba(0,0,0,0.12);">
@@ -2119,6 +2141,109 @@ function saveCycleItem() {
     closeCycleItemPopup();
   }).catch(function() { alert('Network error — please try again.'); });
 }
+
+// ── CUSTOM DATE RANGE ──────────────────────────────────────────────────────────
+var _drpOrigStart = '{{ cycle_start_date.isoformat() }}';
+var _drpOrigEnd   = '{{ cycle_end_date.isoformat() }}';
+var _drpOrigLabel = "{{ cycle_start_date.day }} {{ cycle_start_date.strftime('%b') }} – {{ cycle_end_date.day }} {{ cycle_end_date.strftime('%b') }}";
+var _drpCustomActive = false;
+
+function openDateRangePicker() {
+  document.getElementById('drpStart').value = _drpCustomActive
+    ? document.getElementById('drpStart').value : _drpOrigStart;
+  document.getElementById('drpEnd').value = _drpCustomActive
+    ? document.getElementById('drpEnd').value : _drpOrigEnd;
+  document.getElementById('drpError').style.display = 'none';
+  document.getElementById('datePickerBackdrop').style.display = 'block';
+  document.getElementById('datePickerSheet').style.display = 'block';
+}
+function closeDatePicker() {
+  document.getElementById('datePickerSheet').style.display = 'none';
+  document.getElementById('datePickerBackdrop').style.display = 'none';
+}
+function applyCustomRange() {
+  var start = document.getElementById('drpStart').value;
+  var end   = document.getElementById('drpEnd').value;
+  var errEl = document.getElementById('drpError');
+  if (!start || !end) { errEl.textContent = 'Please enter both dates.'; errEl.style.display = ''; return; }
+  var sd = new Date(start), ed = new Date(end);
+  if (ed <= sd) { errEl.textContent = 'End date must be after start date.'; errEl.style.display = ''; return; }
+  var today = new Date(); today.setHours(0,0,0,0);
+  var yr = 366 * 864e5;
+  if (Math.abs(sd - today) > yr || Math.abs(ed - today) > yr) {
+    errEl.textContent = 'Dates must be within one year of today.'; errEl.style.display = ''; return;
+  }
+  errEl.style.display = 'none';
+  closeDatePicker();
+  _fetchOverviewData(start, end);
+}
+function resetDateRange() {
+  closeDatePicker();
+  _drpCustomActive = false;
+  document.getElementById('dateRangeLabel').textContent = _drpOrigLabel;
+  document.getElementById('customRangeIndicator').style.display = 'none';
+  _fetchOverviewData(_drpOrigStart, _drpOrigEnd);
+}
+function _fetchOverviewData(start, end) {
+  fetch('/api/overview?start=' + start + '&end=' + end)
+    .then(function(r) { return r.json(); })
+    .then(function(d) { if (!d.error) _applyOverviewData(d, start, end); })
+    .catch(function() {});
+}
+function _applyOverviewData(d, start, end) {
+  _drpCustomActive = (start !== _drpOrigStart || end !== _drpOrigEnd);
+  document.getElementById('dateRangeLabel').textContent = d.display_start + ' – ' + d.display_end;
+  document.getElementById('customRangeIndicator').style.display = _drpCustomActive ? 'inline' : 'none';
+
+  // Collapse any open tile-bills / tile-safe to avoid stale breakdowns
+  ['tile-bills','tile-safe'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el && !el.classList.contains('d-none')) el.classList.add('d-none');
+  });
+
+  // Income received
+  document.getElementById('income-cycle-total-val').textContent = '£' + d.income_received.toFixed(2);
+  var incEl = document.getElementById('tile-income-cycle');
+  if (incEl) {
+    incEl.innerHTML = d.income_list.length
+      ? d.income_list.map(function(t) {
+          return '<div class="d-flex justify-content-between align-items-center py-2 border-bottom">'
+            + '<div><div style="font-size:13px;">' + _drpEsc(t.description) + '</div>'
+            + '<div style="font-size:11px;color:#9ca3af;">' + t.date_display + '</div></div>'
+            + '<span class="fw-semibold text-success" style="font-size:13px;">£' + parseFloat(t.amount).toFixed(2) + '</span></div>';
+        }).join('')
+      : '<div class="small text-muted py-1">No income this cycle yet</div>';
+  }
+
+  // Bills paid
+  document.getElementById('billspaid-total-val').textContent = '£' + d.scheduled.toFixed(2);
+  var bpEl = document.getElementById('tile-billspaid');
+  if (bpEl) {
+    bpEl.innerHTML = d.bills_list.length
+      ? d.bills_list.map(function(t) {
+          return '<div class="d-flex justify-content-between align-items-center py-2 border-bottom">'
+            + '<div><div style="font-size:13px;">' + _drpEsc(t.description) + '</div>'
+            + '<div style="font-size:11px;color:#9ca3af;">' + t.date_display + '</div></div>'
+            + '<span class="fw-semibold text-danger" style="font-size:13px;">£' + parseFloat(t.amount).toFixed(2) + '</span></div>';
+        }).join('')
+      : '<div class="small text-muted py-1">No bills paid this cycle yet</div>';
+  }
+
+  // Bills left
+  document.getElementById('future-bills-val').textContent = '£' + d.future_bills.toFixed(2);
+
+  // Safe to spend
+  document.getElementById('safe-spending-val').textContent = '£' + d.safe_spending.toFixed(2);
+
+  // Progress bar
+  var bar = document.getElementById('cycleProgressBar');
+  if (bar) {
+    var pct = d.income_received > 0 ? Math.min(100, Math.round(d.scheduled / d.income_received * 100)) : (d.scheduled > 0 ? 100 : 0);
+    var clr = pct < 50 ? '#198754' : (pct < 80 ? '#f59e0b' : '#dc3545');
+    bar.style.width = pct + '%'; bar.style.background = clr;
+  }
+}
+function _drpEsc(str) { var d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
 </script>
 <script>
 (function() {

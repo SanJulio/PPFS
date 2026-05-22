@@ -1436,6 +1436,48 @@ def api_edit_pending_item():
     return jsonify({"ok": True, "name": name, "amount": amount, "account": account, "day": day})
 
 
+@app.get("/api/overview")
+@login_required
+def api_overview():
+    """Return Financial Overview figures for an arbitrary date range (session-only custom view)."""
+    from datetime import date as _date
+    try:
+        start = _date.fromisoformat(request.args.get("start", ""))
+        end = _date.fromisoformat(request.args.get("end", ""))
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid dates"}), 400
+    today = _date.today()
+    if end <= start:
+        return jsonify({"error": "end must be after start"}), 400
+    if (end - start).days > 366 or abs((start - today).days) > 366 or abs((end - today).days) > 366:
+        return jsonify({"error": "dates out of range"}), 400
+
+    monthly = calculate_monthly_spending(start, end)
+
+    accounts_rows = get_active_accounts(current_user.id)
+    accounts = {}
+    for r in accounts_rows:
+        accounts[r["name"]] = {
+            "id": r["id"],
+            "balance": r["balance"],
+            "type": r["type"],
+            "active": bool(r["active"]),
+            "include_in_overview": bool(r.get("include_in_overview", 1)),
+        }
+    ov = calculate_financial_overview(accounts, safe_boundary=end)
+
+    return jsonify({
+        "income_received": monthly["income_received"],
+        "income_list": monthly["income_list"],
+        "scheduled": monthly["scheduled"],
+        "bills_list": monthly["bills_list"],
+        "future_bills": ov["future_bills"],
+        "safe_spending": ov["safe_spending"],
+        "display_start": f"{start.day} {start.strftime('%b')}",
+        "display_end": f"{end.day} {end.strftime('%b')}",
+    })
+
+
 @app.post("/api/edit-cycle-item")
 @login_required
 def api_edit_cycle_item():
@@ -2786,6 +2828,7 @@ def settings():
     # Cycle mode and primary income for Budget Cycle card
     cycle_mode = "manual"
     has_primary = False
+    primary_income_name = None
     cycle_info = None
     try:
         from database import get_db as _get_db2, USE_POSTGRES as _UP2, release_db as _rel2
@@ -2799,11 +2842,13 @@ def settings():
         if _row2 and _row2[0]:
             cycle_mode = _row2[0]
         if _UP2:
-            _cur2.execute("SELECT COUNT(*) FROM income WHERE user_id = %s AND is_primary = 1", (current_user.id,))
+            _cur2.execute("SELECT name FROM income WHERE user_id = %s AND is_primary = 1 LIMIT 1", (current_user.id,))
         else:
-            _cur2.execute("SELECT COUNT(*) FROM income WHERE user_id = ? AND is_primary = 1", (current_user.id,))
+            _cur2.execute("SELECT name FROM income WHERE user_id = ? AND is_primary = 1 LIMIT 1", (current_user.id,))
         _row3 = _cur2.fetchone()
-        has_primary = bool(_row3 and _row3[0])
+        if _row3 and _row3[0]:
+            has_primary = True
+            primary_income_name = _row3[0]
         _cur2.close()
         _rel2(_db2)
     except Exception:
@@ -2823,6 +2868,7 @@ def settings():
         notification_digest=notification_digest,
         cycle_mode=cycle_mode,
         has_primary=has_primary,
+        primary_income_name=primary_income_name,
         cycle_info=cycle_info,
         next_cycle_start=next_cycle_start,
     )

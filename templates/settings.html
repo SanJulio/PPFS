@@ -272,9 +272,9 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 
         <!-- Automatic section -->
         <div id="cycleAutoSection"{% if cycle_mode != 'automatic' %} style="display:none;"{% endif %}>
-          {% if has_primary and cycle_info and cycle_info.primary_source_name %}
+          {% if has_primary %}
             <p class="small mb-1">
-              Cycle powered by <strong>{{ cycle_info.primary_source_name }}</strong>.
+              Cycle powered by <strong>{{ primary_income_name }}</strong>.
             </p>
             {% if next_cycle_start %}
             <p class="text-muted small mb-3">Next cycle starts <strong>{{ next_cycle_start.strftime('%-d %B %Y') }}</strong>.</p>
