@@ -592,22 +592,18 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
   </div>
   {% endif %}
 
-  {% if balances %}
-  {% if overview.safe_spending > 500 %}
+  {% if balances and monthly.income_received > 0 %}
+  {% if overview.safe_spending > monthly.income_received * 0.15 %}
   <div class="mb-3 px-1 py-2 rounded-4 d-flex align-items-center gap-2" style="background:#d1fae5; font-size:14px; font-weight:600; color:#065f46; padding-left:14px!important; padding-right:14px!important;">
-    ✅ You're on track this month
+    ✅ On track this month
   </div>
-  {% elif overview.safe_spending > 100 %}
+  {% elif overview.safe_spending >= 1 %}
   <div class="mb-3 px-1 py-2 rounded-4 d-flex align-items-center gap-2" style="background:#fff3cd; font-size:14px; font-weight:600; color:#856404; padding-left:14px!important; padding-right:14px!important;">
     ⚠️ Looking tight this month
   </div>
-  {% elif overview.safe_spending >= 0 %}
-  <div class="mb-3 px-1 py-2 rounded-4 d-flex align-items-center gap-2" style="background:#ffe8cc; font-size:14px; font-weight:600; color:#7c3c00; padding-left:14px!important; padding-right:14px!important;">
-    ⚠️ Very tight — watch your spending
-  </div>
-  {% else %}
+  {% elif overview.safe_spending == 0 %}
   <div class="mb-3 px-1 py-2 rounded-4 d-flex align-items-center gap-2" style="background:#fde8e8; font-size:14px; font-weight:600; color:#991b1b; padding-left:14px!important; padding-right:14px!important;">
-    ❌ Overspending this month
+    ❌ Watch your spending this month
   </div>
   {% endif %}
   {% endif %}

@@ -317,8 +317,9 @@ class TestSafeToSpend:
         try:
             resp = auth_client.get("/")
             assert resp.status_code == 200
-            # balance=1000, bill=600 before income → safe = 400 → "Looking tight" banner (101–500 range)
-            assert "Looking tight" in resp.data.decode("utf-8")
+            # balance=1000, bill=600 before income → safe = 400 — income is future so banner
+            # is hidden; verify the safe value appears in the tile instead
+            assert "400.00" in resp.data.decode("utf-8")
         finally:
             cur = db_conn.cursor()
             cur.execute("DELETE FROM scheduled_expenses WHERE id = ?", (bill_id,))
@@ -350,8 +351,9 @@ class TestSafeToSpend:
         try:
             resp = auth_client.get("/")
             assert resp.status_code == 200
-            # balance=1000, bill=600 → safe = 1000 - 600 = 400 → "Looking tight" (101–500)
-            assert "Looking tight" in resp.data.decode("utf-8")
+            # balance=1000, bill=600 → safe = 400 — income is future so banner is hidden;
+            # verify the safe value appears in the tile instead
+            assert "400.00" in resp.data.decode("utf-8")
         finally:
             cur = db_conn.cursor()
             cur.execute("DELETE FROM income WHERE id = ?", (inc_id,))
@@ -372,14 +374,22 @@ class TestSafeToSpend:
             ("Huge Bill", 9999.00, bill_day, test_account["name"], "monthly", test_user["id"]),
         )
         bill_id = cur.lastrowid
+        # Add a past income entry so income_received > 0 and the banner renders
+        cur.execute(
+            "INSERT INTO income (name, amount, frequency, account, day, user_id)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            ("Past Pay", 500.0, "monthly", test_account["name"], 1, test_user["id"]),
+        )
+        inc_id = cur.lastrowid
         cur.close()
         try:
             resp = auth_client.get("/")
             assert resp.status_code == 200
             html = resp.data.decode("utf-8")
-            # safe_spending is floored at 0 — "Very tight" banner confirms range [0, 100)
-            assert "Very tight" in html
+            # safe_spending is floored at 0 — red "Watch your spending" banner confirms zero state
+            assert "Watch your spending" in html
         finally:
             cur = db_conn.cursor()
             cur.execute("DELETE FROM scheduled_expenses WHERE id = ?", (bill_id,))
+            cur.execute("DELETE FROM income WHERE id = ?", (inc_id,))
             cur.close()
