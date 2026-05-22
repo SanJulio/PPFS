@@ -138,7 +138,7 @@ def set_csrf_token():
 @app.before_request
 def check_csrf():
     if request.method == 'POST':
-        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid', '/dismiss-auto-apply', '/api/income-preview', '/api/edit-pending-item', '/api/edit-cycle-item']
+        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid', '/dismiss-auto-apply', '/api/income-preview', '/api/edit-pending-item', '/api/edit-cycle-item', '/api/set-primary-income']
         if request.path not in exempt:
             token = request.form.get('csrf_token')
             if not token or token != session.get('csrf_token'):
@@ -716,8 +716,9 @@ def get_auto_apply_settings(user_id):
 # - safe to spend (spending balance minus future bills)
 # - savings balance
 # - net worth (spending + savings)
-def calculate_financial_overview(accounts):
+def calculate_financial_overview(accounts, safe_boundary=None):
     from datetime import date
+    from dateutil.relativedelta import relativedelta as _rel
     today = datetime.today()
     current_day = today.day
 
@@ -748,22 +749,42 @@ def calculate_financial_overview(accounts):
     spending_future_bills = 0.0
     future_bills_list = []
 
+    import calendar as _cal2
     current_month = today.month
+    today_date = today.date()
     for expense in scheduled_expenses:
         if expense["day"] is None:
             continue
         freq = expense.get("frequency") or "monthly"
+
+        # Compute next due date for this expense
         if freq == "yearly":
-            if expense.get("month") != current_month:
-                continue
-        if expense["day"] > current_day:
+            exp_month = expense.get("month") or current_month
+            days_in_year_month = _cal2.monthrange(today.year, exp_month)[1]
+            due_day = min(expense["day"], days_in_year_month)
+            next_due = date(today.year, exp_month, due_day)
+            if next_due <= today_date:
+                next_due = date(today.year + 1, exp_month, due_day)
+        else:
+            days_in_month = _cal2.monthrange(today.year, today.month)[1]
+            due_day = min(expense["day"], days_in_month)
+            next_due = date(today.year, today.month, due_day)
+            if next_due <= today_date:
+                next_month = (today_date.replace(day=1) + _rel(months=1))
+                days_next = _cal2.monthrange(next_month.year, next_month.month)[1]
+                next_due = next_month.replace(day=min(expense["day"], days_next))
+
+        # Determine if this bill falls within the period we're checking
+        if safe_boundary is not None:
+            in_period = today_date < next_due <= safe_boundary
+        else:
+            in_period = expense["day"] > current_day
+
+        if in_period:
             # Skip if already marked as paid this cycle
             last_applied = expense.get("last_applied")
             if last_applied:
-                import calendar as _cal2
-                days_in_month = _cal2.monthrange(today.year, today.month)[1]
-                due_day = min(expense["day"], days_in_month)
-                due_str = date(today.year, today.month, due_day).isoformat()
+                due_str = next_due.isoformat()
                 if last_applied >= due_str:
                     continue
             acc = expense["account"]
@@ -795,10 +816,11 @@ def calculate_financial_overview(accounts):
         import calendar as _cal
         month_end = date(today.year, today.month, _cal.monthrange(today.year, today.month)[1])
         tomorrow = today.date() + timedelta(days=1)
+        income_period_end = safe_boundary if safe_boundary is not None else month_end
 
         for inc in income_rows:
             amount = float(inc.get("amount") or 0)
-            dates = income_engine.get_payment_dates(inc, tomorrow, month_end)
+            dates = income_engine.get_payment_dates(inc, tomorrow, income_period_end)
             for d in dates:
                 future_income += amount
                 future_income_list.append({"name": inc["name"], "amount": amount, "day": d.day})
@@ -1090,7 +1112,13 @@ def home():
             "include_in_overview": bool(r.get("include_in_overview", 1))
         }
 
-    overview = calculate_financial_overview(accounts)
+    import cycle_engine as _ce
+    _cycle = _ce.get_cycle(current_user.id)
+    cycle_start_date = _cycle["display_start"]
+    cycle_end_date = _cycle["display_end"]
+    safe_boundary = _cycle["safe_boundary"]
+
+    overview = calculate_financial_overview(accounts, safe_boundary=safe_boundary)
 
     # Net worth trend — approximate monthly balance by walking backwards from current total
     nw_trend = []
@@ -1123,8 +1151,6 @@ def home():
         logger.debug(f"nw_trend error: {_e}")
         nw_trend = []
 
-    cycle_start_day = get_budget_cycle_start(current_user.id)
-    cycle_start_date, cycle_end_date = get_cycle_dates(cycle_start_day)
     monthly = calculate_monthly_spending(cycle_start_date, cycle_end_date)
 
     active_accounts = [n for n in accounts if accounts[n].get("active", True)]
@@ -1185,7 +1211,7 @@ def home():
                             "active": bool(r["active"]),
                             "include_in_overview": bool(r.get("include_in_overview", 1))
                         }
-                    overview = calculate_financial_overview(accounts)
+                    overview = calculate_financial_overview(accounts, safe_boundary=safe_boundary)
                     monthly = calculate_monthly_spending(cycle_start_date, cycle_end_date)
                     balances = []
                     for n in sorted(accounts, key=lambda x: x.lower()):
@@ -1200,7 +1226,7 @@ def home():
     except Exception as e:
         logger.debug(f"Auto-apply home check error: {e}")
 
-    days_to_payday = (cycle_end_date - date.today()).days + 1
+    days_to_payday = (safe_boundary - date.today()).days + 1
 
     return render_template(
         "index.html",
@@ -1457,6 +1483,41 @@ def api_edit_cycle_item():
         return jsonify({"ok": True, "amount": amount})
     except Exception as e:
         logger.warning(f"api_edit_cycle_item: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return jsonify({"ok": False, "error": "db error"}), 500
+    finally:
+        release_db(db)
+
+
+@app.post("/api/set-primary-income")
+@login_required
+def api_set_primary_income():
+    import hmac as _hmac
+    data = request.get_json(silent=True) or {}
+    if not _hmac.compare_digest(str(data.get("csrf_token", "")), str(session.get("csrf_token", ""))):
+        return jsonify({"ok": False, "error": "CSRF"}), 403
+    try:
+        income_id = int(data.get("income_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "invalid id"}), 400
+    db = get_db()
+    try:
+        cur = db.cursor()
+        # Clear all primary flags for this user, then set the selected one
+        if USE_POSTGRES:
+            cur.execute("UPDATE income SET is_primary = 0 WHERE user_id = %s", (current_user.id,))
+            cur.execute("UPDATE income SET is_primary = 1 WHERE id = %s AND user_id = %s", (income_id, current_user.id))
+        else:
+            cur.execute("UPDATE income SET is_primary = 0 WHERE user_id = ?", (current_user.id,))
+            cur.execute("UPDATE income SET is_primary = 1 WHERE id = ? AND user_id = ?", (income_id, current_user.id))
+        db.commit()
+        cur.close()
+        return jsonify({"ok": True})
+    except Exception as e:
+        logger.warning(f"api_set_primary_income: {e}")
         try:
             db.rollback()
         except Exception:
@@ -2722,6 +2783,37 @@ def settings():
         release_db(_db)
     except Exception:
         pass
+    # Cycle mode and primary income for Budget Cycle card
+    cycle_mode = "manual"
+    has_primary = False
+    cycle_info = None
+    try:
+        from database import get_db as _get_db2, USE_POSTGRES as _UP2, release_db as _rel2
+        _db2 = _get_db2()
+        _cur2 = _db2.cursor()
+        if _UP2:
+            _cur2.execute("SELECT cycle_mode FROM users WHERE id = %s", (current_user.id,))
+        else:
+            _cur2.execute("SELECT cycle_mode FROM users WHERE id = ?", (current_user.id,))
+        _row2 = _cur2.fetchone()
+        if _row2 and _row2[0]:
+            cycle_mode = _row2[0]
+        if _UP2:
+            _cur2.execute("SELECT COUNT(*) FROM income WHERE user_id = %s AND is_primary = 1", (current_user.id,))
+        else:
+            _cur2.execute("SELECT COUNT(*) FROM income WHERE user_id = ? AND is_primary = 1", (current_user.id,))
+        _row3 = _cur2.fetchone()
+        has_primary = bool(_row3 and _row3[0])
+        _cur2.close()
+        _rel2(_db2)
+    except Exception:
+        pass
+    try:
+        import cycle_engine as _ce
+        cycle_info = _ce.get_cycle(current_user.id)
+        next_cycle_start = _ce.get_next_cycle_start(current_user.id)
+    except Exception:
+        next_cycle_start = None
     return render_template("settings.html",
         is_pro=is_pro,
         message=request.args.get("msg", ""),
@@ -2729,15 +2821,22 @@ def settings():
         auto_apply_confirm=auto_apply_confirm,
         budget_cycle_start=budget_cycle_start,
         notification_digest=notification_digest,
+        cycle_mode=cycle_mode,
+        has_primary=has_primary,
+        cycle_info=cycle_info,
+        next_cycle_start=next_cycle_start,
     )
 
 
 @app.post("/settings/save-cycle")
 @login_required
 def settings_save_cycle():
-    from database import get_db, USE_POSTGRES
+    from database import get_db, USE_POSTGRES, release_db
     if request.form.get("csrf_token") != session.get("csrf_token"):
         return redirect(url_for("settings"))
+    cycle_mode = request.form.get("cycle_mode", "manual")
+    if cycle_mode not in ("automatic", "manual"):
+        cycle_mode = "manual"
     try:
         start_day = max(1, min(28, int(request.form.get("budget_cycle_start", 1))))
     except (ValueError, TypeError):
@@ -2745,9 +2844,15 @@ def settings_save_cycle():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("UPDATE users SET budget_cycle_start = %s WHERE id = %s", (start_day, current_user.id))
+        cursor.execute(
+            "UPDATE users SET budget_cycle_start = %s, cycle_mode = %s WHERE id = %s",
+            (start_day, cycle_mode, current_user.id),
+        )
     else:
-        cursor.execute("UPDATE users SET budget_cycle_start = ? WHERE id = ?", (start_day, current_user.id))
+        cursor.execute(
+            "UPDATE users SET budget_cycle_start = ?, cycle_mode = ? WHERE id = ?",
+            (start_day, cycle_mode, current_user.id),
+        )
     db.commit()
     cursor.close()
     release_db(db)
@@ -2837,6 +2942,21 @@ def manage():
     for inc in income:
         inc["description"] = income_engine.describe_rule(inc)
 
+    # Auto-star the sole income source so the cycle engine always has a primary
+    if len(income) == 1 and not income[0].get("is_primary"):
+        try:
+            _db2 = get_db(); _cur2 = _db2.cursor()
+            if USE_POSTGRES:
+                _cur2.execute("UPDATE income SET is_primary = 1 WHERE id = %s AND user_id = %s", (income[0]["id"], uid))
+            else:
+                _cur2.execute("UPDATE income SET is_primary = 1 WHERE id = ? AND user_id = ?", (income[0]["id"], uid))
+            _db2.commit(); _cur2.close(); release_db(_db2)
+            income[0]["is_primary"] = 1
+        except Exception:
+            pass
+
+    has_primary = any(i.get("is_primary") for i in income)
+
     return render_template("manage.html",
         accounts=accounts,
         bills=bills,
@@ -2845,6 +2965,7 @@ def manage():
         income=income,
         investments=investments,
         is_pro=is_pro,
+        has_primary=has_primary,
         message=request.args.get("msg", "")
     )
 
@@ -3215,11 +3336,29 @@ def settings_add_income():
             "INSERT INTO income (name, amount, frequency, account, user_id, day, weekly_day, rule_type, rule_config, weekend_rule, bank_holiday_rule, first_payment_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (name, amount, frequency, account, current_user.id, day, weekly_day, rule_type, rule_config, weekend_rule, bh_rule, first_payment_date)
         )
+    new_id = cursor.lastrowid
     db.commit()
+
+    # Auto-star this source if no primary exists yet for this user
+    try:
+        if USE_POSTGRES:
+            cursor.execute("SELECT COUNT(*) FROM income WHERE user_id = %s AND is_primary = 1", (current_user.id,))
+        else:
+            cursor.execute("SELECT COUNT(*) FROM income WHERE user_id = ? AND is_primary = 1", (current_user.id,))
+        primary_count = cursor.fetchone()[0]
+        if primary_count == 0:
+            if USE_POSTGRES:
+                cursor.execute("UPDATE income SET is_primary = 1 WHERE id = %s AND user_id = %s", (new_id, current_user.id))
+            else:
+                cursor.execute("UPDATE income SET is_primary = 1 WHERE id = ? AND user_id = ?", (new_id, current_user.id))
+            db.commit()
+    except Exception:
+        pass
+
     cursor.close()
     release_db(db)
     bust_forecast_cache(current_user.id)
-    return redirect(url_for("manage", msg=f"Income source '{name}' added."))
+    return redirect(url_for("manage", msg=f"Income source '{name}' added.", tab="income"))
 
 @app.post("/settings/edit-income")
 @login_required
@@ -3271,7 +3410,7 @@ def settings_edit_income():
     cursor.close()
     release_db(db)
     bust_forecast_cache(current_user.id)
-    return redirect(url_for("manage", msg="Income updated."))
+    return redirect(url_for("manage", msg="Income updated.", tab="income"))
 
 @app.post("/settings/delete-income")
 @login_required
@@ -3287,7 +3426,7 @@ def settings_delete_income():
     cursor.close()
     release_db(db)
     bust_forecast_cache(current_user.id)
-    return redirect(url_for("manage", msg="Income source deleted."))
+    return redirect(url_for("manage", msg="Income source deleted.", tab="income"))
 
 
 @app.post("/api/income-preview")

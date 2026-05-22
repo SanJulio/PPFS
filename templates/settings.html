@@ -252,19 +252,73 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 
     <div class="card p-4 mb-4">
       <h5 class="mb-1">Budget Cycle</h5>
-      <p class="text-muted small mb-3">Set the day your pay cycle starts. The "Current Cycle" section on the home page will use this date range.</p>
-      <form method="POST" action="/settings/save-cycle">
+      <p class="text-muted small mb-3">Choose how Spendara determines your current pay cycle.</p>
+
+      <form method="POST" action="/settings/save-cycle" id="cycleForm">
         <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
-        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
-          <label class="fw-semibold small mb-0 text-nowrap">Cycle starts on day</label>
-          <input type="number" name="budget_cycle_start" min="1" max="28"
-            value="{{ budget_cycle_start }}"
-            class="form-control" style="max-width:90px; min-width:70px; padding:10px !important; font-size:15px !important;">
-          <span class="text-muted small text-nowrap">of each month (1–28)</span>
+        <input type="hidden" name="cycle_mode" id="cycleModeInput" value="{{ cycle_mode }}">
+
+        <!-- Mode toggle -->
+        <div class="d-flex gap-2 mb-4">
+          <button type="button" id="btnAutomatic" onclick="setCycleMode('automatic')"
+            class="btn btn-sm px-3 {{ 'btn-dark' if cycle_mode == 'automatic' else 'btn-outline-secondary' }}">
+            Automatic
+          </button>
+          <button type="button" id="btnManual" onclick="setCycleMode('manual')"
+            class="btn btn-sm px-3 {{ 'btn-dark' if cycle_mode == 'manual' else 'btn-outline-secondary' }}">
+            Manual
+          </button>
         </div>
+
+        <!-- Automatic section -->
+        <div id="cycleAutoSection"{% if cycle_mode != 'automatic' %} style="display:none;"{% endif %}>
+          {% if has_primary and cycle_info and cycle_info.primary_source_name %}
+            <p class="small mb-1">
+              Cycle powered by <strong>{{ cycle_info.primary_source_name }}</strong>.
+            </p>
+            {% if next_cycle_start %}
+            <p class="text-muted small mb-3">Next cycle starts <strong>{{ next_cycle_start.strftime('%-d %B %Y') }}</strong>.</p>
+            {% endif %}
+            <p class="small text-muted mb-3">
+              <a href="/manage?tab=income">Change primary income source →</a>
+            </p>
+          {% else %}
+            <div class="rounded-3 p-3 mb-3" style="background:#fff8e1;">
+              <p class="small mb-1">No primary income source set.</p>
+              <p class="text-muted small mb-0">
+                <a href="/manage?tab=income">Go to My Money → star an income source</a> to enable automatic mode.
+              </p>
+            </div>
+          {% endif %}
+        </div>
+
+        <!-- Manual section -->
+        <div id="cycleManualSection"{% if cycle_mode != 'manual' %} style="display:none;"{% endif %}>
+          <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+            <label class="fw-semibold small mb-0 text-nowrap">Cycle starts on day</label>
+            <input type="number" name="budget_cycle_start" min="1" max="28"
+              value="{{ budget_cycle_start }}"
+              class="form-control" style="max-width:90px; min-width:70px; padding:10px !important; font-size:15px !important;">
+            <span class="text-muted small text-nowrap">of each month (1–28)</span>
+          </div>
+          {% if next_cycle_start and cycle_mode == 'manual' %}
+          <p class="text-muted small mb-3">Next cycle starts <strong>{{ next_cycle_start.strftime('%-d %B %Y') }}</strong>.</p>
+          {% endif %}
+        </div>
+
         <button type="submit" class="btn btn-dark btn-sm">Save</button>
       </form>
     </div>
+
+    <script>
+    function setCycleMode(mode) {
+      document.getElementById('cycleModeInput').value = mode;
+      document.getElementById('cycleAutoSection').style.display = mode === 'automatic' ? '' : 'none';
+      document.getElementById('cycleManualSection').style.display = mode === 'manual' ? '' : 'none';
+      document.getElementById('btnAutomatic').className = 'btn btn-sm px-3 ' + (mode === 'automatic' ? 'btn-dark' : 'btn-outline-secondary');
+      document.getElementById('btnManual').className = 'btn btn-sm px-3 ' + (mode === 'manual' ? 'btn-dark' : 'btn-outline-secondary');
+    }
+    </script>
 
     <div class="card p-4 mb-4">
       <div class="d-flex align-items-center gap-2 mb-1">

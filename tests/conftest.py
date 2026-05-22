@@ -55,7 +55,8 @@ def _create_test_schema(db_path: Path):
             auto_apply_enabled INTEGER NOT NULL DEFAULT 1,
             auto_apply_confirm INTEGER NOT NULL DEFAULT 1,
             budget_cycle_start INTEGER NOT NULL DEFAULT 1,
-            avatar TEXT
+            avatar TEXT,
+            cycle_mode TEXT NOT NULL DEFAULT 'manual'
         )""",
         """CREATE TABLE IF NOT EXISTS accounts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,6 +103,7 @@ def _create_test_schema(db_path: Path):
             weekend_rule TEXT DEFAULT 'before',
             bank_holiday_rule TEXT DEFAULT 'before',
             first_payment_date TEXT,
+            is_primary INTEGER NOT NULL DEFAULT 0,
             user_id INTEGER NOT NULL
         )""",
         """CREATE TABLE IF NOT EXISTS savings_rules (

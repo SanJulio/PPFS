@@ -676,5 +676,47 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: income.is_primary ---
+    # Marks which income source defines the user's budget cycle in automatic mode.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='income' AND column_name='is_primary'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE income ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE income ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (income.is_primary): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: users.cycle_mode ---
+    # Whether the budget cycle is driven by an income schedule ('automatic') or a fixed day ('manual').
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='cycle_mode'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN cycle_mode TEXT NOT NULL DEFAULT 'manual'")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN cycle_mode TEXT NOT NULL DEFAULT 'manual'")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (users.cycle_mode): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

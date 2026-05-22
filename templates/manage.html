@@ -380,6 +380,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         <table class="table table-sm align-middle mb-0">
           <thead>
             <tr>
+              <th style="width:36px;"></th>
               <th>Name</th>
               <th class="text-end">Amount</th>
               <th class="text-end">Schedule</th>
@@ -389,7 +390,17 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <tbody>
             {% for i in income %}
             <tr>
-              <td>{{ i.name }}</td>
+              <td>
+                <button class="income-star-btn" data-id="{{ i.id }}" onclick="setPrimaryIncome({{ i.id }}, this)"
+                  title="{{ 'Main income source' if i.is_primary else 'Set as main income source' }}"
+                  style="background:none;border:none;padding:0;cursor:pointer;font-size:18px;line-height:1;color:{{ '#f59e0b' if i.is_primary else '#d1d5db' }};">
+                  {{ '★' if i.is_primary else '☆' }}
+                </button>
+              </td>
+              <td>
+                <div>{{ i.name }}</div>
+                <div class="text-muted income-main-label" style="font-size:11px;{{ '' if i.is_primary else 'display:none;' }}">Main source</div>
+              </td>
               <td class="text-end money">£{{ "%.2f"|format(i.amount) }}</td>
               <td class="text-end"><span class="text-muted small">{{ i.description }}</span></td>
               <td class="text-end">
@@ -405,7 +416,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             </tr>
             {% endfor %}
             {% if not income %}
-            <tr><td colspan="4" class="text-center py-4 text-muted">
+            <tr><td colspan="5" class="text-center py-4 text-muted">
               <div style="font-size:28px;">💰</div>
               <div class="fw-semibold mt-1">No income sources yet</div>
               <div class="small">Add your salary or other income below</div>
@@ -415,6 +426,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           {% if income %}
           <tfoot>
             <tr style="border-top:2px solid #dee2e6;">
+              <td></td>
               <td class="fw-bold small">Total</td>
               <td class="text-end fw-bold money">£{{ "%.2f"|format(income|sum(attribute='amount')) }}</td>
               <td colspan="2" class="text-end text-muted small">per occurrence</td>
@@ -423,6 +435,10 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           {% endif %}
         </table>
       </div>
+
+      <p id="incomePrimaryTip" class="text-muted small mb-3" style="font-size:12px;{{ 'display:none;' if not income or has_primary else '' }}">
+        ☆ Star an income source to power your automatic budget cycle.
+      </p>
 
       <button class="btn btn-dark w-100 py-3" onclick="openAddIncomeModal()">+ Add Income Source</button>
     </div>
@@ -735,6 +751,34 @@ function showTab(name, btn) {
 function toggleMonthField(select, targetId) {
   var el = document.getElementById(targetId);
   if (el) el.style.display = select.value === 'yearly' ? 'block' : 'none';
+}
+
+// ── PRIMARY INCOME ────────────────────────────────────────────────────────────
+function setPrimaryIncome(id, btn) {
+  var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+  fetch('/api/set-primary-income', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({csrf_token: csrf, income_id: id})
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (!data.ok) return;
+    // Update all star buttons
+    document.querySelectorAll('.income-star-btn').forEach(function(b) {
+      var isThis = parseInt(b.dataset.id) === id;
+      b.textContent = isThis ? '★' : '☆';
+      b.style.color = isThis ? '#f59e0b' : '#d1d5db';
+      b.title = isThis ? 'Main income source' : 'Set as main income source';
+      // Toggle "Main source" label in the same row
+      var row = b.closest('tr');
+      if (row) {
+        var lbl = row.querySelector('.income-main-label');
+        if (lbl) lbl.style.display = isThis ? '' : 'none';
+      }
+    });
+    // Hide the tip once a primary is set
+    var tip = document.getElementById('incomePrimaryTip');
+    if (tip) tip.style.display = 'none';
+  }).catch(function() {});
 }
 
 // ── INCOME MODAL ─────────────────────────────────────────────────────────────
