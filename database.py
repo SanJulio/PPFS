@@ -639,5 +639,42 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- cycle_overrides table ---
+    # Per-occurrence amount overrides for income and bills paid items.
+    # Keyed by (user_id, type, source_id, date) — one override per occurrence.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS cycle_overrides (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    type TEXT NOT NULL,
+                    source_id INTEGER NOT NULL,
+                    date TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    UNIQUE(user_id, type, source_id, date)
+                )
+            """)
+            db.commit()
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS cycle_overrides (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    type TEXT NOT NULL,
+                    source_id INTEGER NOT NULL,
+                    date TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    UNIQUE(user_id, type, source_id, date)
+                )
+            """)
+            db.commit()
+    except Exception as e:
+        logger.error(f"cycle_overrides table creation error: {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

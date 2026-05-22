@@ -138,7 +138,7 @@ def set_csrf_token():
 @app.before_request
 def check_csrf():
     if request.method == 'POST':
-        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid', '/dismiss-auto-apply', '/api/income-preview', '/api/edit-pending-item']
+        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid', '/dismiss-auto-apply', '/api/income-preview', '/api/edit-pending-item', '/api/edit-cycle-item']
         if request.path not in exempt:
             token = request.form.get('csrf_token')
             if not token or token != session.get('csrf_token'):
@@ -872,6 +872,30 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
 
     today_cap = min(cycle_end_date, date.today())
 
+    # Load per-occurrence amount overrides keyed by (type, source_id, iso_date)
+    overrides = {}
+    try:
+        db_ov = get_db()
+        cur_ov = db_ov.cursor()
+        if USE_POSTGRES:
+            cur_ov.execute(
+                "SELECT type, source_id, date, amount FROM cycle_overrides WHERE user_id = %s",
+                (current_user.id,)
+            )
+            for row in cur_ov.fetchall():
+                overrides[(row[0], row[1], row[2])] = row[3]
+        else:
+            cur_ov.execute(
+                "SELECT type, source_id, date, amount FROM cycle_overrides WHERE user_id = ?",
+                (current_user.id,)
+            )
+            for row in cur_ov.fetchall():
+                overrides[(row["type"], row["source_id"], row["date"])] = row["amount"]
+        cur_ov.close()
+        release_db(db_ov)
+    except Exception as e:
+        logger.debug(f"Could not load cycle overrides: {e}")
+
     # Normal (discretionary) spending from logged transactions
     db = get_db()
     cursor = db.cursor()
@@ -943,12 +967,16 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
                 if cycle_start_date <= due <= today_cap:
                     candidates.append(due)
         for due in candidates:
-            scheduled += expense["amount"]
+            bill_amt = overrides.get(('bill', expense["id"], due.isoformat()), expense["amount"])
+            scheduled += bill_amt
             bills_list.append({
                 "description": expense["name"],
-                "amount": expense["amount"],
+                "amount": bill_amt,
                 "date": due.isoformat(),
-                "account": expense.get("account", "")
+                "date_display": f"{due.day} {due.strftime('%b')}",
+                "account": expense.get("account", ""),
+                "source_id": expense["id"],
+                "item_type": "bill",
             })
 
     # Income received: scheduled income sources via the income engine
@@ -966,15 +994,19 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
         cursor2.close()
         release_db(db2)
         for inc in income_rows:
-            amount = float(inc.get("amount") or 0)
+            base_amount = float(inc.get("amount") or 0)
             dates = income_engine.get_payment_dates(inc, cycle_start_date, today_cap)
             for d in dates:
-                income_received += amount
+                inc_amt = overrides.get(('income', inc["id"], d.isoformat()), base_amount)
+                income_received += inc_amt
                 income_list.append({
                     "description": inc["name"],
-                    "amount": amount,
+                    "amount": inc_amt,
                     "date": d.isoformat(),
-                    "account": inc.get("account", "")
+                    "date_display": f"{d.day} {d.strftime('%b')}",
+                    "account": inc.get("account", ""),
+                    "source_id": inc["id"],
+                    "item_type": "income",
                 })
     except Exception as e:
         logger.debug(f"Could not compute scheduled income: {e}")
@@ -1376,6 +1408,62 @@ def api_edit_pending_item():
         cursor.close()
         release_db(db)
     return jsonify({"ok": True, "name": name, "amount": amount, "account": account, "day": day})
+
+
+@app.post("/api/edit-cycle-item")
+@login_required
+def api_edit_cycle_item():
+    from database import get_db, USE_POSTGRES
+    import hmac as _hmac
+    data = request.get_json(silent=True) or {}
+    if not _hmac.compare_digest(str(data.get("csrf_token", "")), str(session.get("csrf_token", ""))):
+        return jsonify({"ok": False, "error": "CSRF"}), 403
+    item_type = data.get("type", "")
+    if item_type not in ("income", "bill"):
+        return jsonify({"ok": False, "error": "invalid type"}), 400
+    try:
+        source_id = int(data.get("source_id"))
+        occurrence_date = str(data.get("date", ""))
+        amount = float(data.get("amount"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "invalid data"}), 400
+    if amount <= 0:
+        return jsonify({"ok": False, "error": "amount must be positive"}), 400
+    if len(occurrence_date) != 10:
+        return jsonify({"ok": False, "error": "invalid date"}), 400
+    db = get_db()
+    try:
+        cur = db.cursor()
+        if USE_POSTGRES:
+            cur.execute(
+                """
+                INSERT INTO cycle_overrides (user_id, type, source_id, date, amount)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, type, source_id, date) DO UPDATE SET amount = EXCLUDED.amount
+                """,
+                (current_user.id, item_type, source_id, occurrence_date, amount)
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO cycle_overrides (user_id, type, source_id, date, amount)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (user_id, type, source_id, date) DO UPDATE SET amount = excluded.amount
+                """,
+                (current_user.id, item_type, source_id, occurrence_date, amount)
+            )
+        db.commit()
+        cur.close()
+        return jsonify({"ok": True, "amount": amount})
+    except Exception as e:
+        logger.warning(f"api_edit_cycle_item: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return jsonify({"ok": False, "error": "db error"}), 500
+    finally:
+        release_db(db)
 
 
 # --- TRANSACTIONS PAGE ---

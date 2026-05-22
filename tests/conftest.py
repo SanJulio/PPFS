@@ -147,6 +147,15 @@ def _create_test_schema(db_path: Path):
             event TEXT NOT NULL,
             ts TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""",
+        """CREATE TABLE IF NOT EXISTS cycle_overrides (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            source_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            amount REAL NOT NULL,
+            UNIQUE(user_id, type, source_id, date)
+        )""",
     ]
 
     for sql in tables:

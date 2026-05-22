@@ -763,13 +763,24 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
           <div class="text-muted small">Income</div>
           <span id="arrow-income-cycle" class="fw-bold" style="font-size:13px;color:#111">+</span>
         </div>
-        <div class="fs-4 fw-bold text-success amount-private">£{{ "%.2f"|format(monthly.income_received) }}</div>
+        <div id="income-cycle-total-val" class="fs-4 fw-bold text-success amount-private">£{{ "%.2f"|format(monthly.income_received) }}</div>
       </div>
       <div id="tile-income-cycle" class="d-none mt-2 px-1">
         {% for t in monthly.income_list %}
-        <div class="d-flex justify-content-between small py-1 border-bottom">
-          <span>{{ t.description }}</span>
-          <span class="fw-semibold text-success amount-private">£{{ "%.2f"|format(t.amount) }}</span>
+        <div class="d-flex justify-content-between align-items-center py-2 border-bottom"
+             style="cursor:pointer;"
+             onclick="openCycleItemEdit(this)"
+             data-type="income"
+             data-source-id="{{ t.source_id }}"
+             data-date="{{ t.date }}"
+             data-description="{{ t.description|e }}"
+             data-amount="{{ '%.2f'|format(t.amount) }}"
+             data-display-date="{{ t.date_display }}">
+          <div>
+            <div style="font-size:13px;">{{ t.description }}</div>
+            <div style="font-size:11px;color:#9ca3af;">{{ t.date_display }}</div>
+          </div>
+          <span class="fw-semibold text-success amount-private" style="font-size:13px;">£{{ "%.2f"|format(t.amount) }}</span>
         </div>
         {% endfor %}
         {% if not monthly.income_list %}
@@ -784,13 +795,24 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
           <div class="text-muted small">Bills paid</div>
           <span id="arrow-billspaid" class="fw-bold" style="font-size:13px;color:#111">+</span>
         </div>
-        <div class="fs-4 fw-bold amount-private">£{{ "%.2f"|format(monthly.scheduled) }}</div>
+        <div id="billspaid-total-val" class="fs-4 fw-bold amount-private">£{{ "%.2f"|format(monthly.scheduled) }}</div>
       </div>
       <div id="tile-billspaid" class="d-none mt-2 px-1">
         {% for t in monthly.bills_list %}
-        <div class="d-flex justify-content-between small py-1 border-bottom">
-          <span>{{ t.description }}</span>
-          <span class="fw-semibold text-danger amount-private">£{{ "%.2f"|format(t.amount) }}</span>
+        <div class="d-flex justify-content-between align-items-center py-2 border-bottom"
+             style="cursor:pointer;"
+             onclick="openCycleItemEdit(this)"
+             data-type="bill"
+             data-source-id="{{ t.source_id }}"
+             data-date="{{ t.date }}"
+             data-description="{{ t.description|e }}"
+             data-amount="{{ '%.2f'|format(t.amount) }}"
+             data-display-date="{{ t.date_display }}">
+          <div>
+            <div style="font-size:13px;">{{ t.description }}</div>
+            <div style="font-size:11px;color:#9ca3af;">{{ t.date_display }}</div>
+          </div>
+          <span class="fw-semibold text-danger amount-private" style="font-size:13px;">£{{ "%.2f"|format(t.amount) }}</span>
         </div>
         {% endfor %}
         {% if not monthly.bills_list %}
@@ -1208,6 +1230,21 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
   
 
 </div>
+<!-- Cycle item edit popup (Income / Bills Paid breakdown rows) -->
+<div id="cycleItemPopup" onclick="if(event.target===this)closeCycleItemPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:99998;align-items:flex-end;justify-content:center;">
+  <div style="background:#fff;border-radius:20px 20px 0 0;padding:24px 20px 32px;width:100%;max-width:480px;box-shadow:0 -4px 24px rgba(0,0,0,0.12);">
+    <div style="font-size:16px;font-weight:700;color:#111;margin-bottom:2px;" id="ciPopupDesc"></div>
+    <div style="font-size:13px;color:#9ca3af;margin-bottom:20px;" id="ciPopupDate"></div>
+    <label style="font-size:13px;font-weight:600;color:#374151;display:block;margin-bottom:6px;">Amount (£)</label>
+    <input type="number" id="ciPopupAmount" step="0.01" min="0.01"
+           style="width:100%;border:1.5px solid #d1d5db;border-radius:10px;padding:11px 14px;font-size:17px;margin-bottom:18px;outline:none;">
+    <div style="display:flex;gap:10px;">
+      <button onclick="saveCycleItem()" style="flex:1;background:#111;color:#fff;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:600;cursor:pointer;">Save</button>
+      <button onclick="closeCycleItemPopup()" style="flex:1;background:#f3f4f6;color:#374151;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:600;cursor:pointer;">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Transaction detail popup (Change 1 — tappable future transactions) -->
 <div id="txDetailOverlay" onclick="if(event.target===this)closeTxDetail()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99999;align-items:flex-end;justify-content:center;padding:16px;">
   <div class="card p-4" style="max-width:480px;width:100%;max-height:85vh;overflow-y:auto;border-radius:20px;">
@@ -2032,6 +2069,54 @@ function saveEditItem() {
       amtEl.className = 'fw-semibold small item-amount ' + (signed < 0 ? 'text-danger' : 'text-success');
     }
     cancelEditItem();
+  }).catch(function() { alert('Network error — please try again.'); });
+}
+
+// --- Cycle item edit popup (Income / Bills Paid breakdown) ---
+var _ciRow = null;
+function openCycleItemEdit(row) {
+  _ciRow = row;
+  document.getElementById('ciPopupDesc').textContent = row.dataset.description;
+  document.getElementById('ciPopupDate').textContent = row.dataset.displayDate;
+  document.getElementById('ciPopupAmount').value = row.dataset.amount;
+  var popup = document.getElementById('cycleItemPopup');
+  popup.style.display = 'flex';
+  popup.style.alignItems = 'flex-end';
+  popup.style.justifyContent = 'center';
+}
+function closeCycleItemPopup() {
+  document.getElementById('cycleItemPopup').style.display = 'none';
+  _ciRow = null;
+}
+function saveCycleItem() {
+  if (!_ciRow) return;
+  var newAmt = parseFloat(document.getElementById('ciPopupAmount').value);
+  if (isNaN(newAmt) || newAmt <= 0) { alert('Please enter a valid amount.'); return; }
+  var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+  fetch('/api/edit-cycle-item', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      csrf_token: csrf,
+      type: _ciRow.dataset.type,
+      source_id: parseInt(_ciRow.dataset.sourceId, 10),
+      date: _ciRow.dataset.date,
+      amount: newAmt
+    })
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (!data.ok) { alert('Could not save. Please try again.'); return; }
+    var oldAmt = parseFloat(_ciRow.dataset.amount);
+    var delta = newAmt - oldAmt;
+    _ciRow.dataset.amount = newAmt.toFixed(2);
+    var amtSpan = _ciRow.querySelector('.fw-semibold');
+    if (amtSpan) amtSpan.textContent = '£' + newAmt.toFixed(2);
+    var totalId = _ciRow.dataset.type === 'income' ? 'income-cycle-total-val' : 'billspaid-total-val';
+    var totalEl = document.getElementById(totalId);
+    if (totalEl) {
+      var cur = parseFloat(totalEl.textContent.replace(/[£,]/g, ''));
+      totalEl.textContent = '£' + (cur + delta).toFixed(2);
+    }
+    closeCycleItemPopup();
   }).catch(function() { alert('Network error — please try again.'); });
 }
 </script>
