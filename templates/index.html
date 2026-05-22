@@ -950,6 +950,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
       });
 
       var eventIndex = 0;
+      var cautionShown = false;
       dateKeys.forEach(function(key) {
         var sample = byDate[key][0];
         var displayDate = sample.item.iso ? formatDate(sample.item.iso) : (sample.item.date || key);
@@ -978,9 +979,10 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
           var sign = isIncome ? '+' : '-';
           var txColor = isIncome ? '#065f46' : '#991b1b';
 
-          // Change 2: caution message when safe floors at £0
+          // Change 2: caution message when safe floors at £0 (only on first occurrence per account)
           var cautionLine = '';
-          if (safe < 0) {
+          if (safe < 0 && !cautionShown) {
+            cautionShown = true;
             var shortfall = Math.ceil(Math.abs(safe));
             var otherAccs = Object.keys(accounts).filter(function(n2) { return n2 !== name; });
             var covering = null; var bestCoverBal = -Infinity;
