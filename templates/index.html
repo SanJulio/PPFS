@@ -519,34 +519,75 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
   <!-- Auto-apply modal -->
   <div id="autoApplyModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:20px;">
     <div class="card p-4" style="max-width:480px; width:100%; max-height:80vh; overflow-y:auto;">
-      <h5 class="fw-bold mb-1">Apply scheduled items</h5>
-      <p class="text-muted small mb-3">Tick the items you want applied to your accounts now.</p>
-      <div id="autoApplyList">
-        {% for item in pending_items %}
-        <div class="d-flex align-items-center justify-content-between py-2" style="border-bottom:1px solid #f0f0f0;">
-          <div class="d-flex align-items-center gap-2">
-            <input type="checkbox" class="auto-apply-check form-check-input mt-0" checked
-              data-type="{{ item.type }}"
-              data-item-id="{{ item.item_id }}"
-              data-name="{{ item.name }}"
-              data-amount="{{ item.amount }}"
-              data-account="{{ item.account }}"
-              data-due-date="{{ item.due_date }}">
-            <div>
-              <div class="fw-semibold small">{{ item.name }}</div>
-              <div class="text-muted" style="font-size:12px;">{{ item.account }} · {{ item.due_date }}</div>
+
+      <!-- Review view -->
+      <div id="autoApplyReview">
+        <h5 class="fw-bold mb-1">Apply scheduled items</h5>
+        <p class="text-muted small mb-3">Tick the items you want applied to your accounts now.</p>
+        <div id="autoApplyList">
+          {% for item in pending_items %}
+          <div class="d-flex align-items-center justify-content-between py-2 item-row" style="border-bottom:1px solid #f0f0f0;">
+            <div class="d-flex align-items-center gap-2">
+              <input type="checkbox" class="auto-apply-check form-check-input mt-0" checked
+                data-type="{{ item.type }}"
+                data-item-id="{{ item.item_id }}"
+                data-name="{{ item.name }}"
+                data-amount="{{ item.amount }}"
+                data-account="{{ item.account }}"
+                data-due-date="{{ item.due_date }}">
+              <div>
+                <div class="fw-semibold small item-name">{{ item.name }}</div>
+                <div class="text-muted item-sub" style="font-size:12px;">{{ item.account }} · {{ item.due_date }}</div>
+              </div>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <button class="btn btn-outline-secondary btn-sm" style="font-size:12px; padding:2px 10px; border-radius:8px;"
+                onclick="openEditItem(this.closest('.item-row').querySelector('.auto-apply-check'))">Edit</button>
+              <span class="fw-semibold small item-amount {% if item.amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                {{ '–£%.2f'|format(item.amount|abs) if item.amount < 0 else '+£%.2f'|format(item.amount|abs) }}
+              </span>
             </div>
           </div>
-          <div class="fw-semibold small {% if item.amount < 0 %}text-danger{% else %}text-success{% endif %}">
-            {{ '–£%.2f'|format(item.amount|abs) if item.amount < 0 else '+£%.2f'|format(item.amount|abs) }}
-          </div>
+          {% endfor %}
         </div>
-        {% endfor %}
+        <div class="d-grid gap-2 mt-3">
+          <button class="btn btn-primary" onclick="submitAutoApply()">Apply selected</button>
+          <button class="btn btn-outline-secondary" onclick="dismissAutoApply()">Dismiss</button>
+        </div>
       </div>
-      <div class="d-grid gap-2 mt-3">
-        <button class="btn btn-primary" onclick="submitAutoApply()">Apply selected</button>
-        <button class="btn btn-outline-secondary" onclick="dismissAutoApply()">Dismiss</button>
+
+      <!-- Edit view (shown when user clicks Edit on an item) -->
+      <div id="autoApplyEdit" style="display:none;">
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <button onclick="cancelEditItem()" class="btn btn-sm btn-outline-secondary" style="border-radius:8px;">← Back</button>
+          <h6 class="fw-bold mb-0">Edit item</h6>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold mb-1">Description</label>
+          <input type="text" id="editItemName" class="form-control form-control-sm rounded-3">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold mb-1">Amount (£)</label>
+          <input type="number" id="editItemAmount" class="form-control form-control-sm rounded-3" min="0.01" step="0.01">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold mb-1">Day of month</label>
+          <input type="number" id="editItemDay" class="form-control form-control-sm rounded-3" min="1" max="31">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold mb-1">Account</label>
+          <select id="editItemAccount" class="form-select form-select-sm rounded-3">
+            {% for b in balances %}
+            <option value="{{ b.name }}">{{ b.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="d-grid gap-2">
+          <button class="btn btn-primary" onclick="saveEditItem()">Save changes</button>
+          <button class="btn btn-outline-secondary" onclick="cancelEditItem()">Cancel</button>
+        </div>
       </div>
+
     </div>
   </div>
   {% endif %}
@@ -1749,6 +1790,56 @@ function submitAutoApply() {
   }).catch(function() {
     alert('Network error — check your connection and try again.');
   });
+}
+var _editingCb = null;
+function openEditItem(cb) {
+  _editingCb = cb;
+  document.getElementById('editItemName').value = cb.dataset.name;
+  document.getElementById('editItemAmount').value = Math.abs(parseFloat(cb.dataset.amount)).toFixed(2);
+  var dueParts = (cb.dataset.dueDate || '').split('-');
+  document.getElementById('editItemDay').value = dueParts.length === 3 ? parseInt(dueParts[2], 10) : 1;
+  document.getElementById('editItemAccount').value = cb.dataset.account;
+  document.getElementById('autoApplyReview').style.display = 'none';
+  document.getElementById('autoApplyEdit').style.display = 'block';
+}
+function cancelEditItem() {
+  document.getElementById('autoApplyEdit').style.display = 'none';
+  document.getElementById('autoApplyReview').style.display = 'block';
+}
+function saveEditItem() {
+  if (!_editingCb) return;
+  var name = document.getElementById('editItemName').value.trim();
+  var amount = parseFloat(document.getElementById('editItemAmount').value);
+  var day = parseInt(document.getElementById('editItemDay').value, 10);
+  var account = document.getElementById('editItemAccount').value;
+  if (!name || isNaN(amount) || amount <= 0 || isNaN(day) || day < 1 || day > 31) {
+    alert('Please fill in all fields correctly.');
+    return;
+  }
+  var itemType = _editingCb.dataset.type;
+  var itemId = parseInt(_editingCb.dataset.itemId, 10);
+  fetch('/api/edit-pending-item', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ csrf_token: HOME_CSRF, type: itemType, item_id: itemId, name: name, amount: amount, account: account, day: day })
+  }).then(function(resp) {
+    if (!resp.ok) { alert('Could not save changes. Please try again.'); return; }
+    var signed = itemType === 'bill' ? -amount : amount;
+    _editingCb.dataset.name = name;
+    _editingCb.dataset.amount = signed;
+    _editingCb.dataset.account = account;
+    var row = _editingCb.closest('.item-row');
+    var nameEl = row.querySelector('.item-name');
+    var subEl = row.querySelector('.item-sub');
+    var amtEl = row.querySelector('.item-amount');
+    if (nameEl) nameEl.textContent = name;
+    if (subEl) subEl.textContent = account + ' · ' + _editingCb.dataset.dueDate;
+    if (amtEl) {
+      amtEl.textContent = (signed < 0 ? '–£' : '+£') + Math.abs(signed).toFixed(2);
+      amtEl.className = 'fw-semibold small item-amount ' + (signed < 0 ? 'text-danger' : 'text-success');
+    }
+    cancelEditItem();
+  }).catch(function() { alert('Network error — please try again.'); });
 }
 </script>
 <script>

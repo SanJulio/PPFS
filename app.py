@@ -138,7 +138,7 @@ def set_csrf_token():
 @app.before_request
 def check_csrf():
     if request.method == 'POST':
-        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid', '/dismiss-auto-apply', '/api/income-preview']
+        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid', '/dismiss-auto-apply', '/api/income-preview', '/api/edit-pending-item']
         if request.path not in exempt:
             token = request.form.get('csrf_token')
             if not token or token != session.get('csrf_token'):
@@ -1318,6 +1318,64 @@ def dismiss_auto_apply():
     cursor.close()
     release_db(db)
     return {"ok": True}
+
+
+@app.post("/api/edit-pending-item")
+@login_required
+def api_edit_pending_item():
+    data = request.get_json(silent=True) or {}
+    if data.get("csrf_token") != session.get("csrf_token"):
+        return jsonify({"error": "CSRF"}), 403
+    item_type = data.get("type")
+    item_id = data.get("item_id")
+    name = (data.get("name") or "").strip()
+    account = (data.get("account") or "").strip()
+    try:
+        amount = float(data.get("amount") or 0)
+        if amount <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid amount"}), 400
+    try:
+        day = max(1, min(31, int(data.get("day") or 1)))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid day"}), 400
+    if not name or not account or not item_id or item_type not in ("bill", "income"):
+        return jsonify({"error": "Missing or invalid fields"}), 400
+    db = get_db()
+    cursor = db.cursor()
+    try:
+        if item_type == "bill":
+            if USE_POSTGRES:
+                cursor.execute(
+                    "UPDATE scheduled_expenses SET name=%s, amount=%s, account=%s, day=%s WHERE id=%s AND user_id=%s",
+                    (name, amount, account, day, item_id, current_user.id)
+                )
+            else:
+                cursor.execute(
+                    "UPDATE scheduled_expenses SET name=?, amount=?, account=?, day=? WHERE id=? AND user_id=?",
+                    (name, amount, account, day, item_id, current_user.id)
+                )
+        else:
+            if USE_POSTGRES:
+                cursor.execute(
+                    "UPDATE income SET name=%s, amount=%s, account=%s, day=%s WHERE id=%s AND user_id=%s",
+                    (name, amount, account, day, item_id, current_user.id)
+                )
+            else:
+                cursor.execute(
+                    "UPDATE income SET name=?, amount=?, account=?, day=? WHERE id=? AND user_id=?",
+                    (name, amount, account, day, item_id, current_user.id)
+                )
+        db.commit()
+        bust_forecast_cache(current_user.id)
+    except Exception as e:
+        logger.error(f"api_edit_pending_item: {e}")
+        return jsonify({"error": "Database error"}), 500
+    finally:
+        cursor.close()
+        release_db(db)
+    return jsonify({"ok": True, "name": name, "amount": amount, "account": account, "day": day})
 
 
 # --- TRANSACTIONS PAGE ---
