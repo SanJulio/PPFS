@@ -746,7 +746,8 @@ def calculate_financial_overview(accounts, safe_boundary=None):
             savings_balance += balance
             savings_accounts.append({"name": name, "balance": balance})
 
-    spending_future_bills = 0.0
+    all_future_bills = 0.0      # all unpaid bills in period — shown in Bills left
+    spending_future_bills = 0.0  # only spending-account bills — used for safe_spending
     future_bills_list = []
 
     import calendar as _cal2
@@ -807,15 +808,18 @@ def calculate_financial_overview(accounts, safe_boundary=None):
             if last_applied and last_applied >= due.isoformat():
                 continue
             acc = expense["account"]
-            if acc in accounts and accounts[acc]["type"] in spending_types:
+            if acc not in accounts:
+                continue
+            all_future_bills += expense["amount"]
+            future_bills_list.append({
+                "id": expense["id"],
+                "name": expense["name"],
+                "amount": expense["amount"],
+                "day": expense["day"],
+                "account": acc
+            })
+            if accounts[acc]["type"] in spending_types:
                 spending_future_bills += expense["amount"]
-                future_bills_list.append({
-                    "id": expense["id"],
-                    "name": expense["name"],
-                    "amount": expense["amount"],
-                    "day": expense["day"],
-                    "account": expense["account"]
-                })
 
     # --- Pending income arriving later this cycle (for display in breakdown only) ---
     future_income = 0.0
@@ -852,7 +856,7 @@ def calculate_financial_overview(accounts, safe_boundary=None):
 
     return {
         "spending_balance": spending_balance,
-        "future_bills": spending_future_bills,
+        "future_bills": all_future_bills,
         "future_income": future_income,
         "future_income_list": sorted(future_income_list, key=lambda x: x["day"]),
         "safe_spending": safe_spending,
