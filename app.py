@@ -1153,7 +1153,7 @@ def home():
     cycle_end_date = _cycle["display_end"]
     safe_boundary = _cycle["safe_boundary"]
 
-    overview = calculate_financial_overview(accounts, period_end=cycle_end_date, safe_boundary=safe_boundary)
+    overview = calculate_financial_overview(accounts, period_end=cycle_end_date, safe_boundary=cycle_end_date)
 
     # Net worth trend — approximate monthly balance by walking backwards from current total
     nw_trend = []
@@ -1246,7 +1246,7 @@ def home():
                             "active": bool(r["active"]),
                             "include_in_overview": bool(r.get("include_in_overview", 1))
                         }
-                    overview = calculate_financial_overview(accounts, period_end=cycle_end_date, safe_boundary=safe_boundary)
+                    overview = calculate_financial_overview(accounts, period_end=cycle_end_date, safe_boundary=cycle_end_date)
                     monthly = calculate_monthly_spending(cycle_start_date, cycle_end_date)
                     balances = []
                     for n in sorted(accounts, key=lambda x: x.lower()):
