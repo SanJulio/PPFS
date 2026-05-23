@@ -750,43 +750,62 @@ def calculate_financial_overview(accounts, safe_boundary=None):
     future_bills_list = []
 
     import calendar as _cal2
-    current_month = today.month
     today_date = today.date()
+    current_day = today.day
+
+    # Pre-build the list of months spanning (today_date, safe_boundary] for multi-month iteration
+    if safe_boundary is not None:
+        future_check_months = []
+        _fy, _fm = today_date.year, today_date.month
+        while date(_fy, _fm, 1) <= safe_boundary:
+            future_check_months.append((_fy, _fm))
+            _fm = _fm + 1 if _fm < 12 else 1
+            _fy = _fy if _fm > 1 else _fy + 1
+
     for expense in scheduled_expenses:
         if expense["day"] is None:
             continue
         freq = expense.get("frequency") or "monthly"
 
-        # Compute next due date for this expense
-        if freq == "yearly":
-            exp_month = expense.get("month") or current_month
-            days_in_year_month = _cal2.monthrange(today.year, exp_month)[1]
-            due_day = min(expense["day"], days_in_year_month)
-            next_due = date(today.year, exp_month, due_day)
-            if next_due <= today_date:
-                next_due = date(today.year + 1, exp_month, due_day)
-        else:
-            days_in_month = _cal2.monthrange(today.year, today.month)[1]
-            due_day = min(expense["day"], days_in_month)
-            next_due = date(today.year, today.month, due_day)
-            if next_due <= today_date:
-                next_month = (today_date.replace(day=1) + _rel(months=1))
-                days_next = _cal2.monthrange(next_month.year, next_month.month)[1]
-                next_due = next_month.replace(day=min(expense["day"], days_next))
-
-        # Determine if this bill falls within the period we're checking
+        candidates = []
         if safe_boundary is not None:
-            in_period = today_date < next_due <= safe_boundary
+            if freq == "monthly":
+                for (_ey, _em) in future_check_months:
+                    dim = _cal2.monthrange(_ey, _em)[1]
+                    due = date(_ey, _em, min(expense["day"], dim))
+                    if today_date < due <= safe_boundary:
+                        candidates.append(due)
+            elif freq == "yearly":
+                exp_month = expense.get("month")
+                if exp_month:
+                    for (_ey, _em) in future_check_months:
+                        if _em != exp_month:
+                            continue
+                        dim = _cal2.monthrange(_ey, _em)[1]
+                        due = date(_ey, _em, min(expense["day"], dim))
+                        if today_date < due <= safe_boundary:
+                            candidates.append(due)
+            else:
+                # weekly/fortnightly: single next-occurrence fallback
+                days_in_month = _cal2.monthrange(today_date.year, today_date.month)[1]
+                due_day = min(expense["day"], days_in_month)
+                next_due = date(today_date.year, today_date.month, due_day)
+                if next_due <= today_date:
+                    next_month = today_date.replace(day=1) + _rel(months=1)
+                    days_next = _cal2.monthrange(next_month.year, next_month.month)[1]
+                    next_due = next_month.replace(day=min(expense["day"], days_next))
+                if today_date < next_due <= safe_boundary:
+                    candidates.append(next_due)
         else:
-            in_period = expense["day"] > current_day
+            # No safe_boundary: legacy path — bill due later this calendar month
+            if expense["day"] > current_day:
+                dim = _cal2.monthrange(today_date.year, today_date.month)[1]
+                candidates.append(date(today_date.year, today_date.month, min(expense["day"], dim)))
 
-        if in_period:
-            # Skip if already marked as paid this cycle
+        for due in candidates:
             last_applied = expense.get("last_applied")
-            if last_applied:
-                due_str = next_due.isoformat()
-                if last_applied >= due_str:
-                    continue
+            if last_applied and last_applied >= due.isoformat():
+                continue
             acc = expense["account"]
             if acc in accounts and accounts[acc]["type"] in spending_types:
                 spending_future_bills += expense["amount"]
