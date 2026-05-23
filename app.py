@@ -716,11 +716,21 @@ def get_auto_apply_settings(user_id):
 # - safe to spend (spending balance minus future bills)
 # - savings balance
 # - net worth (spending + savings)
-def calculate_financial_overview(accounts, safe_boundary=None):
+def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
+    """
+    period_end    — upper bound for Bills left display (= display_end from cycle engine)
+    safe_boundary — upper bound for safe_spending deduction (= next payday - 1)
+    If only one is supplied the other defaults to it (backward-compatible).
+    """
     from datetime import date
     from dateutil.relativedelta import relativedelta as _rel
     today = datetime.today()
     current_day = today.day
+    # Normalise: each defaults to the other so legacy single-param callers still work
+    if period_end is None:
+        period_end = safe_boundary
+    if safe_boundary is None:
+        safe_boundary = period_end
 
     scheduled_expenses = load_scheduled_expenses_web()
 
@@ -754,11 +764,11 @@ def calculate_financial_overview(accounts, safe_boundary=None):
     today_date = today.date()
     current_day = today.day
 
-    # Pre-build the list of months spanning (today_date, safe_boundary] for multi-month iteration
-    if safe_boundary is not None:
+    # Build months spanning (today_date, period_end] — used for bills-display iteration
+    if period_end is not None:
         future_check_months = []
         _fy, _fm = today_date.year, today_date.month
-        while date(_fy, _fm, 1) <= safe_boundary:
+        while date(_fy, _fm, 1) <= period_end:
             future_check_months.append((_fy, _fm))
             _fm = _fm + 1 if _fm < 12 else 1
             _fy = _fy if _fm > 1 else _fy + 1
@@ -769,12 +779,12 @@ def calculate_financial_overview(accounts, safe_boundary=None):
         freq = expense.get("frequency") or "monthly"
 
         candidates = []
-        if safe_boundary is not None:
+        if period_end is not None:
             if freq == "monthly":
                 for (_ey, _em) in future_check_months:
                     dim = _cal2.monthrange(_ey, _em)[1]
                     due = date(_ey, _em, min(expense["day"], dim))
-                    if today_date < due <= safe_boundary:
+                    if today_date < due <= period_end:
                         candidates.append(due)
             elif freq == "yearly":
                 exp_month = expense.get("month")
@@ -784,7 +794,7 @@ def calculate_financial_overview(accounts, safe_boundary=None):
                             continue
                         dim = _cal2.monthrange(_ey, _em)[1]
                         due = date(_ey, _em, min(expense["day"], dim))
-                        if today_date < due <= safe_boundary:
+                        if today_date < due <= period_end:
                             candidates.append(due)
             else:
                 # weekly/fortnightly: single next-occurrence fallback
@@ -795,10 +805,10 @@ def calculate_financial_overview(accounts, safe_boundary=None):
                     next_month = today_date.replace(day=1) + _rel(months=1)
                     days_next = _cal2.monthrange(next_month.year, next_month.month)[1]
                     next_due = next_month.replace(day=min(expense["day"], days_next))
-                if today_date < next_due <= safe_boundary:
+                if today_date < next_due <= period_end:
                     candidates.append(next_due)
         else:
-            # No safe_boundary: legacy path — bill due later this calendar month
+            # No period_end: legacy path — bill due later this calendar month
             if expense["day"] > current_day:
                 dim = _cal2.monthrange(today_date.year, today_date.month)[1]
                 candidates.append(date(today_date.year, today_date.month, min(expense["day"], dim)))
@@ -818,8 +828,10 @@ def calculate_financial_overview(accounts, safe_boundary=None):
                 "day": expense["day"],
                 "account": acc
             })
+            # Only deduct from safe_spending if within safe_boundary
             if accounts[acc]["type"] in spending_types:
-                spending_future_bills += expense["amount"]
+                if safe_boundary is None or due <= safe_boundary:
+                    spending_future_bills += expense["amount"]
 
     # --- Pending income arriving later this cycle (for display in breakdown only) ---
     future_income = 0.0
@@ -1141,7 +1153,7 @@ def home():
     cycle_end_date = _cycle["display_end"]
     safe_boundary = _cycle["safe_boundary"]
 
-    overview = calculate_financial_overview(accounts, safe_boundary=safe_boundary)
+    overview = calculate_financial_overview(accounts, period_end=cycle_end_date, safe_boundary=safe_boundary)
 
     # Net worth trend — approximate monthly balance by walking backwards from current total
     nw_trend = []
@@ -1234,7 +1246,7 @@ def home():
                             "active": bool(r["active"]),
                             "include_in_overview": bool(r.get("include_in_overview", 1))
                         }
-                    overview = calculate_financial_overview(accounts, safe_boundary=safe_boundary)
+                    overview = calculate_financial_overview(accounts, period_end=cycle_end_date, safe_boundary=safe_boundary)
                     monthly = calculate_monthly_spending(cycle_start_date, cycle_end_date)
                     balances = []
                     for n in sorted(accounts, key=lambda x: x.lower()):
