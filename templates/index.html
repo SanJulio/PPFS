@@ -592,7 +592,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
   </div>
   {% endif %}
 
-  <div id="spendBanner">{% if balances and monthly.income_received > 0 %}{% if overview.safe_spending > monthly.income_received * 0.15 %}<div class="mb-3 px-1 py-2 rounded-4 d-flex align-items-center gap-2" style="background:#d1fae5;font-size:14px;font-weight:600;color:#065f46;padding-left:14px!important;padding-right:14px!important;">✅ On track this month</div>{% elif overview.safe_spending >= 1 %}<div class="mb-3 px-1 py-2 rounded-4 d-flex align-items-center gap-2" style="background:#fff3cd;font-size:14px;font-weight:600;color:#856404;padding-left:14px!important;padding-right:14px!important;">⚠️ Looking tight this month</div>{% elif overview.safe_spending == 0 %}<div class="mb-3 px-1 py-2 rounded-4 d-flex align-items-center gap-2" style="background:#fde8e8;font-size:14px;font-weight:600;color:#991b1b;padding-left:14px!important;padding-right:14px!important;">❌ Watch your spending this month</div>{% endif %}{% endif %}</div>
+  <div id="spendBanner">{% if balances and monthly.income_received > 0 %}{% set _bns = namespace(name='', bal=0) %}{% for _a in overview.spending_accounts + overview.savings_accounts %}{% if _a.balance > _bns.bal %}{% set _bns.name = _a.name %}{% set _bns.bal = _a.balance %}{% endif %}{% endfor %}{% if overview.safe_spending > monthly.income_received * 0.15 %}<div class="mb-3 px-1 py-2 rounded-4 d-flex align-items-center gap-2" style="background:#d1fae5;font-size:14px;font-weight:600;color:#065f46;padding-left:14px!important;padding-right:14px!important;">✅ You are on track this month. Safe to spend is £{{ "%.2f"|format(overview.safe_spending) }}.</div>{% elif overview.safe_spending >= 1 %}<div class="mb-3 px-1 py-2 rounded-4 d-flex align-items-center gap-2" style="background:#fff3cd;font-size:14px;font-weight:600;color:#856404;padding-left:14px!important;padding-right:14px!important;">⚠️ Looking tight this month. You have £{{ "%.2f"|format(overview.safe_spending) }} safe to spend before your next payday.{% if _bns.name %} Consider moving money from {{ _bns.name }} to give yourself more breathing room.{% endif %}</div>{% else %}<div class="mb-3 px-1 py-2 rounded-4 d-flex align-items-center gap-2" style="background:#fde8e8;font-size:14px;font-weight:600;color:#991b1b;padding-left:14px!important;padding-right:14px!important;">❌ Watch your spending this month. Your upcoming bills exceed your available balance by £{{ "%.2f"|format(overview.shortfall) }}.{% if _bns.name %} Moving £{{ "%.2f"|format(overview.shortfall) }} from {{ _bns.name }} would cover the shortfall.{% endif %}</div>{% endif %}{% endif %}</div>
 
   {% if not user_verified %}
   <div class="alert rounded-4 mb-3" style="background:#fff3cd; border:none;">
@@ -746,7 +746,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
     <div class="col-6">
       <div class="p-3 bg-white rounded-4 shadow-sm tile" onclick="toggleTile('income-cycle')">
         <div class="d-flex justify-content-between align-items-center">
-          <div class="text-muted small">Income</div>
+          <div class="text-muted small">Income received</div>
           <span id="arrow-income-cycle" class="fw-bold" style="font-size:13px;color:#111">+</span>
         </div>
         <div id="income-cycle-total-val" class="fs-4 fw-bold text-success amount-private">£{{ "%.2f"|format(monthly.income_received) }}</div>
@@ -815,6 +815,10 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
     {% set pct_capped = [pct, 100]|min %}
     {% if pct < 50 %}{% set bar_color = '#198754' %}{% elif pct < 80 %}{% set bar_color = '#f59e0b' %}{% else %}{% set bar_color = '#dc3545' %}{% endif %}
     <div class="col-12">
+      <div class="d-flex justify-content-between mb-1" style="font-size:11px;color:#9ca3af;">
+        <span>Bills as % of income received</span>
+        <span id="progressBarPct">{{ pct_capped }}%</span>
+      </div>
       <div class="progress rounded-pill" style="height:6px; background:#e9ecef;">
         <div class="progress-bar rounded-pill" role="progressbar"
           id="cycleProgressBar"
@@ -2227,24 +2231,45 @@ function _applyOverviewData(d, start, end) {
     var pct = d.income_received > 0 ? Math.min(100, Math.round(d.scheduled / d.income_received * 100)) : (d.scheduled > 0 ? 100 : 0);
     var clr = pct < 50 ? '#198754' : (pct < 80 ? '#f59e0b' : '#dc3545');
     bar.style.width = pct + '%'; bar.style.background = clr;
+    var pctLbl = document.getElementById('progressBarPct');
+    if (pctLbl) pctLbl.textContent = pct + '%';
   }
 
   // Banner
-  _updateBanner(d.safe_spending, d.income_received);
+  _updateBanner(d.safe_spending, d.income_received, d.shortfall || 0);
 }
-function _updateBanner(safeSpending, incomeReceived) {
+function _getBestAccount() {
+  var el = document.getElementById('adj-balances-json');
+  if (!el) return '';
+  try {
+    var accs = JSON.parse(el.textContent);
+    var best = null;
+    accs.forEach(function(a) {
+      if (!a.include_in_overview) return;
+      if (best === null || a.balance > best.balance) best = a;
+    });
+    return best ? best.name : '';
+  } catch(e) { return ''; }
+}
+function _updateBanner(safeSpending, incomeReceived, shortfall) {
   var el = document.getElementById('spendBanner');
   if (!el) return;
   var html = '';
   if (incomeReceived > 0) {
     var s = 'font-size:14px;font-weight:600;padding-left:14px!important;padding-right:14px!important;';
     var c = 'mb-3 px-1 py-2 rounded-4 d-flex align-items-center gap-2';
+    var bestAcc = _getBestAccount();
+    var sf = (shortfall || 0).toFixed(2);
     if (safeSpending > incomeReceived * 0.15) {
-      html = '<div class="' + c + '" style="background:#d1fae5;color:#065f46;' + s + '">✅ On track this month</div>';
+      html = '<div class="' + c + '" style="background:#d1fae5;color:#065f46;' + s + '">✅ You are on track this month. Safe to spend is £' + safeSpending.toFixed(2) + '.</div>';
     } else if (safeSpending >= 1) {
-      html = '<div class="' + c + '" style="background:#fff3cd;color:#856404;' + s + '">⚠️ Looking tight this month</div>';
-    } else if (safeSpending <= 0) {
-      html = '<div class="' + c + '" style="background:#fde8e8;color:#991b1b;' + s + '">❌ Watch your spending this month</div>';
+      var msg = '⚠️ Looking tight this month. You have £' + safeSpending.toFixed(2) + ' safe to spend before your next payday.';
+      if (bestAcc) msg += ' Consider moving money from ' + bestAcc + ' to give yourself more breathing room.';
+      html = '<div class="' + c + '" style="background:#fff3cd;color:#856404;' + s + '">' + msg + '</div>';
+    } else {
+      var msg2 = '❌ Watch your spending this month. Your upcoming bills exceed your available balance by £' + sf + '.';
+      if (bestAcc) msg2 += ' Moving £' + sf + ' from ' + bestAcc + ' would cover the shortfall.';
+      html = '<div class="' + c + '" style="background:#fde8e8;color:#991b1b;' + s + '">' + msg2 + '</div>';
     }
   }
   el.innerHTML = html;

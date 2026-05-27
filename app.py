@@ -864,6 +864,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
 
     # Safe to spend = total spending balance minus all bills still due this cycle
     safe_spending = max(0.0, spending_balance - spending_future_bills)
+    shortfall = max(0.0, spending_future_bills - spending_balance)
     net_worth = spending_balance + savings_balance
 
     return {
@@ -872,6 +873,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
         "future_income": future_income,
         "future_income_list": sorted(future_income_list, key=lambda x: x["day"]),
         "safe_spending": safe_spending,
+        "shortfall": shortfall,
         "savings_balance": savings_balance,
         "net_worth": net_worth,
         "spending_accounts": sorted(spending_accounts, key=lambda x: x["name"].lower()),
@@ -1508,6 +1510,7 @@ def api_overview():
         "bills_list": monthly["bills_list"],
         "future_bills": ov["future_bills"],
         "safe_spending": ov["safe_spending"],
+        "shortfall": ov["shortfall"],
         "display_start": f"{start.day} {start.strftime('%b')}",
         "display_end": f"{end.day} {end.strftime('%b')}",
     })
