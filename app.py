@@ -1264,6 +1264,7 @@ def home():
         logger.debug(f"Auto-apply home check error: {e}")
 
     days_to_payday = (safe_boundary - date.today()).days + 1
+    show_payday_countdown = _cycle["mode_used"] == "automatic"
 
     return render_template(
         "index.html",
@@ -1283,6 +1284,7 @@ def home():
         cycle_start_date=cycle_start_date,
         cycle_end_date=cycle_end_date,
         days_to_payday=days_to_payday,
+        show_payday_countdown=show_payday_countdown,
     )
 
 # --- ONBOARDING DISMISS ---
