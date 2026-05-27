@@ -614,8 +614,17 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
   <div class="card p-3 mb-4" id="overviewCard">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0">Financial Overview</h5>
-    <div class="d-flex align-items-center gap-2">
-      <span id="dateRangeLabel" class="text-muted" onclick="openDateRangePicker()" style="font-size:12px;cursor:pointer;" title="Customise date range">{{ cycle_start_date.day }} {{ cycle_start_date.strftime('%b') }} – {{ cycle_end_date.day }} {{ cycle_end_date.strftime('%b') }}</span><span id="customRangeIndicator" style="display:none;font-size:11px;color:#6366f1;cursor:pointer;margin-left:3px;" onclick="openDateRangePicker()" title="Custom range active">✎</span>
+    <div class="d-flex align-items-center gap-2" style="position:relative;">
+      <!-- Info icon -->
+      <span id="cycleInfoBtn" onclick="toggleCycleTooltip(event)" style="width:16px;height:16px;border-radius:50%;background:#e0e7ff;color:#6366f1;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;flex-shrink:0;">i</span>
+      <!-- Tooltip (shown on hover via CSS, toggled on tap via JS) -->
+      <div id="cycleInfoTooltip" style="display:none;position:absolute;right:0;top:28px;width:220px;background:#1e293b;color:#fff;font-size:12px;font-weight:400;line-height:1.5;border-radius:8px;padding:10px 12px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.2);">Your cycle runs from your last payday. Tap the date to customise the range. Change cycle settings in Settings.</div>
+      <!-- Tappable date range pill -->
+      <span onclick="openDateRangePicker()" style="cursor:pointer;background:#f1f5f9;border-radius:20px;padding:3px 10px;display:inline-flex;align-items:center;gap:5px;">
+        <span id="dateRangeLabel" style="font-size:12px;color:#374151;">{{ cycle_start_date.day }} {{ cycle_start_date.strftime('%b') }} – {{ cycle_end_date.day }} {{ cycle_end_date.strftime('%b') }}</span>
+        <span style="font-size:11px;color:#9ca3af;">✎</span>
+        <span id="customRangeIndicator" style="display:none;width:6px;height:6px;border-radius:50%;background:#6366f1;flex-shrink:0;"></span>
+      </span>
       <button id="toggleAmountsBtn" onclick="toggleAmounts()" class="btn btn-sm" style="border-radius:999px; padding:6px 14px; font-size:13px; font-weight:600; background:white; border:2px solid #dee2e6; color:#555;">Show</button>
     </div>
   </div>
@@ -2183,7 +2192,7 @@ function _fetchOverviewData(start, end) {
 function _applyOverviewData(d, start, end) {
   _drpCustomActive = (start !== _drpOrigStart || end !== _drpOrigEnd);
   document.getElementById('dateRangeLabel').textContent = d.display_start + ' – ' + d.display_end;
-  document.getElementById('customRangeIndicator').style.display = _drpCustomActive ? 'inline' : 'none';
+  document.getElementById('customRangeIndicator').style.display = _drpCustomActive ? 'inline-block' : 'none';
 
   // Collapse any open tile-bills / tile-safe to avoid stale breakdowns
   ['tile-bills','tile-safe'].forEach(function(id) {
@@ -2275,7 +2284,23 @@ function _updateBanner(safeSpending, incomeReceived, shortfall) {
   el.innerHTML = html;
 }
 function _drpEsc(str) { var d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
+function toggleCycleTooltip(e) {
+  if (window.matchMedia('(hover: hover)').matches) return;
+  e.stopPropagation();
+  var t = document.getElementById('cycleInfoTooltip');
+  if (!t) return;
+  t.style.display = t.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', function() {
+  var t = document.getElementById('cycleInfoTooltip');
+  if (t && !window.matchMedia('(hover: hover)').matches) t.style.display = 'none';
+});
 </script>
+<style>
+@media (hover: hover) {
+  #cycleInfoBtn:hover ~ #cycleInfoTooltip { display: block !important; }
+}
+</style>
 <script>
 (function() {
   var bar = document.getElementById('cycleProgressBar');
