@@ -236,6 +236,7 @@ html, body {
 }
 .phone-frame {
   width: min(46vw, 165px);
+  max-height: 42vh;
   aspect-ratio: 9 / 19;
   border-radius: 28px;
   overflow: hidden;
@@ -254,7 +255,7 @@ html, body {
 .phone-ph {
   position: absolute;
   inset: 0;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   font-size: 10px;
@@ -469,7 +470,7 @@ html, body {
       </div>
       <div class="phone-area">
         <div class="phone-frame">
-          <img src="{{ url_for('static', filename='onboarding/slide1.jpg') }}" alt="" onerror="this.style.display='none'">
+          <img src="{{ url_for('static', filename='onboarding/slide1.jpg') }}" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
           <div class="phone-ph" style="background:linear-gradient(160deg,#e0f2fe,#e0e7ff);">Safe to Spend</div>
         </div>
       </div>
@@ -501,7 +502,7 @@ html, body {
       </div>
       <div class="phone-area">
         <div class="phone-frame">
-          <img src="{{ url_for('static', filename='onboarding/slide2.jpg') }}" alt="" onerror="this.style.display='none'">
+          <img src="{{ url_for('static', filename='onboarding/slide2.jpg') }}" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
           <div class="phone-ph" style="background:linear-gradient(160deg,#fefce8,#fef3c7);">90-Day Forecast</div>
         </div>
       </div>
@@ -533,7 +534,7 @@ html, body {
       </div>
       <div class="phone-area">
         <div class="phone-frame">
-          <img src="{{ url_for('static', filename='onboarding/slide3.jpg') }}" alt="" onerror="this.style.display='none'">
+          <img src="{{ url_for('static', filename='onboarding/slide3.jpg') }}" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
           <div class="phone-ph" style="background:linear-gradient(160deg,#f0fdf4,#dcfce7);">Future Balances</div>
         </div>
       </div>
@@ -565,7 +566,7 @@ html, body {
       </div>
       <div class="phone-area">
         <div class="phone-frame">
-          <img src="{{ url_for('static', filename='onboarding/slide4.jpg') }}" alt="" onerror="this.style.display='none'">
+          <img src="{{ url_for('static', filename='onboarding/slide4.jpg') }}" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
           <div class="phone-ph" style="background:linear-gradient(160deg,#f5f3ff,#ede9fe);">My Money</div>
         </div>
       </div>
