@@ -1,0 +1,742 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+<link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
+<link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+<meta name="theme-color" content="#4f46e5">
+<title>Spendara · Get started</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --grad: linear-gradient(135deg, #06b6d4 0%, #4f46e5 45%, #7c3aed 100%);
+  --brand: #4f46e5;
+  --accent: #67e8f9;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'DM Sans', sans-serif;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  background: #06b6d4;
+}
+
+#journey {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* ── STEP BASE ── */
+.step {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.42s cubic-bezier(0.4, 0, 0.2, 1);
+  background: var(--grad);
+  will-change: transform;
+  overflow: hidden;
+}
+.step.active  { transform: translateX(0); }
+.step.passed  { transform: translateX(-100%); }
+
+/* Registration step overrides */
+#s7 {
+  background: #fff;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── CENTERED INNER CONTAINER ── */
+.inner {
+  max-width: 480px;
+  width: 100%;
+  margin: 0 auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── LOGO PILL ── */
+.logo-pill {
+  background: #fff;
+  border-radius: 18px;
+  padding: 10px 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+}
+.logo-pill img { height: 32px; object-fit: contain; display: block; }
+.logo-pill-lg { padding: 14px 28px; border-radius: 22px; }
+.logo-pill-lg img { height: 48px; }
+
+/* ══════════════════════════════════════
+   STEP 1 — SPLASH
+══════════════════════════════════════ */
+#s1 { transform: translateX(0); }
+
+.splash-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 40px 24px;
+}
+.splash-logo-wrap {
+  opacity: 0;
+  animation: jFadeIn 0.5s ease 0.15s forwards;
+}
+.splash-tagline {
+  color: rgba(255,255,255,0.88);
+  font-size: 17px;
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  text-align: center;
+  opacity: 0;
+  animation: jFadeIn 0.5s ease 0.75s forwards;
+}
+.splash-bar-wrap {
+  height: 3px;
+  background: rgba(255,255,255,0.2);
+  flex-shrink: 0;
+}
+.splash-bar {
+  height: 100%;
+  background: rgba(255,255,255,0.85);
+  width: 0;
+  animation: splashLoad 2s linear 0.3s forwards;
+}
+@keyframes splashLoad { to { width: 100%; } }
+@keyframes jFadeIn    { to { opacity: 1; } }
+
+/* ══════════════════════════════════════
+   STEP 2 — WELCOME MOMENT
+══════════════════════════════════════ */
+.welcome-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 36px;
+}
+.welcome-line {
+  color: #fff;
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: clamp(28px, 7vw, 40px);
+  line-height: 1.22;
+  margin-bottom: 12px;
+  min-height: 1.22em;
+  display: block;
+}
+.tap-prompt {
+  color: rgba(255,255,255,0.6);
+  font-size: 14px;
+  font-weight: 300;
+  margin-top: 44px;
+  width: 100%;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.7s ease;
+}
+.tap-prompt.show { opacity: 1; }
+
+/* ══════════════════════════════════════
+   STEPS 3–6 — FEATURE SLIDES
+══════════════════════════════════════ */
+
+/* Top nav row */
+.slide-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px 0;
+  flex-shrink: 0;
+}
+.nav-back {
+  color: rgba(255,255,255,0.8);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  user-select: none;
+  min-width: 36px;
+  text-align: center;
+}
+.nav-back:active { color: #fff; }
+.nav-skip {
+  color: rgba(255,255,255,0.72);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  padding: 4px 0;
+  text-decoration: none;
+  user-select: none;
+}
+.nav-skip:active { color: #fff; }
+.nav-spacer { min-width: 36px; }
+
+/* Logo centred below nav */
+.slide-logo {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 6px;
+  flex-shrink: 0;
+}
+
+/* Text content */
+.slide-text {
+  padding: 0 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.slide-headline {
+  color: #fff;
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: clamp(19px, 5vw, 26px);
+  line-height: 1.25;
+  margin-bottom: 8px;
+}
+.slide-headline .acc { color: var(--accent); }
+.slide-subline {
+  color: rgba(255,255,255,0.7);
+  font-size: clamp(12px, 3.2vw, 14px);
+  font-weight: 300;
+  line-height: 1.55;
+  max-width: 340px;
+  margin: 0 auto;
+}
+
+/* Phone mockup area */
+.phone-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px 0;
+  overflow: hidden;
+  min-height: 0;
+}
+.phone-frame {
+  width: min(46vw, 165px);
+  aspect-ratio: 9 / 19;
+  border-radius: 28px;
+  overflow: hidden;
+  background: #f1f5f9;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.35), 0 4px 16px rgba(0,0,0,0.15);
+  flex-shrink: 0;
+  position: relative;
+}
+.phone-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+  display: block;
+}
+.phone-ph {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: rgba(0,0,0,0.3);
+  font-weight: 500;
+}
+
+/* Caption */
+.slide-caption {
+  color: rgba(255,255,255,0.58);
+  font-size: 11px;
+  font-weight: 300;
+  text-align: center;
+  padding: 6px 24px 4px;
+  flex-shrink: 0;
+}
+
+/* Bottom nav row */
+.slide-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px 16px;
+  flex-shrink: 0;
+}
+/* Safe area padding on iOS */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .slide-bottom, .splash-bar-wrap { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+}
+.dots {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.32);
+  transition: background 0.3s;
+  flex-shrink: 0;
+}
+.dot.on { background: #fff; }
+
+.next-circle {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.18);
+  border: 2px solid rgba(255,255,255,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #fff;
+  font-size: 20px;
+  user-select: none;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.next-circle:active { background: rgba(255,255,255,0.35); }
+
+.next-pill {
+  background: transparent;
+  border: 2px solid rgba(255,255,255,0.65);
+  border-radius: 50px;
+  color: #fff;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 11px 22px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.next-pill:active { background: rgba(255,255,255,0.18); }
+
+/* ══════════════════════════════════════
+   STEP 7 — REGISTRATION
+══════════════════════════════════════ */
+.reg-wrap {
+  max-width: 480px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 44px 28px 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.reg-logo { height: 52px; object-fit: contain; margin-bottom: 28px; display: block; }
+.reg-h {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: 28px;
+  color: #0f0f1a;
+  text-align: center;
+  margin-bottom: 6px;
+}
+.reg-sub {
+  font-size: 14px;
+  color: #6b7280;
+  font-weight: 300;
+  text-align: center;
+  margin-bottom: 28px;
+}
+.reg-form { width: 100%; }
+.reg-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 14px;
+  font-size: 16px;
+  font-family: 'DM Sans', sans-serif;
+  color: #111;
+  outline: none;
+  transition: border-color 0.2s;
+  background: #fff;
+  -webkit-appearance: none;
+  display: block;
+  margin-bottom: 14px;
+}
+.reg-input:focus { border-color: #4f46e5; }
+.reg-input::placeholder { color: #9ca3af; }
+.pw-hint { font-size: 11px; color: #9ca3af; margin-top: -8px; margin-bottom: 14px; line-height: 1.45; }
+.reg-error {
+  width: 100%;
+  background: #fef2f2;
+  color: #dc2626;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  margin-bottom: 10px;
+  display: none;
+}
+.reg-btn {
+  width: 100%;
+  padding: 15px;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  font-size: 16px;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 4px;
+  margin-bottom: 18px;
+  transition: opacity 0.2s;
+  -webkit-appearance: none;
+}
+.reg-btn:hover { opacity: 0.92; }
+.reg-btn:disabled { opacity: 0.58; cursor: not-allowed; }
+.reg-login {
+  font-size: 14px;
+  color: #6b7280;
+  text-align: center;
+  margin-bottom: 14px;
+}
+.reg-login a { color: #4f46e5; text-decoration: none; font-weight: 500; }
+.reg-privacy { font-size: 12px; color: #9ca3af; text-align: center; font-weight: 300; }
+</style>
+</head>
+<body>
+<div id="journey">
+
+  <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       STEP 1 — SPLASH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+  <div class="step active" id="s1">
+    <div class="inner">
+      <div class="splash-body">
+        <div class="splash-logo-wrap logo-pill logo-pill-lg">
+          <img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara">
+        </div>
+        <p class="splash-tagline">See the future of your money.</p>
+      </div>
+      <div class="splash-bar-wrap">
+        <div class="splash-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       STEP 2 — WELCOME MOMENT
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+  <div class="step" id="s2">
+    <div class="inner">
+      <div class="welcome-body" id="welcomeBody">
+        <span class="welcome-line" id="wl1"></span>
+        <span class="welcome-line" id="wl2"></span>
+        <span class="welcome-line" id="wl3"></span>
+        <div class="tap-prompt" id="tapPrompt">Tap to continue</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       STEP 3 — SLIDE 1: SAFE TO SPEND
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+  <div class="step" id="s3">
+    <div class="inner">
+      <div class="slide-nav">
+        <span class="nav-spacer"></span>
+        <span class="nav-skip" onclick="skip()">Skip</span>
+      </div>
+      <div class="slide-logo">
+        <div class="logo-pill"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara"></div>
+      </div>
+      <div class="slide-text">
+        <h2 class="slide-headline">Know <span class="acc">exactly</span> what you can spend today.</h2>
+        <p class="slide-subline">Not a rough guess. Your real number, after every bill is accounted for.</p>
+      </div>
+      <div class="phone-area">
+        <div class="phone-frame">
+          <img src="{{ url_for('static', filename='onboarding/slide1.jpg') }}" alt="" onerror="this.style.display='none'">
+          <div class="phone-ph" style="background:linear-gradient(160deg,#e0f2fe,#e0e7ff);">Safe to Spend</div>
+        </div>
+      </div>
+      <p class="slide-caption">Updated every day. Built around your payday.</p>
+      <div class="slide-bottom">
+        <div class="dots">
+          <div class="dot on"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+        </div>
+        <div class="next-circle" onclick="jGo(4,1)">›</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       STEP 4 — SLIDE 2: FORECAST
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+  <div class="step" id="s4">
+    <div class="inner">
+      <div class="slide-nav">
+        <span class="nav-back" onclick="jGo(3,-1)">‹</span>
+        <span class="nav-skip" onclick="skip()">Skip</span>
+      </div>
+      <div class="slide-logo">
+        <div class="logo-pill"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara"></div>
+      </div>
+      <div class="slide-text">
+        <h2 class="slide-headline">See problems <span class="acc">before</span> they happen.</h2>
+        <p class="slide-subline">Spendara looks 90 days ahead and tells you exactly when an account is heading negative — and precisely how to fix it.</p>
+      </div>
+      <div class="phone-area">
+        <div class="phone-frame">
+          <img src="{{ url_for('static', filename='onboarding/slide2.jpg') }}" alt="" onerror="this.style.display='none'">
+          <div class="phone-ph" style="background:linear-gradient(160deg,#fefce8,#fef3c7);">90-Day Forecast</div>
+        </div>
+      </div>
+      <p class="slide-caption">Not just a warning. A fix.</p>
+      <div class="slide-bottom">
+        <div class="dots">
+          <div class="dot"></div><div class="dot on"></div><div class="dot"></div><div class="dot"></div>
+        </div>
+        <div class="next-circle" onclick="jGo(5,1)">›</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       STEP 5 — SLIDE 3: FUTURE BALANCES
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+  <div class="step" id="s5">
+    <div class="inner">
+      <div class="slide-nav">
+        <span class="nav-back" onclick="jGo(4,-1)">‹</span>
+        <span class="nav-skip" onclick="skip()">Skip</span>
+      </div>
+      <div class="slide-logo">
+        <div class="logo-pill"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara"></div>
+      </div>
+      <div class="slide-text">
+        <h2 class="slide-headline">See <span class="acc">every penny</span> coming in and going out.</h2>
+        <p class="slide-subline">Day by day. Bill by bill. Salary by salary. Spendara maps your financial future so nothing surprises you.</p>
+      </div>
+      <div class="phone-area">
+        <div class="phone-frame">
+          <img src="{{ url_for('static', filename='onboarding/slide3.jpg') }}" alt="" onerror="this.style.display='none'">
+          <div class="phone-ph" style="background:linear-gradient(160deg,#f0fdf4,#dcfce7);">Future Balances</div>
+        </div>
+      </div>
+      <p class="slide-caption">Your next 90 days, mapped out completely.</p>
+      <div class="slide-bottom">
+        <div class="dots">
+          <div class="dot"></div><div class="dot"></div><div class="dot on"></div><div class="dot"></div>
+        </div>
+        <div class="next-circle" onclick="jGo(6,1)">›</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       STEP 6 — SLIDE 4: MY MONEY
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+  <div class="step" id="s6">
+    <div class="inner">
+      <div class="slide-nav">
+        <span class="nav-back" onclick="jGo(5,-1)">‹</span>
+        <span class="nav-skip" onclick="skip()">Skip</span>
+      </div>
+      <div class="slide-logo">
+        <div class="logo-pill"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara"></div>
+      </div>
+      <div class="slide-text">
+        <h2 class="slide-headline">Your whole financial picture. <span class="acc">One place.</span></h2>
+        <p class="slide-subline">Accounts, bills, income, savings, net worth — all tracked together so nothing slips through the cracks.</p>
+      </div>
+      <div class="phone-area">
+        <div class="phone-frame">
+          <img src="{{ url_for('static', filename='onboarding/slide4.jpg') }}" alt="" onerror="this.style.display='none'">
+          <div class="phone-ph" style="background:linear-gradient(160deg,#f5f3ff,#ede9fe);">My Money</div>
+        </div>
+      </div>
+      <p class="slide-caption">Free to start. No bank connection needed.</p>
+      <div class="slide-bottom">
+        <div class="dots">
+          <div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot on"></div>
+        </div>
+        <div class="next-pill" onclick="jGo(7,1)">Get started ›</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       STEP 7 — REGISTRATION
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+  <div class="step" id="s7">
+    <div class="reg-wrap">
+      <img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" class="reg-logo">
+      <h1 class="reg-h">Let's get you set up.</h1>
+      <p class="reg-sub">Free forever. No credit card. Takes 2 minutes.</p>
+      <div id="regError" class="reg-error"></div>
+      <form class="reg-form" id="regForm" onsubmit="submitReg(event)" novalidate>
+        <input class="reg-input" type="text" name="display_name" placeholder="Your first name" autocomplete="given-name" maxlength="60" required>
+        <input class="reg-input" type="email" name="email" placeholder="your@email.com" autocomplete="email" required>
+        <input class="reg-input" type="password" id="regPw" name="password" placeholder="Create a password" autocomplete="new-password" required>
+        <p class="pw-hint">Min 8 chars · uppercase · lowercase · number · symbol (e.g. !@#$)</p>
+        <input type="hidden" name="confirm" id="regConfirm">
+        <input type="hidden" name="age_confirm" value="1">
+        <button type="submit" class="reg-btn" id="regBtn">Create my account</button>
+      </form>
+      <p class="reg-login">Already have an account? <a href="/login">Log in</a></p>
+      <p class="reg-privacy">Your data is yours. We never sell it.</p>
+    </div>
+  </div>
+
+</div><!-- /#journey -->
+
+<script>
+/* ── NAVIGATION ── */
+var jCur = 1;
+var jBusy = false;
+
+function jGo(n, dir) {
+  if (jBusy || n === jCur) return;
+  jBusy = true;
+  var cur = document.getElementById('s' + jCur);
+  var nxt = document.getElementById('s' + n);
+
+  if (dir > 0) {
+    cur.classList.remove('active');
+    cur.classList.add('passed');
+    nxt.classList.add('active');
+  } else {
+    cur.classList.remove('active');
+    nxt.classList.remove('passed');
+    nxt.classList.add('active');
+  }
+
+  jCur = n;
+  setTimeout(function () { jBusy = false; }, 460);
+}
+
+function skip() { jGo(7, 1); }
+
+/* ── SPLASH AUTO-ADVANCE ── */
+setTimeout(function () {
+  jGo(2, 1);
+  setTimeout(startTyping, 80);
+}, 2000);
+
+/* ── TYPING ANIMATION ── */
+var tLines = [
+  { id: 'wl1', text: 'Hello.',                                   pause: 800 },
+  { id: 'wl2', text: 'Your money has a story.',                  pause: 800 },
+  { id: 'wl3', text: "Let's make sure it has a good ending.",    pause: 500 }
+];
+var tDone   = false;
+var tIval   = null;
+var tTimer  = null;
+
+function startTyping() { typeIdx(0); }
+
+function typeIdx(idx) {
+  if (tDone) return;
+  if (idx >= tLines.length) {
+    tDone = true;
+    document.getElementById('tapPrompt').classList.add('show');
+    return;
+  }
+  var line = tLines[idx];
+  var el   = document.getElementById(line.id);
+  var i    = 0;
+  tIval = setInterval(function () {
+    if (tDone) { clearInterval(tIval); return; }
+    el.textContent = line.text.slice(0, ++i);
+    if (i >= line.text.length) {
+      clearInterval(tIval);
+      tIval = null;
+      tTimer = setTimeout(function () {
+        if (!tDone) typeIdx(idx + 1);
+      }, line.pause);
+    }
+  }, 50);
+}
+
+function skipTyping() {
+  if (tIval)  { clearInterval(tIval);  tIval  = null; }
+  if (tTimer) { clearTimeout(tTimer);  tTimer = null; }
+  tLines.forEach(function (l) { document.getElementById(l.id).textContent = l.text; });
+  tDone = true;
+  document.getElementById('tapPrompt').classList.add('show');
+}
+
+/* Tap on step 2 — skip typing or advance */
+document.getElementById('s2').addEventListener('click', function () {
+  if (!tDone) { skipTyping(); return; }
+  jGo(3, 1);
+});
+
+/* ── REGISTRATION SUBMIT ── */
+function submitReg(e) {
+  e.preventDefault();
+  var btn = document.getElementById('regBtn');
+  var errEl = document.getElementById('regError');
+
+  /* sync confirm */
+  document.getElementById('regConfirm').value = document.getElementById('regPw').value;
+
+  /* client-side password check */
+  var pw = document.getElementById('regPw').value;
+  if (pw.length < 8 || !/[A-Z]/.test(pw) || !/[a-z]/.test(pw) || !/[0-9]/.test(pw) || !/[^a-zA-Z0-9]/.test(pw)) {
+    showRegErr('Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number and a symbol.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Creating your account…';
+  errEl.style.display = 'none';
+
+  fetch('/register', {
+    method: 'POST',
+    body: new FormData(document.getElementById('regForm')),
+    redirect: 'follow',
+    credentials: 'same-origin'
+  })
+  .then(function (resp) {
+    if (resp.redirected) {
+      window.location.href = resp.url;
+      return;
+    }
+    return resp.text().then(function (html) {
+      var m = html.match(/alert-danger[^>]*>([\s\S]*?)<\/div>/);
+      showRegErr(m ? m[1].trim() : 'Something went wrong. Please try again.');
+      btn.disabled = false;
+      btn.textContent = 'Create my account';
+    });
+  })
+  .catch(function () {
+    showRegErr('Network error. Please check your connection and try again.');
+    btn.disabled = false;
+    btn.textContent = 'Create my account';
+  });
+}
+
+function showRegErr(msg) {
+  var el = document.getElementById('regError');
+  el.textContent = msg;
+  el.style.display = 'block';
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+</script>
+</body>
+</html>

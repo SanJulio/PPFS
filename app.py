@@ -4057,6 +4057,13 @@ def inject_user_verified():
             return {"user_verified": True}
     return {"user_verified": True}
 
+# --- WELCOME / ONBOARDING JOURNEY ---
+@app.get("/welcome")
+def welcome():
+    if current_user.is_authenticated:
+        return redirect(url_for("home"))
+    return render_template("welcome.html")
+
 # --- REGISTER ---
 # GET: shows the registration form
 # POST: validates email/password, creates user, sends verification email, logs them in
