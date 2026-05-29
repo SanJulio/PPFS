@@ -282,11 +282,11 @@ html, body {
   align-items: center;
   justify-content: space-between;
   padding: 6px 20px 14px;
+  padding-bottom: max(14px, env(safe-area-inset-bottom, 0px));
   flex-shrink: 0;
 }
-/* Safe area padding on iOS */
-@supports (padding-bottom: env(safe-area-inset-bottom)) {
-  .slide-bottom, .splash-bar-wrap { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+.splash-bar-wrap {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 .dots {
   display: flex;
