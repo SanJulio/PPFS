@@ -233,10 +233,10 @@ html, body {
   padding: 4px 16px 0;
   overflow: hidden;
   min-height: 0;
+  /* Hard cap: total fixed chrome = 44+70+120+30+64+20 = 348px */
+  max-height: calc(100dvh - 348px);
 }
 .phone-frame {
-  /* Height-driven: fills available flex space, width derives from aspect-ratio.
-     This guarantees the phone never overflows regardless of screen height. */
   height: 100%;
   max-height: 320px;
   width: auto;
@@ -281,22 +281,10 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 64px;
   padding: 6px 20px 14px;
   padding-bottom: max(14px, env(safe-area-inset-bottom, 0px));
   flex-shrink: 0;
-  background: yellow; /* DEBUG */
-}
-
-/* DEBUG: fixed red line at absolute viewport bottom */
-#debug-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: red;
-  z-index: 9999;
-  pointer-events: none;
 }
 .splash-bar-wrap {
   padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -621,20 +609,7 @@ html, body {
 
 </div><!-- /#journey -->
 
-<!-- DEBUG: viewport bottom marker -->
-<div id="debug-bar"></div>
-
 <script>
-/* ── DEBUG ── */
-(function () {
-  var sb = document.querySelector('.slide-bottom');
-  var pbComputed = sb ? window.getComputedStyle(sb).paddingBottom : 'n/a';
-  console.log('[DEBUG] window.innerHeight:', window.innerHeight);
-  console.log('[DEBUG] screen.height:', screen.height);
-  console.log('[DEBUG] documentElement.clientHeight:', document.documentElement.clientHeight);
-  console.log('[DEBUG] .slide-bottom computed padding-bottom:', pbComputed);
-})();
-
 /* ── NAVIGATION ── */
 var jCur = 1;
 var jBusy = false;
