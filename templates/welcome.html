@@ -236,34 +236,16 @@ html, body {
   /* Hard cap: total fixed chrome = 44+70+120+30+64+20 = 348px */
   max-height: calc(100dvh - 348px);
 }
-.phone-frame {
+.slide-img {
   height: 100%;
   max-height: 320px;
   width: auto;
-  aspect-ratio: 9 / 19;
-  border-radius: 28px;
-  overflow: hidden;
-  background: #f1f5f9;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.35), 0 4px 16px rgba(0,0,0,0.15);
-  flex-shrink: 0;
-  position: relative;
-}
-.phone-frame img {
-  width: 100%;
-  height: 100%;
+  border-radius: 16px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.28), 0 4px 12px rgba(0,0,0,0.14);
+  display: block;
   object-fit: cover;
   object-position: top;
-  display: block;
-}
-.phone-ph {
-  position: absolute;
-  inset: 0;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  color: rgba(0,0,0,0.3);
-  font-weight: 500;
+  flex-shrink: 0;
 }
 
 /* Caption */
@@ -473,10 +455,7 @@ html, body {
         <p class="slide-subline">Not a rough guess. Your real number, after every bill is accounted for.</p>
       </div>
       <div class="phone-area">
-        <div class="phone-frame">
-          <img src="{{ url_for('static', filename='onboarding/slide1.jpg') }}" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
-          <div class="phone-ph" style="background:linear-gradient(160deg,#e0f2fe,#e0e7ff);">Safe to Spend</div>
-        </div>
+        <img class="slide-img" src="{{ url_for('static', filename='onboarding/slide1.jpg') }}" alt="" onerror="this.style.opacity='0'">
       </div>
       <p class="slide-caption">Updated every day. Built around your payday.</p>
       <div class="slide-bottom">
@@ -505,10 +484,7 @@ html, body {
         <p class="slide-subline">Spendara looks 90 days ahead and tells you exactly when an account is heading negative — and precisely how to fix it.</p>
       </div>
       <div class="phone-area">
-        <div class="phone-frame">
-          <img src="{{ url_for('static', filename='onboarding/slide2.jpg') }}" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
-          <div class="phone-ph" style="background:linear-gradient(160deg,#fefce8,#fef3c7);">90-Day Forecast</div>
-        </div>
+        <img class="slide-img" src="{{ url_for('static', filename='onboarding/slide2.jpg') }}" alt="" onerror="this.style.opacity='0'">
       </div>
       <p class="slide-caption">Not just a warning. A fix.</p>
       <div class="slide-bottom">
@@ -537,10 +513,7 @@ html, body {
         <p class="slide-subline">Day by day. Bill by bill. Salary by salary. Spendara maps your financial future so nothing surprises you.</p>
       </div>
       <div class="phone-area">
-        <div class="phone-frame">
-          <img src="{{ url_for('static', filename='onboarding/slide3.jpg') }}" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
-          <div class="phone-ph" style="background:linear-gradient(160deg,#f0fdf4,#dcfce7);">Future Balances</div>
-        </div>
+        <img class="slide-img" src="{{ url_for('static', filename='onboarding/slide3.jpg') }}" alt="" onerror="this.style.opacity='0'">
       </div>
       <p class="slide-caption">Your next 90 days, mapped out completely.</p>
       <div class="slide-bottom">
@@ -569,10 +542,7 @@ html, body {
         <p class="slide-subline">Accounts, bills, income, savings, net worth — all tracked together so nothing slips through the cracks.</p>
       </div>
       <div class="phone-area">
-        <div class="phone-frame">
-          <img src="{{ url_for('static', filename='onboarding/slide4.jpg') }}" alt="" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
-          <div class="phone-ph" style="background:linear-gradient(160deg,#f5f3ff,#ede9fe);">My Money</div>
-        </div>
+        <img class="slide-img" src="{{ url_for('static', filename='onboarding/slide4.jpg') }}" alt="" onerror="this.style.opacity='0'">
       </div>
       <p class="slide-caption">Free to start. No bank connection needed.</p>
       <div class="slide-bottom">
