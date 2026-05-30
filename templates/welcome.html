@@ -251,6 +251,8 @@ html, body {
     max-width: 420px;
   }
 }
+/* Slide 3 only: bottom-anchor so transactions at the bottom of the screenshot stay visible */
+.slide-img-bottom { align-self: flex-end; }
 
 /* Caption */
 .slide-caption {
@@ -517,7 +519,7 @@ html, body {
         <p class="slide-subline">Day by day. Bill by bill. Salary by salary. Spendara maps your financial future so nothing surprises you.</p>
       </div>
       <div class="phone-area">
-        <img class="slide-img" src="{{ url_for('static', filename='onboarding/slide3.jpg') }}" alt="" onerror="this.style.opacity='0'">
+        <img class="slide-img slide-img-bottom" src="{{ url_for('static', filename='onboarding/slide3.jpg') }}" alt="" onerror="this.style.opacity='0'">
       </div>
       <p class="slide-caption">Your next 90 days, mapped out completely.</p>
       <div class="slide-bottom">
