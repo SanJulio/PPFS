@@ -228,24 +228,28 @@ html, body {
 .phone-area {
   flex: 1;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 4px 16px 0;
   overflow: hidden;
   min-height: 0;
-  /* Hard cap: total fixed chrome = 44+70+120+30+64+20 = 348px */
+  /* Hard cap prevents image from pushing caption/nav off screen */
   max-height: calc(100dvh - 348px);
 }
+/* Mobile: fill 90vw width, height scales naturally, overflow clipped at bottom */
 .slide-img {
-  height: 100%;
-  max-height: 320px;
-  width: auto;
+  width: 90vw;
+  height: auto;
   border-radius: 16px;
   box-shadow: 0 16px 48px rgba(0,0,0,0.28), 0 4px 12px rgba(0,0,0,0.14);
   display: block;
-  object-fit: cover;
-  object-position: top;
-  flex-shrink: 0;
+}
+/* Desktop: larger fixed width to fill the wider slide area */
+@media (min-width: 768px) {
+  .slide-img {
+    width: 100%;
+    max-width: 420px;
+  }
 }
 
 /* Caption */
