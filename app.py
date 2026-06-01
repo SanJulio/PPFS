@@ -1210,7 +1210,7 @@ def home():
     cycle_end_date = _cycle["display_end"]
     safe_boundary = _cycle["safe_boundary"]
 
-    overview = calculate_financial_overview(accounts, period_end=cycle_end_date, safe_boundary=cycle_end_date)
+    overview = calculate_financial_overview(accounts, period_end=cycle_end_date, safe_boundary=safe_boundary)
 
     # Net worth trend — approximate monthly balance by walking backwards from current total
     nw_trend = []
@@ -1304,7 +1304,7 @@ def home():
                             "include_in_overview": bool(r.get("include_in_overview", 1)),
                             "savings_type": r.get("savings_type"),
                         }
-                    overview = calculate_financial_overview(accounts, period_end=cycle_end_date, safe_boundary=cycle_end_date)
+                    overview = calculate_financial_overview(accounts, period_end=cycle_end_date, safe_boundary=safe_boundary)
                     monthly = calculate_monthly_spending(cycle_start_date, cycle_end_date)
                     balances = []
                     for n in sorted(accounts, key=lambda x: x.lower()):
@@ -1549,6 +1549,10 @@ def api_overview():
 
     monthly = calculate_monthly_spending(start, end)
 
+    import cycle_engine as _ce2
+    _api_cycle = _ce2.get_cycle(current_user.id)
+    api_safe_boundary = _api_cycle["safe_boundary"]
+
     accounts_rows = get_active_accounts(current_user.id)
     accounts = {}
     for r in accounts_rows:
@@ -1560,7 +1564,7 @@ def api_overview():
             "include_in_overview": bool(r.get("include_in_overview", 1)),
             "savings_type": r.get("savings_type"),
         }
-    ov = calculate_financial_overview(accounts, safe_boundary=end)
+    ov = calculate_financial_overview(accounts, period_end=end, safe_boundary=api_safe_boundary)
 
     # Filter future bills to those whose due date falls on or after the selected start.
     # calculate_financial_overview always uses today as the lower bound; when the custom
