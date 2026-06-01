@@ -1514,6 +1514,7 @@ def api_overview():
         "scheduled": monthly["scheduled"],
         "bills_list": monthly["bills_list"],
         "future_bills": ov["future_bills"],
+        "future_bills_list": ov["future_bills_list"],
         "safe_spending": ov["safe_spending"],
         "shortfall": ov["shortfall"],
         "display_start": f"{start.day} {start.strftime('%b')}",
