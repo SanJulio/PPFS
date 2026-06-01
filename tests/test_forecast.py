@@ -27,20 +27,14 @@ def _simulate(
     weekly_income: list = None,
 ):
     """
-    Call simulate_balances_until with mocked _db_fetch.
-
-    _db_fetch is called in two contexts:
-      1. "SELECT * FROM savings_rules" → returns savings_rules list
-      2. "SELECT * FROM income WHERE frequency = 'weekly'" → returns weekly_income list
+    Call simulate_balances_until with savings_rules passed directly and
+    _db_fetch patched only for the weekly income path.
     """
     from Tracker import simulate_balances_until
 
-    rules = savings_rules or []
     wi = weekly_income or []
 
     def fake_db_fetch(query, params=None):
-        if "savings_rules" in query:
-            return rules
         if "income" in query and "weekly" in query:
             return wi
         return []
@@ -51,6 +45,7 @@ def _simulate(
             accounts,
             expenses or [],
             events or [],
+            savings_rules or [],
         )
 
 
@@ -250,7 +245,7 @@ class TestSavingsRules:
         assert abs(final["Current"] - 1500.0) < 0.01
         assert abs(final["Savings"] - 500.0) < 0.01
 
-    def test_rule_skipped_if_insufficient_funds(self):
+    def test_rule_applies_even_if_insufficient_funds(self):
         today = date.today()
         import calendar as cal
         last_day = cal.monthrange(today.year, today.month)[1]
@@ -269,9 +264,9 @@ class TestSavingsRules:
         }]
 
         final, _ = _simulate(target, accounts, savings_rules=rules)
-        # Not enough funds → rule skipped
-        assert abs(final["Current"] - 100.0) < 0.01
-        assert abs(final["Savings"] - 0.0) < 0.01
+        # Rule always applies like a bill — account goes negative if insufficient
+        assert abs(final["Current"] - (100.0 - 500.0)) < 0.01
+        assert abs(final["Savings"] - 500.0) < 0.01
 
     def test_weekly_rule_applies_on_friday(self):
         today = date.today()

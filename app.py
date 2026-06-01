@@ -834,6 +834,59 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
                 if safe_boundary is None or due <= safe_boundary:
                     spending_future_bills += expense["amount"]
 
+    # --- Savings rules — treated like bills leaving spending accounts ---
+    try:
+        _sr_db = get_db()
+        _sr_cur = _sr_db.cursor()
+        if USE_POSTGRES:
+            _sr_cur.execute("SELECT * FROM savings_rules WHERE user_id = %s", (current_user.id,))
+        else:
+            _sr_cur.execute("SELECT * FROM savings_rules WHERE user_id = ?", (current_user.id,))
+        _sr_cols = [d[0] for d in _sr_cur.description]
+        _savings_rules = [dict(zip(_sr_cols, r)) for r in _sr_cur.fetchall()]
+        _sr_cur.close()
+        release_db(_sr_db)
+    except Exception:
+        _savings_rules = []
+
+    for rule in _savings_rules:
+        if rule.get("day") is None:
+            continue
+        freq = rule.get("frequency", "monthly")
+        from_acc = rule.get("from_account", "")
+        if from_acc not in accounts:
+            continue
+
+        sr_candidates = []
+        if period_end is not None:
+            if freq == "monthly":
+                for (_ey, _em) in future_check_months:
+                    import calendar as _cal3
+                    dim = _cal3.monthrange(_ey, _em)[1]
+                    due = date(_ey, _em, min(rule["day"], dim))
+                    if today_date < due <= period_end:
+                        sr_candidates.append(due)
+        else:
+            if rule["day"] > current_day:
+                import calendar as _cal3
+                dim = _cal3.monthrange(today_date.year, today_date.month)[1]
+                sr_candidates.append(date(today_date.year, today_date.month, min(rule["day"], dim)))
+
+        for due in sr_candidates:
+            amt = float(rule["amount"])
+            all_future_bills += amt
+            future_bills_list.append({
+                "id": rule["id"],
+                "name": rule["name"],
+                "amount": amt,
+                "day": rule["day"],
+                "account": from_acc,
+                "due_date": due.isoformat(),
+            })
+            if accounts[from_acc]["type"] in spending_types:
+                if safe_boundary is None or due <= safe_boundary:
+                    spending_future_bills += amt
+
     # --- Pending income arriving later this cycle (for display in breakdown only) ---
     future_income = 0.0
     future_income_list = []
@@ -2561,6 +2614,14 @@ def afford():
         cursor.execute("SELECT * FROM future_events WHERE user_id = ?", (current_user.id,))
     cols = [d[0] for d in cursor.description]
     future_events_raw = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM savings_rules WHERE user_id = %s", (current_user.id,))
+    else:
+        cursor.execute("SELECT * FROM savings_rules WHERE user_id = ?", (current_user.id,))
+    cols = [d[0] for d in cursor.description]
+    afford_savings_rules = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
     cursor.close()
     release_db(db)
 
@@ -2596,7 +2657,7 @@ def afford():
         temp_accounts = {k: v.copy() for k, v in accounts.items()}
         temp_accounts[acc]["balance"] -= amount
 
-        final_bal, lowest_bal = simulate_balances_until(horizon, temp_accounts, scheduled, future_events)
+        final_bal, lowest_bal = simulate_balances_until(horizon, temp_accounts, scheduled, future_events, afford_savings_rules)
 
         lowest = lowest_bal.get(acc, temp_accounts[acc]["balance"])
         negative = lowest < 0
@@ -2683,6 +2744,14 @@ def api_snapshot():
         )
     cols = [d[0] for d in cursor.description]
     future_events_raw = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM savings_rules WHERE user_id = %s", (current_user.id,))
+    else:
+        cursor.execute("SELECT * FROM savings_rules WHERE user_id = ?", (current_user.id,))
+    cols = [d[0] for d in cursor.description]
+    snap_savings_rules = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
     cursor.close()
     release_db(db)
 
@@ -2750,6 +2819,38 @@ def api_snapshot():
                 bills_due.append({"name": event["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc, "item_id": None, "item_type": "event"})
                 if acc in simulated:
                     simulated[acc] -= amt
+
+        # Savings rules — deduct from source, deposit to destination
+        for rule in snap_savings_rules:
+            if rule.get("day") is None:
+                continue
+            freq = rule.get("frequency", "monthly")
+            if freq == "monthly" and rule["day"] == sim_day.day:
+                from_acc = rule.get("from_account", "")
+                to_acc = rule.get("to_account", "")
+                amt = float(rule["amount"])
+                if from_acc in simulated:
+                    bills_due.append({
+                        "name": f"Transfer to {to_acc}",
+                        "amount": amt,
+                        "date": day_str,
+                        "iso": sim_day.isoformat(),
+                        "account": from_acc,
+                        "item_id": rule.get("id"),
+                        "item_type": "savings_rule",
+                    })
+                    simulated[from_acc] -= amt
+                if to_acc in simulated:
+                    income_arriving.append({
+                        "name": f"Transfer from {from_acc}",
+                        "amount": amt,
+                        "date": day_str,
+                        "iso": sim_day.isoformat(),
+                        "account": to_acc,
+                        "item_id": rule.get("id"),
+                        "item_type": "savings_rule",
+                    })
+                    simulated[to_acc] += amt
 
         # Track minimum balance per account across the simulation
         for name in simulated:
@@ -3965,10 +4066,10 @@ def forecast():
                 from_acc = rule["from_account"]
                 to_acc = rule["to_account"]
                 amt = float(rule["amount"])
-                if from_acc in simulated and to_acc in simulated:
-                    if simulated[from_acc] >= amt:
-                        simulated[from_acc] -= amt
-                        simulated[to_acc] += amt
+                if from_acc in simulated:
+                    simulated[from_acc] -= amt
+                if to_acc in simulated:
+                    simulated[to_acc] += amt
 
         snapshot = {"date": sim_day.isoformat()}
         for acc in account_names:

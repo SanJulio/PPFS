@@ -614,7 +614,7 @@ def show_month_projection(accounts, scheduled_expenses):
     pause()
 
 # --- SIMULATE BALANCES ---
-def simulate_balances_until(target_date, accounts, scheduled_expenses, future_events):
+def simulate_balances_until(target_date, accounts, scheduled_expenses, future_events, savings_rules=None):
     today = date.today()
     """
     Simulates balances from tomorrow up to target_date (inclusive),
@@ -631,8 +631,7 @@ def simulate_balances_until(target_date, accounts, scheduled_expenses, future_ev
 
     lowest = simulated.copy()
 
-    # Load savings rules ONCE (not every day)
-    savings_rules = _db_fetch("SELECT * FROM savings_rules")
+    savings_rules = savings_rules or []
 
     sim_day = today + timedelta(days=1)
 
@@ -679,10 +678,10 @@ def simulate_balances_until(target_date, accounts, scheduled_expenses, future_ev
                 to_acc = rule["to_account"]
                 amt = rule["amount"]
 
-                if from_acc in simulated and to_acc in simulated:
-                    if simulated[from_acc] >= amt:
-                        simulated[from_acc] -= amt
-                        simulated[to_acc] += amt
+                if from_acc in simulated:
+                    simulated[from_acc] -= amt
+                if to_acc in simulated:
+                    simulated[to_acc] += amt
 
         # track lowest balances
         for acc in simulated:
