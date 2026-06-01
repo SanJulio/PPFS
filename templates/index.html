@@ -1446,28 +1446,6 @@ function switchHomeTab(tab) {
   fbtn.style.color = isOverview ? 'var(--brand)' : '#fff';
 }
 
-// Swipe support for home tabs
-(function(){
-  var tabs = document.getElementById('homeTabs');
-  var ov = document.getElementById('tabOverview');
-  var fu = document.getElementById('tabFuture');
-  var startX = null;
-  function onStart(e){ startX = (e.touches ? e.touches[0].clientX : e.clientX); }
-  function onEnd(e){
-    if (startX === null) return;
-    var endX = (e.changedTouches ? e.changedTouches[0].clientX : e.clientX);
-    var dx = endX - startX;
-    if (Math.abs(dx) < 80) return;
-    var curOverview = ov.style.display !== 'none';
-    if (dx < 0 && curOverview) switchHomeTab('future');
-    else if (dx > 0 && !curOverview) switchHomeTab('overview');
-    startX = null;
-  }
-  [ov, fu].forEach(function(el){
-    el.addEventListener('touchstart', onStart, {passive:true});
-    el.addEventListener('touchend', onEnd, {passive:true});
-  });
-})();
 
 function toggleAmounts() {
   amountsVisible = !amountsVisible;

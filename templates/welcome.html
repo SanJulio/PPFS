@@ -718,6 +718,28 @@ function showRegErr(msg) {
   el.style.display = 'block';
   el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
+
+/* ── SWIPE NAVIGATION for feature slides (s3–s6) ── */
+(function() {
+  var journey = document.getElementById('journey');
+  var swipeStartX = 0;
+  var swipeStartY = 0;
+
+  journey.addEventListener('touchstart', function(e) {
+    swipeStartX = e.touches[0].clientX;
+    swipeStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  journey.addEventListener('touchend', function(e) {
+    if (jCur < 3 || jCur > 6) return;
+    var dx = e.changedTouches[0].clientX - swipeStartX;
+    var dy = e.changedTouches[0].clientY - swipeStartY;
+    if (Math.abs(dx) < 50) return;
+    if (Math.abs(dx) < Math.abs(dy)) return;
+    if (dx < 0) jGo(jCur + 1, 1);
+    else        jGo(jCur - 1, -1);
+  }, { passive: true });
+})();
 </script>
 </body>
 </html>
