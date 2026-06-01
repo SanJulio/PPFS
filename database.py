@@ -718,5 +718,30 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: accounts.savings_type ---
+    # Whether a savings account is variable (accessible) or fixed (locked-in, e.g. fixed-rate ISA).
+    # Fixed savings are excluded from transfer suggestions in the banner and caution pill.
+    # Existing savings accounts default to 'variable' to preserve current behaviour.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='accounts' AND column_name='savings_type'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE accounts ADD COLUMN savings_type TEXT")
+                cursor.execute("UPDATE accounts SET savings_type = 'variable' WHERE type = 'savings'")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN savings_type TEXT")
+            cursor.execute("UPDATE accounts SET savings_type = 'variable' WHERE type = 'savings'")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (accounts.savings_type): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

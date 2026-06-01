@@ -181,7 +181,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             {% for a in accounts %}
             <tr>
               <td>{{ a.name }}</td>
-              <td class="acc-col-type"><span class="badge {% if a.type == 'current' %}text-bg-primary{% elif a.type == 'savings' %}text-bg-success{% elif a.type == 'cash' %}text-bg-warning{% else %}text-bg-light{% endif %}">{{ a.type }}</span></td>
+              <td class="acc-col-type"><span class="badge {% if a.type == 'current' %}text-bg-primary{% elif a.type == 'savings' %}text-bg-success{% elif a.type == 'cash' %}text-bg-warning{% else %}text-bg-light{% endif %}">{{ a.type }}</span>{% if a.type == 'savings' and a.get('savings_type') == 'fixed' %}<span class="badge text-bg-secondary ms-1">Fixed</span>{% endif %}</td>
               <td class="text-end money">£{{ "%.2f"|format(a.balance) }}</td>
               <td class="text-end">
                 <div class="d-flex gap-1 justify-content-end manage-actions">
@@ -204,7 +204,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                       <input class="form-control form-control-sm" name="name" value="{{ a.name }}" placeholder="Name" required>
                     </div>
                     <div class="col-6">
-                      <select class="form-select form-select-sm" name="type" required>
+                      <select class="form-select form-select-sm" name="type" required onchange="toggleEditSavingsSection(this, '{{ a.id }}')">
                         <option value="current" {% if a.type == 'current' %}selected{% endif %}>Current</option>
                         <option value="savings" {% if a.type == 'savings' %}selected{% endif %}>Savings</option>
                         <option value="cash" {% if a.type == 'cash' %}selected{% endif %}>Cash</option>
@@ -213,17 +213,21 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                     <div class="col-12">
                       <input class="form-control form-control-sm" name="balance" value="{{ '%.2f'|format(a.balance) }}" placeholder="Balance" required>
                     </div>
-                    {% if a.type == 'savings' %}
-                    <div class="col-12">
+                    <div id="editSavingsSection-{{ a.id }}" class="col-12" style="display:{% if a.type == 'savings' %}block{% else %}none{% endif %};">
                       <div class="d-flex align-items-center gap-2">
                         <input class="form-control form-control-sm" name="savings_rate" type="number" min="0" max="100" step="0.01"
                           value="{{ '%.2f'|format(a.savings_rate) if a.savings_rate is defined and a.savings_rate else '0.00' }}"
                           placeholder="Annual interest rate (%)">
                         <span class="text-muted small text-nowrap">% per year</span>
                       </div>
-                      <div class="text-muted" style="font-size:11px; margin-top:3px;">Annual savings rate — used to project interest growth in the forecast</div>
+                      <div class="text-muted mb-2" style="font-size:11px; margin-top:3px;">Annual savings rate — used to project interest growth in the forecast</div>
+                      <div class="text-muted small mb-1">Savings type</div>
+                      <div class="d-flex gap-2">
+                        <button type="button" class="savings-type-pill btn btn-sm" data-type="variable" onclick="setEditSavingsType('{{ a.id }}', 'variable')" style="background:{% if a.get('savings_type') == 'fixed' %}#f1f5f9{% else %}#1e293b{% endif %};color:{% if a.get('savings_type') == 'fixed' %}#374151{% else %}#fff{% endif %};">Variable</button>
+                        <button type="button" class="savings-type-pill btn btn-sm" data-type="fixed" onclick="setEditSavingsType('{{ a.id }}', 'fixed')" style="background:{% if a.get('savings_type') == 'fixed' %}#1e293b{% else %}#f1f5f9{% endif %};color:{% if a.get('savings_type') == 'fixed' %}#fff{% else %}#374151{% endif %};">Fixed</button>
+                      </div>
+                      <input type="hidden" name="savings_type" id="editSavingsTypeInput-{{ a.id }}" value="{{ a.get('savings_type') or 'variable' }}">
                     </div>
-                    {% endif %}
                     <div class="col-12 d-flex gap-2">
                       <button class="btn btn-sm btn-dark">Save</button>
                       <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleEdit('account-{{ a.id }}')">Cancel</button>
@@ -1046,6 +1050,33 @@ function toggleEdit(id) {
   const row = document.getElementById(id);
   row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
 }
+function toggleEditSavingsSection(selectEl, accountId) {
+  var section = document.getElementById('editSavingsSection-' + accountId);
+  if (section) section.style.display = selectEl.value === 'savings' ? 'block' : 'none';
+}
+function setEditSavingsType(accountId, type) {
+  var input = document.getElementById('editSavingsTypeInput-' + accountId);
+  if (input) input.value = type;
+  document.querySelectorAll('#editSavingsSection-' + accountId + ' .savings-type-pill').forEach(function(b) {
+    var active = b.dataset.type === type;
+    b.style.background = active ? '#1e293b' : '#f1f5f9';
+    b.style.color = active ? '#fff' : '#374151';
+  });
+}
+function toggleAddSavingsSection(selectEl) {
+  var section = document.getElementById('addSavingsSection');
+  if (section) section.style.display = selectEl.value === 'savings' ? 'block' : 'none';
+  if (selectEl.value === 'savings') setAddSavingsType('variable');
+}
+function setAddSavingsType(type) {
+  var input = document.getElementById('addSavingsTypeInput');
+  if (input) input.value = type;
+  document.querySelectorAll('#addSavingsSection .savings-type-pill').forEach(function(b) {
+    var active = b.dataset.type === type;
+    b.style.background = active ? '#1e293b' : '#f1f5f9';
+    b.style.color = active ? '#fff' : '#374151';
+  });
+}
 
 if (window.location.search.includes('msg=')) {
   const url = new URL(window.location);
@@ -1371,12 +1402,20 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
         <input class="form-control" name="name" placeholder="Account name" required>
       </div>
       <div class="mb-2">
-        <select class="form-select" name="type" required>
+        <select class="form-select" name="type" required onchange="toggleAddSavingsSection(this)">
           <option value="">Select type</option>
           <option value="current">Current</option>
           <option value="savings">Savings</option>
           <option value="cash">Cash</option>
         </select>
+      </div>
+      <div id="addSavingsSection" class="mb-2" style="display:none;">
+        <div class="text-muted small mb-1">Savings type</div>
+        <div class="d-flex gap-2">
+          <button type="button" class="savings-type-pill btn btn-sm" data-type="variable" onclick="setAddSavingsType('variable')" style="background:#1e293b;color:#fff;">Variable</button>
+          <button type="button" class="savings-type-pill btn btn-sm" data-type="fixed" onclick="setAddSavingsType('fixed')" style="background:#f1f5f9;color:#374151;">Fixed</button>
+        </div>
+        <input type="hidden" name="savings_type" id="addSavingsTypeInput" value="variable">
       </div>
       <div class="mb-3">
         <input class="form-control" name="balance" inputmode="decimal" placeholder="Starting balance (£)" required>

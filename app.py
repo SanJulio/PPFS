@@ -754,7 +754,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
             spending_accounts.append({"name": name, "balance": balance})
         elif acc_type in savings_types:
             savings_balance += balance
-            savings_accounts.append({"name": name, "balance": balance})
+            savings_accounts.append({"name": name, "balance": balance, "savings_type": info.get("savings_type")})
 
     all_future_bills = 0.0      # all unpaid bills in period — shown in Bills left
     spending_future_bills = 0.0  # only spending-account bills — used for safe_spending
@@ -1146,7 +1146,8 @@ def home():
             "balance": r["balance"],
             "type": r["type"],
             "active": bool(r["active"]),
-            "include_in_overview": bool(r.get("include_in_overview", 1))
+            "include_in_overview": bool(r.get("include_in_overview", 1)),
+            "savings_type": r.get("savings_type"),
         }
 
     import cycle_engine as _ce
@@ -1246,7 +1247,8 @@ def home():
                             "balance": r["balance"],
                             "type": r["type"],
                             "active": bool(r["active"]),
-                            "include_in_overview": bool(r.get("include_in_overview", 1))
+                            "include_in_overview": bool(r.get("include_in_overview", 1)),
+                            "savings_type": r.get("savings_type"),
                         }
                     overview = calculate_financial_overview(accounts, period_end=cycle_end_date, safe_boundary=cycle_end_date)
                     monthly = calculate_monthly_spending(cycle_start_date, cycle_end_date)
@@ -1502,6 +1504,7 @@ def api_overview():
             "type": r["type"],
             "active": bool(r["active"]),
             "include_in_overview": bool(r.get("include_in_overview", 1)),
+            "savings_type": r.get("savings_type"),
         }
     ov = calculate_financial_overview(accounts, safe_boundary=end)
 
@@ -2642,6 +2645,7 @@ def api_snapshot():
         accounts[r["name"]] = {
             "balance": float(r["balance"]),
             "type": r["type"],
+            "savings_type": r.get("savings_type"),
         }
 
     if USE_POSTGRES:
@@ -2755,6 +2759,7 @@ def api_snapshot():
                 "balance_on_date": round(simulated[name], 2),
                 "change": round(simulated[name] - accounts[name]["balance"], 2),
                 "type": accounts[name]["type"],
+                "savings_type": accounts[name].get("savings_type"),
                 "min_balance": round(min_balances[name], 2),
                 "min_balance_date": min_balance_dates[name],
             }
@@ -3069,6 +3074,9 @@ def settings_add_account():
     except ValueError:
         return redirect(url_for("manage", msg="Invalid balance."))
 
+    savings_type_raw = (request.form.get("savings_type") or "").strip()
+    savings_type = savings_type_raw if acc_type == "savings" and savings_type_raw in ("variable", "fixed") else None
+
     # Free tier limit: max 2 accounts
     if not user_is_pro():
         existing = get_active_accounts(current_user.id)
@@ -3078,9 +3086,9 @@ def settings_add_account():
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("INSERT INTO accounts (name, balance, type, active, user_id) VALUES (%s, %s, %s, 1, %s)", (name, balance, acc_type, current_user.id))
+        cursor.execute("INSERT INTO accounts (name, balance, type, active, user_id, savings_type) VALUES (%s, %s, %s, 1, %s, %s)", (name, balance, acc_type, current_user.id, savings_type))
     else:
-        cursor.execute("INSERT INTO accounts (name, balance, type, active, user_id) VALUES (?, ?, ?, 1, ?)", (name, balance, acc_type, current_user.id))
+        cursor.execute("INSERT INTO accounts (name, balance, type, active, user_id, savings_type) VALUES (?, ?, ?, 1, ?, ?)", (name, balance, acc_type, current_user.id, savings_type))
     db.commit()
     cursor.close()
     release_db(db)
@@ -3123,6 +3131,9 @@ def settings_edit_account():
     except ValueError:
         savings_rate = 0.0
 
+    savings_type_raw = (request.form.get("savings_type") or "").strip()
+    savings_type = savings_type_raw if acc_type == "savings" and savings_type_raw in ("variable", "fixed") else None
+
     db = get_db()
     cursor = db.cursor()
     try:
@@ -3136,9 +3147,10 @@ def settings_edit_account():
 
         if USE_POSTGRES:
             cursor.execute("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS savings_rate DECIMAL(5,2) DEFAULT 0")
-            cursor.execute("UPDATE accounts SET name=%s, type=%s, balance=%s, savings_rate=%s WHERE id=%s AND user_id=%s", (name, acc_type, balance, savings_rate, account_id, current_user.id))
+            cursor.execute("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS savings_type TEXT")
+            cursor.execute("UPDATE accounts SET name=%s, type=%s, balance=%s, savings_rate=%s, savings_type=%s WHERE id=%s AND user_id=%s", (name, acc_type, balance, savings_rate, savings_type, account_id, current_user.id))
         else:
-            cursor.execute("UPDATE accounts SET name=?, type=?, balance=? WHERE id=? AND user_id=?", (name, acc_type, balance, account_id, current_user.id))
+            cursor.execute("UPDATE accounts SET name=?, type=?, balance=?, savings_type=? WHERE id=? AND user_id=?", (name, acc_type, balance, savings_type, account_id, current_user.id))
         db.commit()
 
         # Log balance change as a transaction for forecast tracking

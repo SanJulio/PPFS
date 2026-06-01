@@ -65,7 +65,8 @@ def _create_test_schema(db_path: Path):
             type TEXT NOT NULL,
             active INTEGER NOT NULL DEFAULT 1,
             include_in_overview INTEGER NOT NULL DEFAULT 1,
-            user_id INTEGER NOT NULL
+            user_id INTEGER NOT NULL,
+            savings_type TEXT
         )""",
         """CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
