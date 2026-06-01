@@ -3412,6 +3412,14 @@ def settings_add_income():
 
     db = get_db()
     cursor = db.cursor()
+
+    # Count existing income sources before insert to detect the first-ever addition
+    if USE_POSTGRES:
+        cursor.execute("SELECT COUNT(*) FROM income WHERE user_id = %s", (current_user.id,))
+    else:
+        cursor.execute("SELECT COUNT(*) FROM income WHERE user_id = ?", (current_user.id,))
+    prior_income_count = cursor.fetchone()[0]
+
     if USE_POSTGRES:
         cursor.execute(
             "INSERT INTO income (name, amount, frequency, account, user_id, day, weekly_day, rule_type, rule_config, weekend_rule, bank_holiday_rule, first_payment_date) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
@@ -3425,7 +3433,8 @@ def settings_add_income():
     new_id = cursor.lastrowid
     db.commit()
 
-    # Auto-star this source if no primary exists yet for this user
+    # Auto-star this source if no primary exists yet; on the very first income source
+    # also silently switch the user to automatic cycle mode.
     try:
         if USE_POSTGRES:
             cursor.execute("SELECT COUNT(*) FROM income WHERE user_id = %s AND is_primary = 1", (current_user.id,))
@@ -3437,6 +3446,11 @@ def settings_add_income():
                 cursor.execute("UPDATE income SET is_primary = 1 WHERE id = %s AND user_id = %s", (new_id, current_user.id))
             else:
                 cursor.execute("UPDATE income SET is_primary = 1 WHERE id = ? AND user_id = ?", (new_id, current_user.id))
+            if prior_income_count == 0:
+                if USE_POSTGRES:
+                    cursor.execute("UPDATE users SET cycle_mode = 'automatic' WHERE id = %s", (current_user.id,))
+                else:
+                    cursor.execute("UPDATE users SET cycle_mode = 'automatic' WHERE id = ?", (current_user.id,))
             db.commit()
     except Exception:
         pass
@@ -3504,10 +3518,28 @@ def settings_delete_income():
     income_id = request.form.get("id")
     db = get_db()
     cursor = db.cursor()
+
+    # Check if the source being deleted is primary before removing it
+    if USE_POSTGRES:
+        cursor.execute("SELECT is_primary FROM income WHERE id = %s AND user_id = %s", (income_id, current_user.id))
+    else:
+        cursor.execute("SELECT is_primary FROM income WHERE id = ? AND user_id = ?", (income_id, current_user.id))
+    row = cursor.fetchone()
+    was_primary = row is not None and row[0] == 1
+
     if USE_POSTGRES:
         cursor.execute("DELETE FROM income WHERE id = %s AND user_id = %s", (income_id, current_user.id))
     else:
         cursor.execute("DELETE FROM income WHERE id = ? AND user_id = ?", (income_id, current_user.id))
+
+    # If the primary source was removed, revert cycle mode to manual so the user
+    # isn't left in automatic mode with no source powering it.
+    if was_primary:
+        if USE_POSTGRES:
+            cursor.execute("UPDATE users SET cycle_mode = 'manual' WHERE id = %s", (current_user.id,))
+        else:
+            cursor.execute("UPDATE users SET cycle_mode = 'manual' WHERE id = ?", (current_user.id,))
+
     db.commit()
     cursor.close()
     release_db(db)
