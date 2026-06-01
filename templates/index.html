@@ -2210,10 +2210,14 @@ function _applyOverviewData(d, start, end) {
   document.getElementById('future-bills-val').textContent = '£' + d.future_bills.toFixed(2);
   var blEl = document.getElementById('tile-bills');
   if (blEl) {
+    var _months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     blEl.innerHTML = (d.future_bills_list && d.future_bills_list.length)
       ? d.future_bills_list.map(function(b) {
           var eName = _drpEsc(b.name).replace(/"/g, '&quot;');
           var eAcc  = _drpEsc(b.account).replace(/"/g, '&quot;');
+          var dateLabel = b.due_date
+            ? (function() { var dt = new Date(b.due_date + 'T00:00:00'); return dt.getDate() + ' ' + _months[dt.getMonth()]; })()
+            : 'day ' + b.day;
           return '<div class="d-flex justify-content-between small py-1 border-bottom bill-pay-row"'
             + ' style="cursor:pointer;"'
             + ' data-bill-id="' + b.id + '"'
@@ -2221,7 +2225,7 @@ function _applyOverviewData(d, start, end) {
             + ' data-amount="' + b.amount + '"'
             + ' data-account="' + eAcc + '"'
             + ' data-day="' + b.day + '">'
-            + '<span>' + _drpEsc(b.name) + ' <span class="text-muted">(day ' + b.day + ')</span></span>'
+            + '<span>' + _drpEsc(b.name) + ' <span class="text-muted">(' + dateLabel + ')</span></span>'
             + '<span class="fw-semibold text-danger amount-private">£' + parseFloat(b.amount).toFixed(2) + '</span>'
             + '</div>';
         }).join('')

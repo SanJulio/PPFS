@@ -826,7 +826,8 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
                 "name": expense["name"],
                 "amount": expense["amount"],
                 "day": expense["day"],
-                "account": acc
+                "account": acc,
+                "due_date": due.isoformat(),
             })
             # Only deduct from safe_spending if within safe_boundary
             if accounts[acc]["type"] in spending_types:
@@ -878,7 +879,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
         "net_worth": net_worth,
         "spending_accounts": sorted(spending_accounts, key=lambda x: x["name"].lower()),
         "savings_accounts": sorted(savings_accounts, key=lambda x: x["name"].lower()),
-        "future_bills_list": sorted(future_bills_list, key=lambda x: x["day"]),
+        "future_bills_list": sorted(future_bills_list, key=lambda x: x["due_date"]),
     }
 
 # --- CYCLE DATE HELPER ---
@@ -1508,13 +1509,20 @@ def api_overview():
         }
     ov = calculate_financial_overview(accounts, safe_boundary=end)
 
+    # Filter future bills to those whose due date falls on or after the selected start.
+    # calculate_financial_overview always uses today as the lower bound; when the custom
+    # start is in the future we need to drop bills that fall between today and start.
+    start_iso = start.isoformat()
+    filtered_bills = [b for b in ov["future_bills_list"] if b.get("due_date", "") >= start_iso]
+    filtered_bills_total = sum(b["amount"] for b in filtered_bills)
+
     return jsonify({
         "income_received": monthly["income_received"],
         "income_list": monthly["income_list"],
         "scheduled": monthly["scheduled"],
         "bills_list": monthly["bills_list"],
-        "future_bills": ov["future_bills"],
-        "future_bills_list": ov["future_bills_list"],
+        "future_bills": filtered_bills_total,
+        "future_bills_list": filtered_bills,
         "safe_spending": ov["safe_spending"],
         "shortfall": ov["shortfall"],
         "display_start": f"{start.day} {start.strftime('%b')}",
