@@ -124,7 +124,7 @@ body { background: #f2f4f7; padding-bottom: 140px; }
   </div>
   {% endif %}
 
-  <div class="d-flex gap-2 mb-2 flex-wrap">
+  <div class="d-flex gap-2 mb-2 flex-wrap" id="forecastFilterBar">
     <button class="btn btn-outline-secondary btn-filter" id="filterAll" onclick="setFilter('all', this)">All</button>
     <button class="btn btn-outline-secondary btn-filter active" id="filterCurrent" onclick="setFilter('current', this)">Current</button>
     <button class="btn btn-outline-secondary btn-filter" id="filterSavings" onclick="setFilter('savings', this)">Savings</button>
@@ -134,11 +134,11 @@ body { background: #f2f4f7; padding-bottom: 140px; }
   <div id="insightsStrip"></div>
   <div id="warnings"></div>
 
-  <div id="forecastEmpty" class="card p-5 text-center text-muted mb-4 d-none">
-    <div class="fs-2 mb-2">📈</div>
-    <div class="fw-bold mb-1">Nothing to forecast yet</div>
-    <div class="small mb-3">Add an account and some bills or income so Spendara can predict your future balances</div>
-    <a href="/manage" class="btn btn-dark btn-sm rounded-3 px-4">Go to My Money</a>
+  <div id="forecastEmpty" class="card p-5 text-center mb-4 d-none">
+    <div style="font-size:40px;margin-bottom:12px;">🔮</div>
+    <div class="fw-bold mb-2" style="font-size:18px;">Your forecast will appear here</div>
+    <p class="text-muted small mb-3">Add your accounts and income in My Money to see your 90-day balance forecast</p>
+    <a href="/manage" class="btn btn-dark rounded-3 px-4">Go to My Money</a>
   </div>
 
   <div id="v1Section">
@@ -246,7 +246,8 @@ upcomingItems.forEach(function(item) {
 
 if (accountNames.length === 0) {
   document.getElementById('forecastEmpty').classList.remove('d-none');
-  document.getElementById('forecastChartCard').classList.add('d-none');
+  document.getElementById('v1Section').style.display = 'none';
+  document.getElementById('forecastFilterBar').style.display = 'none';
 }
 
 function filteredAccounts() {

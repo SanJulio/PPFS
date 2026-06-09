@@ -174,178 +174,21 @@ body.privacy-invisible .amounts-visible .amount-private {
 
 <!-- ONBOARDING MODAL -->
 {% if show_onboarding %}
-<div id="onboardingOverlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;">
-  <div class="card" style="width: 100%; max-width: 500px; margin: 20px; position:relative;">
+<div id="onboardingOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;">
+  <div class="card" style="width:100%;max-width:420px;margin:20px;position:relative;">
     <button onclick="closeOnboarding()" style="position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;line-height:1;color:#aaa;cursor:pointer;z-index:1;">✕</button>
     <div class="card-body p-4">
-      <!-- Step indicator -->
-      <div style="display:flex; justify-content:center; gap:8px; margin-bottom:24px;">
-        <div id="dot-1" style="width:10px; height:10px; border-radius:50%; background:#111; transition:background 0.2s;"></div>
-        <div id="dot-2" style="width:10px; height:10px; border-radius:50%; background:#ddd; transition:background 0.2s;"></div>
-        <div id="dot-3" style="width:10px; height:10px; border-radius:50%; background:#ddd; transition:background 0.2s;"></div>
-        <div id="dot-4" style="width:10px; height:10px; border-radius:50%; background:#ddd; transition:background 0.2s;"></div>
-        <div id="dot-5" style="width:10px; height:10px; border-radius:50%; background:#ddd; transition:background 0.2s;"></div>
+      <div style="text-align:center;margin-bottom:24px;">
+        <div style="font-size:48px;margin-bottom:12px;">✨</div>
+        <h3 class="fw-bold mb-2">Welcome to Spendara{% if current_user.display_name %}, {{ current_user.display_name.split()[0] }}{% endif %}</h3>
+        <p class="text-muted mb-0" style="font-size:15px;">Here's your financial home. Let's get it set up.</p>
       </div>
-      <!-- Step 1: Welcome -->
-      <div id="step-1" class="onboarding-step">
-        <div style="text-align: center; margin-bottom: 24px;">
-          <div style="font-size: 48px; margin-bottom: 12px;">👋</div>
-          <h3 class="fw-bold">Welcome to Spendara</h3>
-          <p class="text-muted">Let's get you set up in 2 minutes</p>
-        </div>
-        <p class="mb-3">Here's what you can do:</p>
-        <div class="mb-4">
-          <div class="d-flex gap-2 mb-2">
-            <div style="font-size: 20px;">💰</div>
-            <div>
-              <div class="fw-semibold">See your finances at a glance</div>
-              <div class="small text-muted">Track balance, bills & savings</div>
-            </div>
-          </div>
-          <div class="d-flex gap-2 mb-2">
-            <div style="font-size: 20px;">📈</div>
-            <div>
-              <div class="fw-semibold">Forecast your future</div>
-              <div class="small text-muted">See 90 days ahead</div>
-            </div>
-          </div>
-          <div class="d-flex gap-2">
-            <div style="font-size: 20px;">🚀</div>
-            <div>
-              <div class="fw-semibold">Make smart decisions</div>
-              <div class="small text-muted">Know if you can afford things</div>
-            </div>
-          </div>
-        </div>
-        <button class="btn btn-dark w-100 py-3" onclick="onboardingStep(2)">Let's go →</button>
+      <div class="mb-4" style="border-left:3px solid #e5e7eb;padding-left:14px;">
+        <div class="mb-2" style="font-size:14px;">🏦 Add your accounts in <strong>My Money</strong></div>
+        <div class="mb-2" style="font-size:14px;">📈 Your forecast builds automatically</div>
+        <div style="font-size:14px;">➕ Tap <strong>+</strong> anytime to log spending</div>
       </div>
-
-      <!-- Step 2: Create Account -->
-      <div id="step-2" class="onboarding-step" style="display: none;">
-        <div style="text-align: center; margin-bottom: 24px;">
-          <div style="font-size: 48px; margin-bottom: 12px;">🏦</div>
-          <h3 class="fw-bold">Create your first account</h3>
-          <p class="text-muted">e.g. Current Account, Savings, or Cash wallet</p>
-        </div>
-        <form id="onboardingForm">
-          <div class="mb-3">
-            <label class="form-label">Account name</label>
-            <input class="form-control" id="onboardingName" placeholder="e.g. Barclays Current" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Type</label>
-            <select class="form-select" id="onboardingType" required>
-              <option value="">Select type</option>
-              <option value="current">Current Account</option>
-              <option value="savings">Savings Account</option>
-              <option value="cash">Cash Wallet</option>
-            </select>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Starting balance (£)</label>
-            <input class="form-control" id="onboardingBalance" inputmode="decimal" placeholder="e.g. 1000" required>
-          </div>
-          <button type="button" class="btn btn-dark w-100 py-3" onclick="createOnboardingAccount(this)">Create account →</button>
-        </form>
-        <button type="button" class="btn btn-link text-muted w-100 mt-2" onclick="onboardingStep(1)">← Back</button>
-      </div>
-
-      <!-- Step 3: Add Income -->
-      <div id="step-3" class="onboarding-step" style="display: none;">
-        <div style="text-align: center; margin-bottom: 24px;">
-          <div style="font-size: 48px; margin-bottom: 12px;">💰</div>
-          <h3 class="fw-bold">Add your income</h3>
-          <p class="text-muted">So Spendara can forecast your future balance</p>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Income name</label>
-          <input class="form-control" id="obIncomeName" placeholder="e.g. Salary">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Amount (£)</label>
-          <input class="form-control" id="obIncomeAmount" inputmode="decimal" placeholder="e.g. 2000">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Frequency</label>
-          <select class="form-select" id="obIncomeFreq" onchange="obToggleIncomeDay(this.value)">
-            <option value="monthly">Monthly</option>
-            <option value="weekly">Weekly</option>
-          </select>
-        </div>
-        <div class="mb-3" id="obIncomeDayRow">
-          <label class="form-label">Day of month received (e.g. 25)</label>
-          <input class="form-control" id="obIncomeDay" type="number" min="1" max="28" placeholder="25" value="25">
-        </div>
-        <div class="mb-3" id="obIncomeWeeklyDayRow" style="display:none;">
-          <label class="form-label">Day of week received</label>
-          <select class="form-select" id="obIncomeWeeklyDay">
-            <option value="0">Monday</option>
-            <option value="1">Tuesday</option>
-            <option value="2">Wednesday</option>
-            <option value="3">Thursday</option>
-            <option value="4" selected>Friday</option>
-          </select>
-        </div>
-        <button type="button" class="btn btn-dark w-100 py-3" onclick="createOnboardingIncome(this)">Add income →</button>
-        <button type="button" class="btn btn-link text-muted w-100 mt-2" onclick="onboardingStep(4)">Skip →</button>
-      </div>
-
-      <!-- Step 4: Add a Bill -->
-      <div id="step-4" class="onboarding-step" style="display: none;">
-        <div style="text-align: center; margin-bottom: 24px;">
-          <div style="font-size: 48px; margin-bottom: 12px;">📋</div>
-          <h3 class="fw-bold">Add a bill</h3>
-          <p class="text-muted">e.g. Netflix, rent, gym — anything recurring</p>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Bill name</label>
-          <input class="form-control" id="obBillName" placeholder="e.g. Netflix">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Amount (£)</label>
-          <input class="form-control" id="obBillAmount" inputmode="decimal" placeholder="e.g. 15">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Day of month it's due</label>
-          <input class="form-control" id="obBillDay" type="number" min="1" max="31" placeholder="e.g. 1">
-        </div>
-        <button type="button" class="btn btn-dark w-100 py-3" onclick="createOnboardingBill(this)">Add bill →</button>
-        <button type="button" class="btn btn-link text-muted w-100 mt-2" onclick="onboardingStep(5)">Skip →</button>
-      </div>
-
-      <!-- Step 5: Success -->
-      <div id="step-5" class="onboarding-step" style="display: none;">
-        <div style="text-align: center; margin-bottom: 24px;">
-          <div style="font-size: 48px; margin-bottom: 12px;">✨</div>
-          <h3 class="fw-bold">You're all set!</h3>
-          <p class="text-muted">Spendara is ready to forecast your future</p>
-        </div>
-        <p class="mb-3">Next steps:</p>
-        <div class="mb-4">
-          <div class="d-flex gap-2 mb-2">
-            <div class="fw-semibold">1.</div>
-            <div>
-              <div class="fw-semibold">Check your forecast</div>
-              <div class="small text-muted">See 90 days ahead</div>
-            </div>
-          </div>
-          <div class="d-flex gap-2 mb-2">
-            <div class="fw-semibold">2.</div>
-            <div>
-              <div class="fw-semibold">Log transactions as you spend</div>
-              <div class="small text-muted">Tap + from the home screen</div>
-            </div>
-          </div>
-          <div class="d-flex gap-2">
-            <div class="fw-semibold">3.</div>
-            <div>
-              <div class="fw-semibold">Add more bills &amp; income</div>
-              <div class="small text-muted">In the Manage tab</div>
-            </div>
-          </div>
-        </div>
-        <button class="btn btn-dark w-100 py-3" onclick="closeOnboarding()">Let me explore</button>
-      </div>
+      <button class="btn btn-dark w-100 py-3" onclick="closeOnboarding()">Take me in →</button>
     </div>
   </div>
 </div>
@@ -612,6 +455,15 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
   <div id="tabOverview">
 
   <div class="card p-3 mb-4" id="overviewCard">
+  {% set _ov = namespace(has_funds=false) %}{% for _ob in balances %}{% if _ob.balance > 0 %}{% set _ov.has_funds = true %}{% endif %}{% endfor %}
+  {% if not _ov.has_funds %}
+  <div style="text-align:center;padding:32px 16px;">
+    <div style="font-size:36px;margin-bottom:12px;">🏦</div>
+    <div class="fw-semibold mb-2" style="font-size:16px;">Set up your accounts to get started</div>
+    <p class="text-muted mb-3" style="font-size:14px;">Add your accounts and income so Spendara can track your balances and build your forecast</p>
+    <a href="/manage" class="btn btn-dark rounded-3 px-4">Go to My Money</a>
+  </div>
+  {% else %}
   <div class="d-flex justify-content-between align-items-center mb-2">
     <div style="font-size:12px;color:#9ca3af;white-space:nowrap;flex-shrink:1;min-width:0;">{% if show_payday_countdown %}{% if days_to_payday == 0 %}Payday today{% elif days_to_payday == 1 %}Payday tomorrow{% else %}Next payday in {{ days_to_payday }} days{% endif %}{% endif %}</div>
     <div class="d-flex align-items-center gap-2 flex-nowrap" style="position:relative;flex-shrink:0;">
@@ -846,6 +698,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
   <div class="mt-3">
     <button onclick="document.getElementById('affordModal').style.display='flex'" class="btn w-100 rounded-4 py-2 fw-bold" style="background:var(--brand);color:#fff;font-size:14px;letter-spacing:0.01em;box-shadow:0 4px 12px rgba(99,102,241,0.3);">💬 Can I afford this?</button>
   </div>
+  {% endif %}
 
 </div>
 
@@ -1710,130 +1563,6 @@ function submitAdjust() {
 }
 
 // ONBOARDING FUNCTIONS
-var onboardingAccountName = '';
-var currentOnboardingStep = 1;
-
-var ONBOARDING_BTN_LABELS = {2: 'Create account →', 3: 'Add income →', 4: 'Add bill →'};
-function onboardingStep(step) {
-  currentOnboardingStep = step;
-  document.querySelectorAll('.onboarding-step').forEach(el => el.style.display = 'none');
-  const stepEl = document.getElementById('step-' + step);
-  if (stepEl) {
-    stepEl.style.display = 'block';
-    // Re-enable any submit button that may have been disabled during a previous attempt
-    var btn = stepEl.querySelector('button.btn-dark:not(.btn-link)');
-    if (btn && ONBOARDING_BTN_LABELS[step]) {
-      btn.disabled = false;
-      btn.textContent = ONBOARDING_BTN_LABELS[step];
-    }
-  }
-  [1, 2, 3, 4, 5].forEach(i => {
-    var dot = document.getElementById('dot-' + i);
-    if (dot) dot.style.background = i === step ? '#111' : '#ddd';
-  });
-}
-
-function createOnboardingAccount(btn) {
-  const name = document.getElementById('onboardingName').value.trim();
-  const type = document.getElementById('onboardingType').value;
-  const balance = document.getElementById('onboardingBalance').value.trim();
-
-  if (!name || !type || !balance) {
-    alert('Please fill in all fields');
-    return;
-  }
-
-  // Parse balance to validate
-  const balanceNum = parseFloat(balance);
-  if (isNaN(balanceNum)) {
-    alert('Balance must be a valid number');
-    return;
-  }
-
-  const csrfToken = HOME_CSRF || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-  if (!csrfToken) {
-    alert('Security token missing. Please refresh and try again.');
-    return;
-  }
-
-  const formData = new URLSearchParams();
-  formData.append('csrf_token', csrfToken);
-  formData.append('name', name);
-  formData.append('type', type);
-  formData.append('balance', balance);
-
-  // Disable button during submission
-  btn.disabled = true;
-  const originalText = btn.textContent;
-  btn.textContent = 'Creating...';
-
-  fetch('/settings/add-account', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: formData.toString(),
-    redirect: 'follow'
-  })
-  .then(response => {
-    if (response.ok) {
-      onboardingAccountName = name;
-      onboardingStep(3);
-    } else {
-      throw new Error('Failed to create account');
-    }
-  })
-  .catch(error => {
-    console.error('Error creating account:', error);
-    btn.disabled = false;
-    btn.textContent = originalText;
-    alert('Failed to create account. Please check your details and try again.');
-  });
-}
-
-function obToggleIncomeDay(freq) {
-  document.getElementById('obIncomeDayRow').style.display = freq === 'monthly' ? '' : 'none';
-  document.getElementById('obIncomeWeeklyDayRow').style.display = freq === 'weekly' ? '' : 'none';
-}
-
-function createOnboardingIncome(btn) {
-  const name = document.getElementById('obIncomeName').value.trim();
-  const amount = document.getElementById('obIncomeAmount').value.trim();
-  const freq = document.getElementById('obIncomeFreq').value;
-  const day = parseInt(document.getElementById('obIncomeDay').value.trim()) || 25;
-  const weeklyDay = document.getElementById('obIncomeWeeklyDay').value;
-  if (!name || !amount) { alert('Please fill in name and amount'); return; }
-  btn.disabled = true; btn.textContent = 'Adding...';
-  const ruleType = freq === 'monthly' ? 'fixed_date' : null;
-  const ruleConfig = freq === 'monthly' ? JSON.stringify({day: day}) : '{}';
-  const fd = new URLSearchParams();
-  fd.append('csrf_token', HOME_CSRF);
-  fd.append('name', name); fd.append('amount', amount);
-  fd.append('frequency', freq); fd.append('account', onboardingAccountName);
-  fd.append('day', day); fd.append('weekly_day', weeklyDay);
-  fd.append('rule_type', ruleType || ''); fd.append('rule_config', ruleConfig);
-  fd.append('weekend_rule', 'before'); fd.append('bank_holiday_rule', 'before');
-  fetch('/settings/add-income', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: fd.toString(), redirect: 'follow' })
-    .then(r => { onboardingStep(4); })
-    .catch(() => { onboardingStep(4); });
-}
-
-function createOnboardingBill(btn) {
-  const name = document.getElementById('obBillName').value.trim();
-  const amount = document.getElementById('obBillAmount').value.trim();
-  const day = document.getElementById('obBillDay').value.trim();
-  if (!name || !amount || !day) { alert('Please fill in all fields'); return; }
-  btn.disabled = true; btn.textContent = 'Adding...';
-  const fd = new URLSearchParams();
-  fd.append('csrf_token', HOME_CSRF);
-  fd.append('name', name); fd.append('amount', amount);
-  fd.append('day', day); fd.append('account', onboardingAccountName);
-  fd.append('frequency', 'monthly');
-  fetch('/settings/add-bill', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: fd.toString(), redirect: 'follow' })
-    .then(r => { onboardingStep(5); })
-    .catch(() => { onboardingStep(5); });
-}
-
 function closeOnboarding() {
   var overlay = document.getElementById('onboardingOverlay');
   if (overlay) overlay.style.display = 'none';
@@ -1843,27 +1572,6 @@ function closeOnboarding() {
     body: JSON.stringify({csrf_token: HOME_CSRF})
   }).catch(function(){});
 }
-
-// Swipe to navigate onboarding steps
-(function() {
-  var card = document.querySelector('#onboardingOverlay .card');
-  if (!card) return;
-  var touchStartX = 0;
-  card.addEventListener('touchstart', function(e) {
-    touchStartX = e.changedTouches[0].clientX;
-  }, { passive: true });
-  card.addEventListener('touchend', function(e) {
-    var dx = e.changedTouches[0].clientX - touchStartX;
-    if (Math.abs(dx) < 50) return; // ignore small movements
-    if (dx < 0 && currentOnboardingStep < 5) {
-      // swipe left = next step (only step 1 is safe to auto-advance without form)
-      if (currentOnboardingStep === 1) onboardingStep(2);
-    } else if (dx > 0 && currentOnboardingStep > 1) {
-      // swipe right = previous step
-      onboardingStep(currentOnboardingStep - 1);
-    }
-  }, { passive: true });
-})();
 
 // --- Mark bill as paid ---
 document.addEventListener('click', function(e) {
