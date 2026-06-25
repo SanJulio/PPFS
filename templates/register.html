@@ -79,6 +79,9 @@ input { border-radius: 12px !important; padding: 12px !important; font-size: 16p
               </label>
             </div>
           </div>
+          {% if seed_income %}<input type="hidden" name="seed_income" value="{{ seed_income }}">{% endif %}
+          {% if seed_payday %}<input type="hidden" name="seed_payday" value="{{ seed_payday }}">{% endif %}
+          {% if seed_bills %}<input type="hidden" name="seed_bills" value="{{ seed_bills }}">{% endif %}
           <button class="btn btn-dark w-100 py-3">Create account</button>
         </form>
 

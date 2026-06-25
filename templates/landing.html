@@ -701,6 +701,13 @@ footer .copyright { line-height: 1.8; }
 .col-green { color: #059669; }
 .col-amber { color: #d97706; }
 .col-red { color: #dc2626; }
+.fo-afford-input-wrap { position: relative; margin-bottom: 10px; }
+.fo-afford-prefix { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #555; font-family: 'DM Sans', sans-serif; font-size: 15px; pointer-events: none; }
+.fo-afford-input { width: 100%; padding: 14px 14px 14px 26px; border: 1.5px solid #e5e7eb; border-radius: 10px; font-family: 'DM Sans', sans-serif; font-size: 15px; color: #111; outline: none; transition: border-color 0.2s; box-sizing: border-box; -webkit-appearance: none; appearance: none; }
+.fo-afford-input:focus { border-color: var(--brand); }
+.fo-afford-btn { width: 100%; padding: 14px; border-radius: 10px; border: none; background: #111; color: #fff; font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 500; cursor: pointer; transition: background 0.2s; margin-top: 6px; -webkit-appearance: none; appearance: none; }
+.fo-afford-btn:hover { background: #333; }
+.afford-result { font-size: 14px; line-height: 1.6; margin: 0; }
 
 /* ── RESPONSIVE ── */
 @media (max-width: 768px) {
@@ -905,9 +912,20 @@ footer .copyright { line-height: 1.8; }
         <canvas id="previewChart"></canvas>
       </div>
     </div>
+    <div id="affordCard" class="fo-chart-card" style="display:none;">
+      <div class="fo-stat-label" style="margin-bottom:6px;">Can I afford this?</div>
+      <p style="font-size:14px;color:#6b7280;margin-bottom:14px;font-weight:300;">Enter a purchase amount to see what it does to your forecast.</p>
+      <div class="fo-afford-input-wrap">
+        <span class="fo-afford-prefix">£</span>
+        <input id="affordInput" class="fo-afford-input" type="number" min="0" placeholder="e.g. 500">
+      </div>
+      <button class="fo-afford-btn" onclick="checkAfford()">Check it →</button>
+      <div id="affordResult" style="display:none;margin-top:14px;"></div>
+      <a id="affordClear" href="#" onclick="clearAfford();return false;" style="display:none;font-size:12px;color:#9ca3af;margin-top:8px;text-decoration:underline;">clear</a>
+    </div>
     <div class="fo-signup">
       <p>Want to track this with your real accounts?</p>
-      <a href="/welcome" class="fo-signup-btn">Save my forecast — it's free →</a>
+      <a href="/register" id="foSignupBtn" class="fo-signup-btn">Save my forecast — it's free →</a>
     </div>
   </div>
 </section>
@@ -915,6 +933,7 @@ footer .copyright { line-height: 1.8; }
 <script>
 var _previewChart = null;
 var _foRevealed = false;
+var _lastResult = null;
 
 function fmtMoney(n) {
   return '£' + Math.abs(n).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -975,7 +994,55 @@ function getTotalBills() {
   return total;
 }
 
-function computeForecast() {
+function clearAffordUi() {
+  var inp = document.getElementById('affordInput');
+  if (inp) inp.value = '';
+  var rEl = document.getElementById('affordResult');
+  if (rEl) { rEl.style.display = 'none'; rEl.innerHTML = ''; }
+  var cEl = document.getElementById('affordClear');
+  if (cEl) cEl.style.display = 'none';
+}
+
+function clearAfford() {
+  clearAffordUi();
+  if (_lastResult) { renderForecastOutput(_lastResult); }
+}
+
+function checkAfford() {
+  var P = parseFloat(document.getElementById('affordInput').value) || 0;
+  if (P <= 0 || !_lastResult) return;
+  var newStart = 1200 - P;
+  var r = computeForecast(newStart);
+  var html = '';
+  if (newStart >= 0 && r.endBalance > 500 && r.minBalance >= 0) {
+    html = '<p class="afford-result col-green"><strong>Yes, you can afford this.</strong> Your forecast stays healthy.</p>'
+         + '<p style="font-size:12px;color:#6b7280;margin:4px 0 0;">90-day end balance: ' + fmtMoney(r.endBalance) + '</p>';
+  } else if (newStart >= 0) {
+    var lowAmt = r.minBalance < 0 ? fmtMoney(Math.abs(r.minBalance)) + ' below zero' : fmtMoney(r.minBalance);
+    html = '<p class="afford-result col-amber"><strong>You can afford this, but it\'ll be tight.</strong> Your balance drops to ' + lowAmt + ' at its lowest (' + fmtShortDate(r.dates[r.minIndex]) + ').</p>';
+  } else {
+    var nextPay = null;
+    for (var k = 0; k < _lastResult.paydayIndexes.length; k++) {
+      var idx = _lastResult.paydayIndexes[k];
+      if (idx <= 14 && newStart + _lastResult.cycleIncome >= 0) { nextPay = { idx: idx, date: _lastResult.dates[idx] }; break; }
+    }
+    if (nextPay) {
+      html = '<p class="afford-result col-amber"><strong>Not right now —</strong> but you could afford this in ' + nextPay.idx + ' day' + (nextPay.idx === 1 ? '' : 's') + ' when your next income arrives (' + fmtShortDate(nextPay.date) + ').</p>';
+    } else {
+      var firstPayDate = _lastResult.paydayIndexes.length > 0 ? fmtShortDate(_lastResult.dates[_lastResult.paydayIndexes[0]]) : 'your next payday';
+      var billCut = Math.ceil((P - 1200) / 3);
+      html = '<p class="afford-result col-red"><strong>This would put you in the red.</strong> You\'d need to wait until ' + firstPayDate + ' or reduce your bills by £' + billCut + '/month.</p>';
+    }
+  }
+  var resultEl = document.getElementById('affordResult');
+  resultEl.innerHTML = html;
+  resultEl.style.display = 'block';
+  document.getElementById('affordClear').style.display = 'inline';
+  renderForecastOutput(r);
+}
+
+function computeForecast(startBalance) {
+  if (startBalance === undefined || startBalance === null) startBalance = 1200;
   var monthlyIncome = parseFloat(document.getElementById('incomeInput').value) || 0;
   var totalBills = getTotalBills();
   var payday = getPaydayConfig();
@@ -984,7 +1051,7 @@ function computeForecast() {
   else if (payday.type === 'fortnightly') { cycleIncome = monthlyIncome * 12 / 26; }
   else { cycleIncome = monthlyIncome; }
 
-  var balance = 1200;
+  var balance = startBalance;
   var balances = [balance];
   var dates = [];
   var paydayIndexes = [];
@@ -1123,18 +1190,26 @@ function renderForecastOutput(r) {
 }
 
 function runPreviewForecast() {
-  var r = computeForecast();
+  var r = computeForecast(1200);
+  _lastResult = r;
   renderForecastOutput(r);
+  clearAffordUi();
   if (!_foRevealed) {
     var el = document.getElementById('forecastOutput');
     el.classList.add('fo-active');
     _foRevealed = true;
+    document.getElementById('affordCard').style.display = 'block';
     setTimeout(function() { el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 120);
   }
 }
 
 function liveUpdateForecast() {
-  if (_foRevealed) { renderForecastOutput(computeForecast()); }
+  if (_foRevealed) {
+    var r = computeForecast(1200);
+    _lastResult = r;
+    renderForecastOutput(r);
+    clearAffordUi();
+  }
 }
 
 document.getElementById('incomeInput').addEventListener('input', function() {
@@ -1144,6 +1219,19 @@ document.getElementById('incomeInput').addEventListener('input', function() {
 document.querySelectorAll('.bill-amount-input').forEach(function(inp) {
   inp.addEventListener('input', liveUpdateForecast);
 });
+
+var _foSignupBtn = document.getElementById('foSignupBtn');
+if (_foSignupBtn) {
+  _foSignupBtn.addEventListener('click', function(e) {
+    e.preventDefault();
+    var income = parseFloat(document.getElementById('incomeInput').value) || 0;
+    var bills = getTotalBills();
+    var pill = document.querySelector('#paydayPills .pay-pill.selected');
+    var payday = pill ? pill.textContent.trim() : '';
+    var params = new URLSearchParams({ income: income, payday: payday, bills: bills });
+    window.location.href = '/register?' + params.toString();
+  });
+}
 
 updatePreviewCta();
 </script>
