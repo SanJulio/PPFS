@@ -516,10 +516,172 @@ footer .footer-links a {
 footer .footer-links a:hover { color: #fff; }
 footer .copyright { line-height: 1.8; }
 
+/* ── INTERACTIVE PREVIEW ── */
+.preview-section {
+  background: #fff;
+  padding: 100px 24px;
+}
+.preview-section-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+.preview-section-header h2 {
+  font-size: clamp(26px, 4vw, 42px);
+  color: var(--brand);
+  margin-bottom: 10px;
+}
+.preview-section-header p {
+  font-size: 17px;
+  color: #555;
+  font-weight: 300;
+}
+.preview-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 40px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  border: 1px solid #e5e7eb;
+  max-width: 800px;
+  margin: 0 auto;
+}
+.preview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  margin-bottom: 28px;
+}
+.preview-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 10px;
+}
+.preview-input-wrap {
+  display: flex;
+  align-items: center;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  transition: border-color 0.2s;
+}
+.preview-input-wrap:focus-within { border-color: var(--brand); }
+.preview-prefix {
+  padding: 0 14px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #6b7280;
+  background: #f9fafb;
+  border-right: 1.5px solid #e5e7eb;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.preview-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  padding: 0 14px;
+  font-size: 15px;
+  font-family: 'DM Sans', sans-serif;
+  color: #111;
+  height: 48px;
+  background: transparent;
+  min-width: 0;
+}
+.pay-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pay-pill {
+  padding: 8px 12px;
+  border-radius: 50px;
+  border: 1.5px solid #e5e7eb;
+  background: #fff;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  line-height: 1;
+}
+.pay-pill.selected { background: var(--brand); border-color: var(--brand); color: #fff; }
+.pay-pill:hover:not(.selected) { border-color: var(--brand); color: var(--brand); }
+.bill-chips {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.bill-chip-wrap { display: flex; flex-direction: column; gap: 6px; }
+.bill-chip {
+  padding: 10px 8px;
+  border-radius: 12px;
+  border: 1.5px solid #e5e7eb;
+  background: #fff;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+  width: 100%;
+}
+.bill-chip.selected { background: #eef2ff; border-color: var(--brand); color: var(--brand); }
+.bill-chip:hover:not(.selected) { border-color: #c7d2fe; }
+.bill-amount-wrap { position: relative; }
+.bill-amount-prefix {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 13px;
+  color: #6b7280;
+  pointer-events: none;
+}
+.bill-amount-input {
+  width: 100%;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 6px 10px 6px 22px;
+  font-size: 13px;
+  font-family: 'DM Sans', sans-serif;
+  color: #111;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.bill-amount-input:focus { border-color: var(--brand); }
+.preview-cta {
+  width: 100%;
+  padding: 16px;
+  border-radius: 12px;
+  border: none;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: all 0.2s;
+}
+.preview-cta:disabled { background: #e5e7eb; color: #9ca3af; cursor: not-allowed; }
+.preview-cta:not(:disabled) { background: var(--grad); color: #fff; }
+.preview-cta:not(:disabled):hover { opacity: 0.9; transform: translateY(-1px); }
+
 /* ── RESPONSIVE ── */
 @media (max-width: 768px) {
   .blob { opacity: 0.18; }
   .hero { background: linear-gradient(160deg, #f5f3ff 0%, #ede9fe 40%, #e0f2fe 100%); }
+}
+@media (max-width: 640px) {
+  .preview-grid { grid-template-columns: 1fr; }
+  .preview-card { padding: 24px 16px; }
+  .pay-pills { display: grid; grid-template-columns: repeat(3, 1fr); }
+  .pay-pill { text-align: center; }
+  .bill-chips { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 600px) {
   .hero-btns { flex-direction: column; align-items: center; }
@@ -608,6 +770,111 @@ footer .copyright { line-height: 1.8; }
     </div>
   </div>
 </section>
+
+<!-- ── INTERACTIVE PREVIEW ── -->
+<section class="preview-section">
+  <div class="preview-section-header">
+    <h2>See your financial future — right now</h2>
+    <p>No sign up. No commitment. Just your numbers.</p>
+  </div>
+  <div class="preview-card">
+    <div class="preview-grid">
+      <!-- Income -->
+      <div>
+        <div class="preview-label">Monthly take-home pay</div>
+        <div class="preview-input-wrap">
+          <span class="preview-prefix">£</span>
+          <input type="number" id="incomeInput" class="preview-input" value="2500" min="0" oninput="updatePreviewCta()">
+        </div>
+      </div>
+      <!-- Payday -->
+      <div>
+        <div class="preview-label">Payday</div>
+        <div class="pay-pills" id="paydayPills">
+          <button class="pay-pill" onclick="selectPayday(this)">Weekly</button>
+          <button class="pay-pill" onclick="selectPayday(this)">Fortnightly</button>
+          <button class="pay-pill" onclick="selectPayday(this)">1st</button>
+          <button class="pay-pill" onclick="selectPayday(this)">15th</button>
+          <button class="pay-pill selected" onclick="selectPayday(this)">25th</button>
+          <button class="pay-pill" onclick="selectPayday(this)">Last working day</button>
+        </div>
+      </div>
+    </div>
+    <!-- Bills -->
+    <div style="margin-bottom:28px;">
+      <div class="preview-label" style="margin-bottom:12px;">Monthly bills</div>
+      <div class="bill-chips" id="billChips">
+        <div class="bill-chip-wrap">
+          <button class="bill-chip selected" onclick="toggleBill(this)">🏠 Rent</button>
+          <div class="bill-amount-wrap">
+            <span class="bill-amount-prefix">£</span>
+            <input class="bill-amount-input" type="number" value="900" min="0" oninput="updatePreviewCta()">
+          </div>
+        </div>
+        <div class="bill-chip-wrap">
+          <button class="bill-chip" onclick="toggleBill(this)">🚗 Car payment</button>
+          <div class="bill-amount-wrap" style="display:none;">
+            <span class="bill-amount-prefix">£</span>
+            <input class="bill-amount-input" type="number" value="350" min="0" oninput="updatePreviewCta()">
+          </div>
+        </div>
+        <div class="bill-chip-wrap">
+          <button class="bill-chip selected" onclick="toggleBill(this)">📱 Phone</button>
+          <div class="bill-amount-wrap">
+            <span class="bill-amount-prefix">£</span>
+            <input class="bill-amount-input" type="number" value="40" min="0" oninput="updatePreviewCta()">
+          </div>
+        </div>
+        <div class="bill-chip-wrap">
+          <button class="bill-chip" onclick="toggleBill(this)">💪 Gym</button>
+          <div class="bill-amount-wrap" style="display:none;">
+            <span class="bill-amount-prefix">£</span>
+            <input class="bill-amount-input" type="number" value="30" min="0" oninput="updatePreviewCta()">
+          </div>
+        </div>
+        <div class="bill-chip-wrap">
+          <button class="bill-chip" onclick="toggleBill(this)">📺 Subscriptions</button>
+          <div class="bill-amount-wrap" style="display:none;">
+            <span class="bill-amount-prefix">£</span>
+            <input class="bill-amount-input" type="number" value="20" min="0" oninput="updatePreviewCta()">
+          </div>
+        </div>
+        <div class="bill-chip-wrap">
+          <button class="bill-chip" onclick="toggleBill(this)">💰 Savings</button>
+          <div class="bill-amount-wrap" style="display:none;">
+            <span class="bill-amount-prefix">£</span>
+            <input class="bill-amount-input" type="number" value="200" min="0" oninput="updatePreviewCta()">
+          </div>
+        </div>
+      </div>
+    </div>
+    <button class="preview-cta" id="previewCta" disabled onclick="runPreviewForecast()">See my forecast →</button>
+  </div>
+</section>
+
+<script>
+function selectPayday(btn) {
+  document.querySelectorAll('#paydayPills .pay-pill').forEach(function(p) { p.classList.remove('selected'); });
+  btn.classList.add('selected');
+}
+
+function toggleBill(btn) {
+  btn.classList.toggle('selected');
+  var amountWrap = btn.parentElement.querySelector('.bill-amount-wrap');
+  amountWrap.style.display = btn.classList.contains('selected') ? 'block' : 'none';
+  updatePreviewCta();
+}
+
+function updatePreviewCta() {
+  var income = parseFloat(document.getElementById('incomeInput').value) || 0;
+  var hasBills = document.querySelectorAll('#billChips .bill-chip.selected').length > 0;
+  document.getElementById('previewCta').disabled = !(income > 0 && hasBills);
+}
+
+function runPreviewForecast() { /* wired up in the next prompt */ }
+
+updatePreviewCta();
+</script>
 
 <!-- ── PRICING ── -->
 <section class="pricing-section">
