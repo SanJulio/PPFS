@@ -13,6 +13,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -681,6 +683,25 @@ footer .copyright { line-height: 1.8; }
 .preview-cta:not(:disabled) { background: var(--grad); color: #fff; }
 .preview-cta:not(:disabled):hover { opacity: 0.9; transform: translateY(-1px); }
 
+/* ── FORECAST OUTPUT ── */
+.forecast-output-wrap { display: none; max-width: 800px; margin: 28px auto 0; }
+.forecast-output-wrap.fo-active { display: block; animation: foIn 0.3s ease forwards; }
+@keyframes foIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+.fo-stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+.fo-stat-card { background: #fff; border-radius: 16px; padding: 20px 18px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); border: 1px solid #e5e7eb; }
+.fo-stat-label { font-size: 11px; font-weight: 500; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px; }
+.fo-stat-value { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; line-height: 1.2; margin-bottom: 4px; }
+.fo-stat-sub { font-size: 12px; color: #6b7280; font-weight: 300; }
+.fo-chart-card { background: #fff; border-radius: 16px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); border: 1px solid #e5e7eb; margin-bottom: 12px; }
+.fo-chart-wrap { height: 220px; }
+.fo-signup { text-align: center; padding: 16px 0 8px; }
+.fo-signup p { font-size: 15px; color: #555; margin-bottom: 12px; font-weight: 300; }
+.fo-signup-btn { display: block; padding: 16px; border-radius: 12px; background: var(--grad); color: #fff; font-family: 'DM Sans', sans-serif; font-size: 16px; font-weight: 500; text-decoration: none; transition: all 0.2s; max-width: 320px; margin: 0 auto; }
+.fo-signup-btn:hover { opacity: 0.9; transform: translateY(-1px); color: #fff; }
+.col-green { color: #059669; }
+.col-amber { color: #d97706; }
+.col-red { color: #dc2626; }
+
 /* ── RESPONSIVE ── */
 @media (max-width: 768px) {
   .blob { opacity: 0.18; }
@@ -690,6 +711,8 @@ footer .copyright { line-height: 1.8; }
   .preview-grid { grid-template-columns: 1fr; }
   .preview-card { padding: 24px 16px; }
   .bill-chips { grid-template-columns: repeat(2, 1fr); }
+  .fo-stat-row { grid-template-columns: 1fr; }
+  .fo-chart-wrap { height: 180px; }
 }
 @media (max-width: 600px) {
   .hero-btns { flex-direction: column; align-items: center; }
@@ -858,12 +881,56 @@ footer .copyright { line-height: 1.8; }
     </div>
     <button class="preview-cta" id="previewCta" disabled onclick="runPreviewForecast()">See my forecast →</button>
   </div>
+
+  <div id="forecastOutput" class="forecast-output-wrap">
+    <div class="fo-stat-row">
+      <div class="fo-stat-card">
+        <div class="fo-stat-label">Safe to Spend</div>
+        <div class="fo-stat-value" id="foStatSafe">—</div>
+        <div class="fo-stat-sub" id="foStatSafeSub">—</div>
+      </div>
+      <div class="fo-stat-card">
+        <div class="fo-stat-label">Forecast Risk</div>
+        <div class="fo-stat-value" id="foStatRisk">—</div>
+        <div class="fo-stat-sub" id="foStatRiskSub">—</div>
+      </div>
+      <div class="fo-stat-card">
+        <div class="fo-stat-label">In 90 Days</div>
+        <div class="fo-stat-value" id="foStatEnd">—</div>
+        <div class="fo-stat-sub" id="foStatEndSub">—</div>
+      </div>
+    </div>
+    <div class="fo-chart-card">
+      <div class="fo-chart-wrap">
+        <canvas id="previewChart"></canvas>
+      </div>
+    </div>
+    <div class="fo-signup">
+      <p>Want to track this with your real accounts?</p>
+      <a href="/welcome" class="fo-signup-btn">Save my forecast — it's free →</a>
+    </div>
+  </div>
 </section>
 
 <script>
+var _previewChart = null;
+var _foRevealed = false;
+
+function fmtMoney(n) {
+  return '£' + Math.abs(n).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+function fmtMoneyDec(n) {
+  return '£' + Math.abs(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtShortDate(d) {
+  var mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return d.getDate() + ' ' + mo[d.getMonth()];
+}
+
 function selectPayday(btn) {
   document.querySelectorAll('#paydayPills .pay-pill').forEach(function(p) { p.classList.remove('selected'); });
   btn.classList.add('selected');
+  liveUpdateForecast();
 }
 
 function toggleBill(btn) {
@@ -871,6 +938,7 @@ function toggleBill(btn) {
   var amountWrap = btn.parentElement.querySelector('.bill-amount-wrap');
   amountWrap.style.display = btn.classList.contains('selected') ? 'block' : 'none';
   updatePreviewCta();
+  liveUpdateForecast();
 }
 
 function updatePreviewCta() {
@@ -879,7 +947,203 @@ function updatePreviewCta() {
   document.getElementById('previewCta').disabled = !(income > 0 && hasBills);
 }
 
-function runPreviewForecast() { /* wired up in the next prompt */ }
+function getPaydayConfig() {
+  var pill = document.querySelector('#paydayPills .pay-pill.selected');
+  var label = pill ? pill.textContent.trim() : '25th';
+  if (label === 'Weekly') return { type: 'weekly', cycleDays: 7 };
+  if (label === 'Fortnightly') return { type: 'fortnightly', cycleDays: 14 };
+  if (label === '1st') return { type: 'monthly', day: 1, cycleDays: 30 };
+  if (label === '15th') return { type: 'monthly', day: 15, cycleDays: 30 };
+  if (label === 'Last working day') return { type: 'monthly_last', cycleDays: 30 };
+  return { type: 'monthly', day: 25, cycleDays: 30 };
+}
+
+function isLastWorkingDayOfMonth(d) {
+  var last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  while (last.getDay() === 0 || last.getDay() === 6) { last.setDate(last.getDate() - 1); }
+  return d.getDate() === last.getDate();
+}
+
+function getTotalBills() {
+  var total = 0;
+  document.querySelectorAll('#billChips .bill-chip-wrap').forEach(function(wrap) {
+    var chip = wrap.querySelector('.bill-chip');
+    if (chip.classList.contains('selected')) {
+      total += parseFloat(wrap.querySelector('.bill-amount-input').value) || 0;
+    }
+  });
+  return total;
+}
+
+function computeForecast() {
+  var monthlyIncome = parseFloat(document.getElementById('incomeInput').value) || 0;
+  var totalBills = getTotalBills();
+  var payday = getPaydayConfig();
+  var cycleIncome;
+  if (payday.type === 'weekly') { cycleIncome = monthlyIncome * 12 / 52; }
+  else if (payday.type === 'fortnightly') { cycleIncome = monthlyIncome * 12 / 26; }
+  else { cycleIncome = monthlyIncome; }
+
+  var balance = 1200;
+  var balances = [balance];
+  var dates = [];
+  var paydayIndexes = [];
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  dates.push(new Date(today));
+
+  for (var i = 1; i <= 90; i++) {
+    var d = new Date(today.getTime() + i * 86400000);
+    dates.push(d);
+    var isPayday = false;
+    if (payday.type === 'weekly') { if (i % 7 === 0) isPayday = true; }
+    else if (payday.type === 'fortnightly') { if (i % 14 === 0) isPayday = true; }
+    else if (payday.type === 'monthly') { if (d.getDate() === payday.day) isPayday = true; }
+    else if (payday.type === 'monthly_last') { if (isLastWorkingDayOfMonth(d)) isPayday = true; }
+    if (isPayday) { balance += cycleIncome; paydayIndexes.push(i); }
+    if (d.getDate() === 1) { balance -= totalBills; }
+    balances.push(balance);
+  }
+
+  var minBalance = Infinity, minIndex = 0, firstNegIndex = -1;
+  for (var j = 0; j < balances.length; j++) {
+    if (balances[j] < minBalance) { minBalance = balances[j]; minIndex = j; }
+    if (firstNegIndex === -1 && balances[j] < 0) { firstNegIndex = j; }
+  }
+
+  return {
+    balances: balances, dates: dates, paydayIndexes: paydayIndexes,
+    cycleDays: payday.cycleDays, totalBills: totalBills, cycleIncome: cycleIncome,
+    cycleNet: cycleIncome - totalBills, dailySafe: (cycleIncome - totalBills) / payday.cycleDays,
+    minBalance: minBalance, minIndex: minIndex, firstNegIndex: firstNegIndex, endBalance: balances[90]
+  };
+}
+
+function renderForecastOutput(r) {
+  var safeEl = document.getElementById('foStatSafe');
+  var safeSubEl = document.getElementById('foStatSafeSub');
+  if (r.dailySafe >= 0) {
+    safeEl.textContent = fmtMoneyDec(r.dailySafe) + ' / day';
+    safeEl.className = 'fo-stat-value col-green';
+    safeSubEl.textContent = fmtMoney(r.cycleNet) + ' free this cycle';
+  } else {
+    safeEl.textContent = '–' + fmtMoneyDec(Math.abs(r.dailySafe)) + ' / day';
+    safeEl.className = 'fo-stat-value col-amber';
+    safeSubEl.textContent = 'Bills exceed income by ' + fmtMoney(Math.abs(r.cycleNet));
+  }
+
+  var riskEl = document.getElementById('foStatRisk');
+  var riskSubEl = document.getElementById('foStatRiskSub');
+  if (r.firstNegIndex !== -1) {
+    riskEl.textContent = 'Goes negative';
+    riskEl.className = 'fo-stat-value col-amber';
+    riskSubEl.textContent = fmtShortDate(r.dates[r.firstNegIndex]) + ' · ' + fmtMoney(r.balances[r.firstNegIndex]) + ' below zero';
+  } else {
+    riskEl.textContent = 'Looking good';
+    riskEl.className = 'fo-stat-value col-green';
+    riskSubEl.textContent = 'Lowest: ' + fmtMoney(r.minBalance) + ' on ' + fmtShortDate(r.dates[r.minIndex]);
+  }
+
+  var endEl = document.getElementById('foStatEnd');
+  var endSubEl = document.getElementById('foStatEndSub');
+  endEl.textContent = (r.endBalance < 0 ? '–' : '') + fmtMoney(r.endBalance);
+  if (r.endBalance > 500) { endEl.className = 'fo-stat-value col-green'; endSubEl.textContent = 'Strong finish'; }
+  else if (r.endBalance >= 0) { endEl.className = 'fo-stat-value col-amber'; endSubEl.textContent = 'Tight by end'; }
+  else { endEl.className = 'fo-stat-value col-red'; endSubEl.textContent = 'Overdraft risk'; }
+
+  var labels = r.dates.map(function(d, i) {
+    return (i === 0 || i % 14 === 0 || i === 90) ? fmtShortDate(d) : '';
+  });
+  var pointRadii = r.balances.map(function(_, i) {
+    return r.paydayIndexes.indexOf(i) !== -1 ? 4 : 0;
+  });
+  var pointBgColors = r.balances.map(function(b, i) {
+    return r.paydayIndexes.indexOf(i) !== -1 ? (b < 0 ? '#ef4444' : '#4f46e5') : 'transparent';
+  });
+
+  if (_previewChart) {
+    _previewChart.data.labels = labels;
+    _previewChart.data.datasets[0].data = r.balances;
+    _previewChart.data.datasets[0].pointRadius = pointRadii;
+    _previewChart.data.datasets[0].pointBackgroundColor = pointBgColors;
+    _previewChart.update('none');
+    return;
+  }
+
+  var ctx = document.getElementById('previewChart').getContext('2d');
+  _previewChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: r.balances,
+        borderWidth: 2,
+        fill: true,
+        tension: 0.3,
+        pointRadius: pointRadii,
+        pointBackgroundColor: pointBgColors,
+        pointBorderColor: 'transparent',
+        segment: {
+          borderColor: function(c) { return (c.p0.parsed.y < 0 || c.p1.parsed.y < 0) ? '#ef4444' : '#4f46e5'; },
+          backgroundColor: function(c) { return (c.p0.parsed.y < 0 || c.p1.parsed.y < 0) ? 'rgba(239,68,68,0.06)' : 'rgba(79,70,229,0.06)'; }
+        }
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: function(items) { return r.dates[items[0].dataIndex] ? fmtShortDate(r.dates[items[0].dataIndex]) : ''; },
+            label: function(item) { return ' Balance: £' + Math.round(item.parsed.y).toLocaleString(); }
+          },
+          bodyFont: { family: 'DM Sans' },
+          titleFont: { family: 'DM Sans' }
+        },
+        annotation: {
+          annotations: {
+            zeroLine: { type: 'line', yMin: 0, yMax: 0, borderColor: 'rgba(100,100,100,0.22)', borderWidth: 1, borderDash: [4, 4] },
+            todayLine: { type: 'line', xMin: 0, xMax: 0, borderColor: 'rgba(79,70,229,0.35)', borderWidth: 1.5, borderDash: [3, 3], label: { content: 'Today', display: true, position: 'start', color: '#4f46e5', font: { size: 10, family: 'DM Sans' }, padding: 2 } }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { font: { size: 11, family: 'DM Sans' }, color: '#9ca3af', maxRotation: 0 }
+        },
+        y: {
+          grid: { color: 'rgba(0,0,0,0.04)' },
+          ticks: { callback: function(v) { return '£' + v.toLocaleString(); }, font: { size: 11, family: 'DM Sans' }, color: '#9ca3af' }
+        }
+      }
+    }
+  });
+}
+
+function runPreviewForecast() {
+  var r = computeForecast();
+  renderForecastOutput(r);
+  if (!_foRevealed) {
+    var el = document.getElementById('forecastOutput');
+    el.classList.add('fo-active');
+    _foRevealed = true;
+    setTimeout(function() { el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 120);
+  }
+}
+
+function liveUpdateForecast() {
+  if (_foRevealed) { renderForecastOutput(computeForecast()); }
+}
+
+document.getElementById('incomeInput').addEventListener('input', function() {
+  updatePreviewCta();
+  liveUpdateForecast();
+});
+document.querySelectorAll('.bill-amount-input').forEach(function(inp) {
+  inp.addEventListener('input', liveUpdateForecast);
+});
 
 updatePreviewCta();
 </script>
