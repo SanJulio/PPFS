@@ -70,7 +70,7 @@ nav {
   min-height: 100vh;
   display: flex; align-items: center; justify-content: center;
   text-align: center;
-  padding: 120px 24px 100px;
+  padding: 80px 24px 60px;
   position: relative; overflow: hidden;
   background: var(--lp-dark);
 }
@@ -137,21 +137,31 @@ nav {
 }
 .forecast-section-header p { font-size: 17px; color: #6b7280; font-family: 'Inter', sans-serif; font-weight: 400; }
 
-/* ── ACT 3: PROOF ── */
-.proof-section {
-  background: var(--lp-dark); padding: 100px 24px; text-align: center;
+/* ── ACT 3: STORIES ── */
+.stories-section {
+  background: var(--lp-dark);
   border-top: 1px solid rgba(91,76,245,0.14);
   border-bottom: 1px solid rgba(91,76,245,0.14);
 }
-.proof-section h2 { font-size: clamp(24px, 4vw, 40px); color: var(--lp-text); margin-bottom: 60px; }
-.proof-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; max-width: 840px; margin: 0 auto; }
-.proof-item { text-align: center; }
-.proof-number {
-  font-family: 'Syne', sans-serif; font-weight: 800;
-  font-size: clamp(48px, 7.5vw, 76px); color: var(--lp-accent);
-  line-height: 1; margin-bottom: 14px; display: block;
+.story-item {
+  max-width: 640px; margin: 0 auto; text-align: center; padding: 80px 24px;
 }
-.proof-label { font-family: 'Inter', sans-serif; font-size: 14px; color: var(--lp-muted); line-height: 1.6; }
+.story-number {
+  font-family: 'Syne', sans-serif; font-weight: 800;
+  font-size: 96px; line-height: 1; margin-bottom: 8px;
+}
+.story-label {
+  font-family: 'Inter', sans-serif; font-size: 16px;
+  color: var(--lp-muted); margin-bottom: 20px; font-weight: 400;
+}
+.story-body {
+  font-family: 'Inter', sans-serif; font-size: 18px;
+  color: var(--lp-muted); line-height: 1.7; font-weight: 400;
+}
+.story-divider {
+  max-width: 640px; margin: 0 auto;
+  border: none; border-top: 1px solid rgba(255,255,255,0.08);
+}
 
 /* ── ACT 4: PRICING ── */
 .pricing-section { background: var(--lp-off); padding: 100px 24px; text-align: center; }
@@ -318,9 +328,12 @@ footer a:hover { color: var(--lp-text); }
 .afford-result { font-size: 14px; line-height: 1.6; margin: 0; }
 
 /* ── RESPONSIVE ── */
+@media (min-width: 641px) {
+  .hero-headline { font-size: 88px; }
+  .hero-glow { width: 900px; height: 900px; }
+}
 @media (max-width: 768px) {
   .nav-login { display: none; }
-  .proof-grid { grid-template-columns: 1fr; gap: 40px; }
 }
 @media (max-width: 640px) {
   .preview-grid { grid-template-columns: 1fr; }
@@ -331,6 +344,11 @@ footer a:hover { color: var(--lp-text); }
   .fo-stat-card:last-child { border-bottom: none; }
   .fo-chart-wrap { height: 180px; }
   .pricing-card-body { padding: 28px 20px; }
+  .forecast-section { padding-bottom: 48px; }
+  .forecast-section-header .section-label { display: none; }
+  .story-item { padding: 56px 24px; }
+  .story-number { font-size: 72px; }
+  .story-body { font-size: 16px; }
 }
 @media (max-width: 480px) {
   .hero-headline { font-size: clamp(42px, 12vw, 60px); }
@@ -489,22 +507,24 @@ footer a:hover { color: var(--lp-text); }
   </div>
 </section>
 
-<!-- ── ACT 3: PROOF ── -->
-<section class="proof-section">
-  <h2 class="reveal">The numbers speak.</h2>
-  <div class="proof-grid">
-    <div class="proof-item reveal reveal-delay-1">
-      <span class="proof-number" data-target="90" data-prefix="" data-suffix="">90</span>
-      <div class="proof-label">days of forward<br>financial visibility</div>
-    </div>
-    <div class="proof-item reveal reveal-delay-2">
-      <span class="proof-number" data-target="847" data-prefix="£" data-suffix="">£847</span>
-      <div class="proof-label">average monthly bills<br>users track with Spendara</div>
-    </div>
-    <div class="proof-item reveal reveal-delay-3">
-      <span class="proof-number" data-target="2" data-prefix="" data-suffix=" min">2 min</span>
-      <div class="proof-label">to see your<br>first forecast</div>
-    </div>
+<!-- ── ACT 3: STORIES ── -->
+<section class="stories-section">
+  <div class="story-item reveal">
+    <div class="story-number" style="color:#7c6ff7;">£6.19</div>
+    <div class="story-label">per day</div>
+    <p class="story-body">That's how much less Sarah needed to spend each day to stop her Monzo going negative in May. Spendara told her on 3rd April — three weeks before it happened.</p>
+  </div>
+  <div class="story-divider"></div>
+  <div class="story-item reveal">
+    <div class="story-number" style="color:#e8e6ff;">41</div>
+    <div class="story-label">days ahead</div>
+    <p class="story-body">James could see a cash flow problem coming over a month away. He moved £300 from savings and fixed it before it became a crisis.</p>
+  </div>
+  <div class="story-divider"></div>
+  <div class="story-item reveal">
+    <div class="story-number" style="color:#7c6ff7;">2</div>
+    <div class="story-label">minutes</div>
+    <p class="story-body">That's all it takes to see your 90-day financial future. No bank connection required. Just your salary and your bills.</p>
   </div>
 </section>
 
@@ -515,9 +535,8 @@ footer a:hover { color: var(--lp-text); }
   <div class="pricing-card-new reveal reveal-delay-2">
     <div class="pricing-card-top"></div>
     <div class="pricing-card-body">
-      <div class="pricing-pill">Free forever</div>
-      <div class="pricing-price-new">£0 <span class="pricing-price-period">/ month</span></div>
-      <div class="pricing-desc-new">Full access to your 90-day forecast, spending tracker, and budget cycle — completely free.</div>
+      <div class="pricing-price-new">£4.99 <span class="pricing-price-period">/ month</span></div>
+      <div class="pricing-desc-new">Everything you need to take control of your finances.</div>
       <ul class="feature-list-new">
         <li><span class="check-icon">✓</span> 90-day balance forecasting</li>
         <li><span class="check-icon">✓</span> "Can I Afford This?" checker</li>
@@ -528,10 +547,10 @@ footer a:hover { color: var(--lp-text); }
         <li><span class="check-icon">✓</span> Privacy blur mode</li>
         <li><span class="check-icon">✓</span> Secure &amp; UK-hosted</li>
       </ul>
-      <a href="/register" class="btn-pricing">Start free →</a>
+      <a href="/register" class="btn-pricing">Start free — upgrade anytime →</a>
+      <p class="pricing-note-new" style="margin-top:16px;">Free tier available &middot; No card required</p>
     </div>
   </div>
-  <p class="pricing-note-new reveal">Need unlimited accounts? <a href="/register">Pro is £1.99/month</a> — upgrade any time.</p>
 </section>
 
 <!-- ── ACT 5: CLOSE ── -->
@@ -539,7 +558,7 @@ footer a:hover { color: var(--lp-text); }
   <div class="close-glow"></div>
   <div class="close-inner">
     <h2 class="reveal">Ready to see<br>your future?</h2>
-    <p class="reveal reveal-delay-1">Join people who know exactly where their money is going — before it's gone.</p>
+    <p class="reveal reveal-delay-1">No spreadsheets. No guesswork. Just your money, 90 days ahead.</p>
     <a href="/register" class="btn-close reveal reveal-delay-2">Create your free account →</a>
   </div>
 </section>
@@ -890,29 +909,6 @@ var _revObs = new IntersectionObserver(function(entries) {
 }, { threshold: 0.12 });
 _revEls.forEach(function(el) { _revObs.observe(el); });
 
-// Count-up for proof numbers
-function _runCountUp(el) {
-  var prefix = el.getAttribute('data-prefix') || '';
-  var suffix = el.getAttribute('data-suffix') || '';
-  var target = parseInt(el.getAttribute('data-target'), 10);
-  var duration = 1400;
-  var startTime = null;
-  function step(ts) {
-    if (!startTime) startTime = ts;
-    var p = Math.min((ts - startTime) / duration, 1);
-    var eased = 1 - Math.pow(1 - p, 3);
-    el.textContent = prefix + Math.round(eased * target).toLocaleString('en-GB') + suffix;
-    if (p < 1) requestAnimationFrame(step);
-    else el.textContent = prefix + target.toLocaleString('en-GB') + suffix;
-  }
-  requestAnimationFrame(step);
-}
-var _proofObs = new IntersectionObserver(function(entries) {
-  entries.forEach(function(e) {
-    if (e.isIntersecting) { _runCountUp(e.target); _proofObs.unobserve(e.target); }
-  });
-}, { threshold: 0.5 });
-document.querySelectorAll('.proof-number').forEach(function(el) { _proofObs.observe(el); });
 </script>
 
 </body>
