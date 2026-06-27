@@ -860,12 +860,20 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
         sr_candidates = []
         if period_end is not None:
             if freq == "monthly":
-                for (_ey, _em) in future_check_months:
-                    import calendar as _cal3
-                    dim = _cal3.monthrange(_ey, _em)[1]
-                    due = date(_ey, _em, min(rule["day"], dim))
-                    if today_date < due <= period_end:
+                import calendar as _cal3
+                # Look up to 5 days beyond today to catch rules that cross a month boundary
+                _sr_extend = today_date + timedelta(days=5)
+                _sr_fy, _sr_fm = today_date.year, today_date.month
+                while date(_sr_fy, _sr_fm, 1) <= _sr_extend:
+                    dim = _cal3.monthrange(_sr_fy, _sr_fm)[1]
+                    due = date(_sr_fy, _sr_fm, min(rule["day"], dim))
+                    in_period = today_date < due <= period_end
+                    # Also include if exactly 5 days out (rule crosses into next month near month-end)
+                    near_term = due > today_date + timedelta(days=4) and due <= _sr_extend
+                    if today_date < due and (in_period or near_term):
                         sr_candidates.append(due)
+                    _sr_fm = _sr_fm + 1 if _sr_fm < 12 else 1
+                    _sr_fy = _sr_fy if _sr_fm > 1 else _sr_fy + 1
         else:
             if rule["day"] > current_day:
                 import calendar as _cal3
@@ -884,7 +892,9 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
                 "due_date": due.isoformat(),
             })
             if accounts[from_acc]["type"] in spending_types:
-                if safe_boundary is None or due <= safe_boundary:
+                _sr_ext5 = today_date + timedelta(days=5)
+                near_term_due = due > today_date + timedelta(days=4) and due <= _sr_ext5
+                if safe_boundary is None or due <= safe_boundary or near_term_due:
                     spending_future_bills += amt
 
     # --- Pending income arriving later this cycle (for display in breakdown only) ---
