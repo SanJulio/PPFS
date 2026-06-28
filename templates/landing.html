@@ -64,6 +64,7 @@ nav {
   text-decoration: none; cursor: pointer; transition: background 0.2s, transform 0.2s; display: inline-block;
 }
 .nav-cta:hover { background: var(--lp-brand-light); transform: translateY(-1px); color: #fff; text-decoration: none; }
+.nav-cta-short { display: none; }
 
 /* ── HERO ── */
 .hero {
@@ -178,10 +179,11 @@ nav {
 .pricing-section > .pricing-intro { font-size: 16px; color: #6b7280; font-family: 'Inter', sans-serif; margin-bottom: 48px; }
 .pricing-card-new {
   background: #fff; border-radius: 24px; border: 1.5px solid #ddd6fe;
+  border-top: 6px solid var(--lp-brand);
   max-width: 500px; margin: 0 auto; overflow: hidden;
   box-shadow: 0 16px 56px rgba(91,76,245,0.13);
 }
-.pricing-card-top { background: var(--lp-brand); height: 6px; }
+.pricing-card-top { display: none; }
 .pricing-card-body { padding: 36px 36px 32px; text-align: left; }
 .pricing-pill {
   display: inline-block; background: #ede9fe; color: var(--lp-brand); border: 1px solid #c4b5fd;
@@ -341,10 +343,9 @@ footer a:hover { color: var(--lp-text); }
   .hero-headline { font-size: 88px; }
   .hero-glow { width: 900px; height: 900px; }
 }
-@media (max-width: 768px) {
-  .nav-login { display: none; }
-}
 @media (max-width: 640px) {
+  .nav-cta-full { display: none; }
+  .nav-cta-short { display: inline; }
   .preview-grid { grid-template-columns: 1fr; }
   .preview-card { padding: 24px 16px; }
   .bill-chips { grid-template-columns: repeat(2, 1fr); }
@@ -353,7 +354,7 @@ footer a:hover { color: var(--lp-text); }
   .fo-stat-card:last-child { border-bottom: none; }
   .fo-chart-wrap { height: 180px; }
   .pricing-card-body { padding: 28px 20px; }
-  .forecast-section { padding-bottom: 48px; }
+  .forecast-section { padding-bottom: 0; }
   .forecast-section-header .section-label { display: none; }
   .story-item { padding: 56px 24px; }
   .story-number { font-size: 72px; }
@@ -372,7 +373,7 @@ footer a:hover { color: var(--lp-text); }
   <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" class="nav-logo"></a>
   <div class="nav-right">
     <a href="/login" class="nav-login">Log in</a>
-    <a href="/welcome" class="nav-cta">Get started free</a>
+    <a href="/welcome" class="nav-cta"><span class="nav-cta-full">Get started free</span><span class="nav-cta-short">Get started</span></a>
   </div>
 </nav>
 
@@ -552,7 +553,7 @@ footer a:hover { color: var(--lp-text); }
       <ul class="feature-list-new">
         <li><span class="check-icon">✓</span> 90-day balance forecasting</li>
         <li><span class="check-icon">✓</span> "Can I Afford This?" checker</li>
-        <li><span class="check-icon">✓</span> Up to 3 bank accounts</li>
+        <li><span class="check-icon">✓</span> Unlimited accounts with Pro</li>
         <li><span class="check-icon">✓</span> Transaction tracking &amp; categories</li>
         <li><span class="check-icon">✓</span> Recurring bills &amp; income</li>
         <li><span class="check-icon">✓</span> Payday-aligned budget cycle</li>
