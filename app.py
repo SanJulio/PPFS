@@ -2840,6 +2840,10 @@ def api_snapshot():
                 continue
             freq = rule.get("frequency", "monthly")
             if freq == "monthly" and rule["day"] == sim_day.day:
+                # Skip next-month occurrences that are less than 5 days away — avoids
+                # showing a "recurring" rule prematurely when the month boundary is near.
+                if sim_day.month != today.month and sim_day < today + timedelta(days=5):
+                    continue
                 from_acc = rule.get("from_account", "")
                 to_acc = rule.get("to_account", "")
                 amt = float(rule["amount"])

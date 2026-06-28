@@ -576,6 +576,9 @@ html, body {
         <p class="pw-hint">Min 8 chars · uppercase · lowercase · number · symbol (e.g. !@#$)</p>
         <input type="hidden" name="confirm" id="regConfirm">
         <input type="hidden" name="age_confirm" value="1">
+        <input type="hidden" name="seed_income" id="seedIncome">
+        <input type="hidden" name="seed_payday" id="seedPayday">
+        <input type="hidden" name="seed_bills" id="seedBills">
         <button type="submit" class="reg-btn" id="regBtn">Create my account</button>
       </form>
       <p class="reg-login">Already have an account? <a href="/login">Log in</a></p>
@@ -718,6 +721,15 @@ function showRegErr(msg) {
   el.style.display = 'block';
   el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
+
+/* ── SEED PARAMS — carry income/payday/bills from landing page ── */
+(function() {
+  var p = new URLSearchParams(window.location.search);
+  var income = p.get('income'); var payday = p.get('payday'); var bills = p.get('bills');
+  if (income) document.getElementById('seedIncome').value = income;
+  if (payday) document.getElementById('seedPayday').value = payday;
+  if (bills)  document.getElementById('seedBills').value  = bills;
+})();
 
 /* ── SWIPE NAVIGATION for feature slides (s3–s6) ── */
 (function() {
