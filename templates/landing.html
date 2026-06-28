@@ -298,10 +298,11 @@ footer a:hover { color: var(--lp-text); }
 .bill-amount-wrap { position: relative; }
 .bill-amount-prefix { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 13px; color: #6b7280; pointer-events: none; }
 .bill-amount-input {
-  width: 100%; border: 1.5px solid #e5e7eb; border-radius: 8px;
+  width: 100%; max-width: 160px; border: 1.5px solid #e5e7eb; border-radius: 8px;
   padding: 6px 10px 6px 22px; font-size: 13px; font-family: 'DM Sans', sans-serif;
   color: #111; outline: none; transition: border-color 0.2s;
 }
+.preview-grid-full { grid-column: 1 / -1; }
 .bill-amount-input:focus { border-color: var(--brand); }
 .preview-cta {
   width: 100%; padding: 16px; border-radius: 12px; border: none;
@@ -318,7 +319,7 @@ footer a:hover { color: var(--lp-text); }
 @keyframes foIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 .fo-stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
 .fo-stat-card { background: #fff; border-radius: 16px; padding: 20px 18px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); border: 1px solid #e5e7eb; }
-.fo-stat-label { font-size: 11px; font-weight: 500; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px; }
+.fo-stat-label { font-size: 12px; font-weight: 500; color: #6b7280; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px; }
 .fo-stat-value { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; line-height: 1.2; margin-bottom: 4px; }
 .fo-stat-sub { font-size: 12px; color: #6b7280; font-weight: 300; }
 .fo-chart-card { background: #fff; border-radius: 16px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); border: 1px solid #e5e7eb; margin-bottom: 12px; }
@@ -355,6 +356,7 @@ footer a:hover { color: var(--lp-text); }
   .fo-chart-wrap { height: 180px; }
   .pricing-card-body { padding: 28px 20px; }
   .forecast-section { padding-bottom: 0; }
+  .bill-amount-input { max-width: 100%; }
   .forecast-section-header .section-label { display: none; }
   .story-item { padding: 56px 24px; }
   .story-number { font-size: 72px; }
@@ -407,6 +409,14 @@ footer a:hover { color: var(--lp-text); }
 
   <div class="preview-card reveal reveal-delay-1">
     <div class="preview-grid">
+      <!-- Balance -->
+      <div class="preview-grid-full">
+        <div class="preview-label">Current account balance</div>
+        <div class="preview-input-wrap">
+          <span class="preview-prefix">£</span>
+          <input type="number" id="balanceInput" class="preview-input" placeholder="e.g. 1500" min="0" oninput="liveUpdateForecast()">
+        </div>
+      </div>
       <!-- Income -->
       <div>
         <div class="preview-label">Monthly take-home pay</div>
@@ -670,14 +680,15 @@ function clearAfford() {
 function checkAfford() {
   var P = parseFloat(document.getElementById('affordInput').value) || 0;
   if (P <= 0 || !_lastResult) return;
-  var newStart = 2000 - P;
+  var startBal = getStartBalance();
+  var newStart = startBal - P;
   var r = computeForecast(newStart);
   var html = '';
   var baselineNeg = _lastResult.firstNegIndex !== -1;
 
   if (baselineNeg && r.minBalance < _lastResult.minBalance - 200) {
     var firstPayDate0 = _lastResult.paydayIndexes.length > 0 ? fmtShortDate(_lastResult.dates[_lastResult.paydayIndexes[0]]) : 'your next payday';
-    var billCut0 = Math.max(1, Math.ceil((P - 2000) / 3));
+    var billCut0 = Math.max(1, Math.ceil((P - startBal) / 3));
     html = '<p class="afford-result col-red"><strong>This would put you in the red.</strong> You\'d need to wait until ' + firstPayDate0 + ' or reduce your bills by £' + billCut0 + '/month.</p>';
   } else if (newStart >= 0 && !baselineNeg && r.endBalance > 500 && r.minBalance >= 0) {
     html = '<p class="afford-result col-green"><strong>Yes, you can afford this.</strong> Your forecast stays healthy.</p>'
@@ -695,7 +706,7 @@ function checkAfford() {
       html = '<p class="afford-result col-amber"><strong>Not right now —</strong> but you could afford this in ' + nextPay.idx + ' day' + (nextPay.idx === 1 ? '' : 's') + ' when your next income arrives (' + fmtShortDate(nextPay.date) + ').</p>';
     } else {
       var firstPayDate = _lastResult.paydayIndexes.length > 0 ? fmtShortDate(_lastResult.dates[_lastResult.paydayIndexes[0]]) : 'your next payday';
-      var billCut = Math.max(1, Math.ceil((P - 2000) / 3));
+      var billCut = Math.max(1, Math.ceil((P - startBal) / 3));
       html = '<p class="afford-result col-red"><strong>This would put you in the red.</strong> You\'d need to wait until ' + firstPayDate + ' or reduce your bills by £' + billCut + '/month.</p>';
     }
   }
@@ -706,8 +717,12 @@ function checkAfford() {
   renderForecastOutput(r);
 }
 
+function getStartBalance() {
+  return parseFloat(document.getElementById('balanceInput').value) || 1000;
+}
+
 function computeForecast(startBalance) {
-  if (startBalance === undefined || startBalance === null) startBalance = 2000;
+  if (startBalance === undefined || startBalance === null) startBalance = getStartBalance();
   var monthlyIncome = parseFloat(document.getElementById('incomeInput').value) || 0;
   var totalBills = getTotalBills();
   var payday = getPaydayConfig();
@@ -795,8 +810,8 @@ function renderForecastOutput(r) {
   var dataMin = Math.min.apply(null, r.balances);
   var dataMax = Math.max.apply(null, r.balances);
   var yRange = (dataMax - dataMin) || Math.abs(dataMax) || 1000;
-  var yBuf = yRange * 0.1;
-  var yMin = Math.min(0, dataMin - yBuf);
+  var yBuf = yRange < 2000 ? yRange * 0.15 : yRange <= 5000 ? yRange * 0.10 : yRange * 0.06;
+  var yMin = dataMin >= 0 ? 0 : dataMin - yBuf;
   var yMax = dataMax + yBuf;
 
   if (_previewChart) {
@@ -866,7 +881,7 @@ function renderForecastOutput(r) {
 }
 
 function runPreviewForecast() {
-  var r = computeForecast(2000);
+  var r = computeForecast();
   _lastResult = r;
   renderForecastOutput(r);
   clearAffordUi();
@@ -881,13 +896,14 @@ function runPreviewForecast() {
 
 function liveUpdateForecast() {
   if (_foRevealed) {
-    var r = computeForecast(2000);
+    var r = computeForecast();
     _lastResult = r;
     renderForecastOutput(r);
     clearAffordUi();
   }
 }
 
+document.getElementById('balanceInput').addEventListener('input', liveUpdateForecast);
 document.getElementById('incomeInput').addEventListener('input', function() {
   updatePreviewCta();
   liveUpdateForecast();
