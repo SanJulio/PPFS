@@ -2,6 +2,7 @@
 Tests for Google OAuth sign-in routes:
   GET  /auth/google           → redirects to Google
   GET  /auth/google/callback  → creates/links/logs in user
+  GET  /                      → welcome modal fires on first visit after Google signup
 
 Strategy: patch oauth.google.authorize_access_token to return fake userinfo,
 and patch oauth.google.authorize_redirect to avoid real OIDC metadata fetches.
@@ -199,6 +200,57 @@ class TestGoogleSeedAccount:
 
         assert len(accounts) == 1
         assert accounts[0]["balance"] == 0.0
+
+        # Cleanup
+        for tbl in ("transactions", "accounts", "scheduled_expenses", "income", "savings_rules", "future_events"):
+            try:
+                db_conn.execute(f"DELETE FROM {tbl} WHERE user_id = ?", (uid,))
+            except Exception:
+                pass
+        db_conn.execute("DELETE FROM users WHERE id = ?", (uid,))
+
+
+class TestGoogleWelcomeModal:
+    """New Google users must see the welcome modal on their first home page visit."""
+
+    USERINFO = {
+        "sub": "google-sub-welcome-006",
+        "email": "welcomemodal@example.com",
+        "name": "Welcome Modal User",
+    }
+
+    def test_welcome_modal_shown_after_google_signup(self, client, db_conn):
+        """The home page shows the onboarding overlay on first visit after Google signup,
+        even when the user has a seeded account (so the modal is not suppressed by
+        the account-count condition alone)."""
+        email = self.USERINFO["email"]
+        db_conn.execute("DELETE FROM users WHERE email = ?", (email,))
+
+        # Simulate Google sign-in with seed data (creates a Current Account).
+        # Use the same client for both the callback and the subsequent home visit
+        # so the session (including show_welcome flag) carries across.
+        _set_callback_session(client, income="2500", payday="25th", bills="900", balance="850")
+
+        with patch("app.oauth.google.authorize_access_token", return_value=_mock_token(self.USERINFO)):
+            resp = client.get("/auth/google/callback", follow_redirects=False)
+
+        assert resp.status_code in (302, 303)
+
+        uid = db_conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()["id"]
+
+        # Confirm the user has a seeded account — this is what would previously
+        # suppress the welcome modal under the old account-count-only condition.
+        accounts = db_conn.execute(
+            "SELECT id FROM accounts WHERE user_id = ?", (uid,)
+        ).fetchall()
+        assert len(accounts) == 1, "Expected exactly one seeded account"
+
+        # Follow the redirect to the home page — session carries show_welcome=True.
+        # The onboarding overlay must appear regardless of account count.
+        home_resp = client.get("/", follow_redirects=False)
+        assert home_resp.status_code == 200
+        assert b"Welcome to Spendara" in home_resp.data
+        assert b"onboardingOverlay" in home_resp.data
 
         # Cleanup
         for tbl in ("transactions", "accounts", "scheduled_expenses", "income", "savings_rules", "future_events"):

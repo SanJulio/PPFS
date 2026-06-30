@@ -1295,7 +1295,7 @@ def home():
         _ob_dismissed = False
     finally:
         _ob_cur.close(); release_db(_ob_db)
-    show_onboarding = (len(active_accounts) == 0 and not _ob_dismissed) or request.args.get('onboarding') == '1'
+    show_onboarding = (len(active_accounts) == 0 and not _ob_dismissed) or session.pop('show_welcome', False) or request.args.get('onboarding') == '1'
 
     # --- Auto-apply scheduled bills/income ---
     pending_items = []
@@ -4370,6 +4370,7 @@ def register_post():
 
     user = User(user_id, email)
     session.permanent = True
+    session['show_welcome'] = True
     login_user(user, remember=True)
     track_for_user(user_id, 'auth.register')
     return redirect(url_for("home", msg="Welcome! Please check your email to verify your account."))
@@ -4583,6 +4584,7 @@ def auth_google_callback():
     logger.info(f"New Google user registered: {email}")
     user = User(user_id, email)
     session.permanent = True
+    session['show_welcome'] = True
     login_user(user, remember=True)
     track_for_user(user_id, 'auth.google_register')
     return redirect(url_for('home', msg="Welcome! Your Google account is now connected."))
