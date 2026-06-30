@@ -245,12 +245,18 @@ class TestGoogleWelcomeModal:
         ).fetchall()
         assert len(accounts) == 1, "Expected exactly one seeded account"
 
-        # Follow the redirect to the home page — session carries show_welcome=True.
-        # The onboarding overlay must appear regardless of account count.
+        # First home visit — show_welcome_modal=1 triggers the modal.
+        # Check for the div element (id="onboardingOverlay") — the string "onboardingOverlay"
+        # also appears in the JS function closeOnboarding() on every page, so we must be precise.
         home_resp = client.get("/", follow_redirects=False)
         assert home_resp.status_code == 200
         assert b"Welcome to Spendara" in home_resp.data
-        assert b"onboardingOverlay" in home_resp.data
+        assert b'id="onboardingOverlay"' in home_resp.data
+
+        # Second home visit — flag is now 0, seeded account exists, so modal div must NOT appear.
+        home_resp2 = client.get("/", follow_redirects=False)
+        assert home_resp2.status_code == 200
+        assert b'id="onboardingOverlay"' not in home_resp2.data
 
         # Cleanup
         for tbl in ("transactions", "accounts", "scheduled_expenses", "income", "savings_rules", "future_events"):

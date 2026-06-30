@@ -57,7 +57,9 @@ def _create_test_schema(db_path: Path):
             budget_cycle_start INTEGER NOT NULL DEFAULT 1,
             avatar TEXT,
             cycle_mode TEXT NOT NULL DEFAULT 'manual',
-            google_id TEXT UNIQUE
+            google_id TEXT UNIQUE,
+            onboarding_dismissed INTEGER NOT NULL DEFAULT 0,
+            show_welcome_modal INTEGER NOT NULL DEFAULT 0
         )""",
         """CREATE TABLE IF NOT EXISTS accounts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

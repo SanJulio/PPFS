@@ -778,5 +778,28 @@ def init_db():
             except Exception:
                 pass
 
+    # --- MIGRATION: users.show_welcome_modal ---
+    # Set to 1 on new-user creation (both email/password and Google paths).
+    # Cleared to 0 by home() on the user's first dashboard visit.
+    # Stored in DB so the flag survives the cross-site OAuth redirect chain.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='show_welcome_modal'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN show_welcome_modal INTEGER NOT NULL DEFAULT 0")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN show_welcome_modal INTEGER NOT NULL DEFAULT 0")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (users.show_welcome_modal): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

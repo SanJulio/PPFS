@@ -1282,20 +1282,28 @@ def home():
     # Check if user has no accounts (show onboarding), or manually triggered via ?onboarding=1
     # Also check server-side dismissed flag so closing the modal persists across devices/browsers
     _ob_db = get_db(); _ob_cur = _ob_db.cursor()
+    _ob_dismissed = False
+    _show_welcome = False
     try:
         if USE_POSTGRES:
             _ob_cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_dismissed BOOLEAN DEFAULT FALSE")
-            _ob_cur.execute("SELECT onboarding_dismissed FROM users WHERE id = %s", (current_user.id,))
+            _ob_cur.execute("SELECT onboarding_dismissed, COALESCE(show_welcome_modal, 0) FROM users WHERE id = %s", (current_user.id,))
         else:
-            _ob_cur.execute("SELECT onboarding_dismissed FROM users WHERE id = ?", (current_user.id,))
+            _ob_cur.execute("SELECT onboarding_dismissed, COALESCE(show_welcome_modal, 0) FROM users WHERE id = ?", (current_user.id,))
         _ob_row = _ob_cur.fetchone()
-        _ob_dismissed = bool(_ob_row[0] if _ob_row else False)
+        if _ob_row:
+            _ob_dismissed = bool(_ob_row[0])
+            _show_welcome = bool(_ob_row[1])
+        if _show_welcome:
+            _ph = '%s' if USE_POSTGRES else '?'
+            _ob_cur.execute(f"UPDATE users SET show_welcome_modal = 0 WHERE id = {_ph}", (current_user.id,))
         _ob_db.commit()
     except Exception:
         _ob_dismissed = False
+        _show_welcome = False
     finally:
         _ob_cur.close(); release_db(_ob_db)
-    show_onboarding = (len(active_accounts) == 0 and not _ob_dismissed) or session.pop('show_welcome', False) or request.args.get('onboarding') == '1'
+    show_onboarding = (len(active_accounts) == 0 and not _ob_dismissed) or _show_welcome or request.args.get('onboarding') == '1'
 
     # --- Auto-apply scheduled bills/income ---
     pending_items = []
@@ -4341,13 +4349,13 @@ def register_post():
 
     if USE_POSTGRES:
         cursor.execute(
-            "INSERT INTO users (email, password, display_name, created_at, verify_token, verify_token_expires_at) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+            "INSERT INTO users (email, password, display_name, created_at, verify_token, verify_token_expires_at, show_welcome_modal) VALUES (%s, %s, %s, %s, %s, %s, 1) RETURNING id",
             (email, hashed, display_name, today_str, token, expires_at)
         )
         user_id = cursor.fetchone()[0]
     else:
         cursor.execute(
-            "INSERT INTO users (email, password, display_name, created_at, verify_token, verify_token_expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO users (email, password, display_name, created_at, verify_token, verify_token_expires_at, show_welcome_modal) VALUES (?, ?, ?, ?, ?, ?, 1)",
             (email, hashed, display_name, today_str, token, expires_at)
         )
         user_id = cursor.lastrowid
@@ -4370,7 +4378,6 @@ def register_post():
 
     user = User(user_id, email)
     session.permanent = True
-    session['show_welcome'] = True
     login_user(user, remember=True)
     track_for_user(user_id, 'auth.register')
     return redirect(url_for("home", msg="Welcome! Please check your email to verify your account."))
@@ -4562,15 +4569,15 @@ def auth_google_callback():
     today_str = date.today().isoformat()
     if USE_POSTGRES:
         cursor.execute(
-            "INSERT INTO users (email, password, display_name, created_at, verified, google_id) "
-            "VALUES (%s, NULL, %s, %s, 1, %s) RETURNING id",
+            "INSERT INTO users (email, password, display_name, created_at, verified, google_id, show_welcome_modal) "
+            "VALUES (%s, NULL, %s, %s, 1, %s, 1) RETURNING id",
             (email, display_name or None, today_str, google_sub),
         )
         user_id = cursor.fetchone()[0]
     else:
         cursor.execute(
-            "INSERT INTO users (email, password, display_name, created_at, verified, google_id) "
-            "VALUES (?, NULL, ?, ?, 1, ?)",
+            "INSERT INTO users (email, password, display_name, created_at, verified, google_id, show_welcome_modal) "
+            "VALUES (?, NULL, ?, ?, 1, ?, 1)",
             (email, display_name or None, today_str, google_sub),
         )
         user_id = cursor.lastrowid
@@ -4584,7 +4591,6 @@ def auth_google_callback():
     logger.info(f"New Google user registered: {email}")
     user = User(user_id, email)
     session.permanent = True
-    session['show_welcome'] = True
     login_user(user, remember=True)
     track_for_user(user_id, 'auth.google_register')
     return redirect(url_for('home', msg="Welcome! Your Google account is now connected."))
