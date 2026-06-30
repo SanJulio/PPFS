@@ -743,5 +743,40 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: users.google_id ---
+    # Stores the Google OAuth subject ID for users who sign in with Google.
+    # NULL for password-only accounts; UNIQUE so each Google account maps to one row.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='google_id'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN google_id TEXT UNIQUE")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN google_id TEXT UNIQUE")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (users.google_id): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: make users.password nullable ---
+    # Google-only users have no password; the column must allow NULL.
+    # SQLite cannot ALTER COLUMN constraints — the test schema handles this directly.
+    if USE_POSTGRES:
+        try:
+            cursor.execute("ALTER TABLE users ALTER COLUMN password DROP NOT NULL")
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
     cursor.close()
     release_db(db)

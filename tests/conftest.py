@@ -44,7 +44,7 @@ def _create_test_schema(db_path: Path):
         """CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
+            password TEXT,
             created_at TEXT NOT NULL,
             display_name TEXT,
             verified INTEGER NOT NULL DEFAULT 0,
@@ -56,7 +56,8 @@ def _create_test_schema(db_path: Path):
             auto_apply_confirm INTEGER NOT NULL DEFAULT 1,
             budget_cycle_start INTEGER NOT NULL DEFAULT 1,
             avatar TEXT,
-            cycle_mode TEXT NOT NULL DEFAULT 'manual'
+            cycle_mode TEXT NOT NULL DEFAULT 'manual',
+            google_id TEXT UNIQUE
         )""",
         """CREATE TABLE IF NOT EXISTS accounts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

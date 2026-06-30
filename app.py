@@ -7,6 +7,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from authlib.integrations.flask_client import OAuth
 from flask import session
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -180,6 +181,16 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
+
+# --- GOOGLE OAUTH ---
+oauth = OAuth(app)
+oauth.register(
+    name='google',
+    client_id=os.environ.get('GOOGLE_CLIENT_ID', ''),
+    client_secret=os.environ.get('GOOGLE_CLIENT_SECRET', ''),
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'},
+)
 
 @login_manager.unauthorized_handler
 def unauthorized():
@@ -4441,7 +4452,7 @@ def login_post():
 
     row = dict(zip(cols, row))
 
-    if not check_password_hash(row["password"], password):
+    if not row["password"] or not check_password_hash(row["password"], password):
         logger.warning(f"Failed login attempt for email: {email}")
         return render_template("login.html", error="Invalid email or password.")
 
@@ -4459,6 +4470,153 @@ def logout():
         logger.info(f"User logout: {current_user.email}")
     logout_user()
     return redirect("/")
+
+# --- GOOGLE OAUTH ROUTES ---
+
+def _apply_seed_data(user_id, seed_income, seed_payday, seed_bills):
+    """Seed income and bills for a newly created user from onboarding params."""
+    try:
+        inc_amt   = float(seed_income) if seed_income else 0.0
+        bills_amt = float(seed_bills)  if seed_bills  else 0.0
+        if inc_amt <= 0 or not seed_payday:
+            return
+        payday_map = {
+            'Weekly':           ('weekly',      None, None,              '{}'),
+            'Fortnightly':      ('fortnightly', None, None,              '{}'),
+            '1st':              ('monthly',     1,    'fixed_date',       '{"day": 1}'),
+            '15th':             ('monthly',     15,   'fixed_date',       '{"day": 15}'),
+            '25th':             ('monthly',     25,   'fixed_date',       '{"day": 25}'),
+            'Last working day': ('monthly',     None, 'last_working_day', '{}'),
+        }
+        if seed_payday not in payday_map:
+            return
+        freq, day, rtype, rcfg = payday_map[seed_payday]
+        wday = 4 if freq in ('weekly', 'fortnightly') else None
+        sdb = get_db()
+        sc = sdb.cursor()
+        if USE_POSTGRES:
+            sc.execute(
+                "INSERT INTO income (name, amount, frequency, account, user_id, day, weekly_day, rule_type, rule_config, weekend_rule, bank_holiday_rule, first_payment_date, is_primary) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                ('My salary', inc_amt, freq, '', user_id, day, wday, rtype, rcfg, 'before', 'before', None, 1),
+            )
+            sdb.commit()
+            if bills_amt > 0:
+                sc.execute(
+                    "INSERT INTO scheduled_expenses (name, amount, day, account, user_id, frequency, month) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    ('Monthly bills', bills_amt, 1, '', user_id, 'monthly', None),
+                )
+                sdb.commit()
+            sc.execute("UPDATE users SET cycle_mode = 'automatic' WHERE id = %s", (user_id,))
+        else:
+            sc.execute(
+                "INSERT INTO income (name, amount, frequency, account, user_id, day, weekly_day, rule_type, rule_config, weekend_rule, bank_holiday_rule, first_payment_date, is_primary) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ('My salary', inc_amt, freq, '', user_id, day, wday, rtype, rcfg, 'before', 'before', None, 1),
+            )
+            sdb.commit()
+            if bills_amt > 0:
+                sc.execute(
+                    "INSERT INTO scheduled_expenses (name, amount, day, account, user_id, frequency, month) VALUES (?,?,?,?,?,?,?)",
+                    ('Monthly bills', bills_amt, 1, '', user_id, 'monthly', None),
+                )
+                sdb.commit()
+            sc.execute("UPDATE users SET cycle_mode = 'automatic' WHERE id = ?", (user_id,))
+        sdb.commit()
+        sc.close()
+        release_db(sdb)
+    except Exception as e:
+        logger.warning(f"Seed data error for user {user_id}: {e}")
+
+
+@app.get('/auth/google')
+def auth_google():
+    # Stash onboarding seed params before the OAuth redirect loses them
+    session['google_seed'] = {
+        'income': request.args.get('income', ''),
+        'payday': request.args.get('payday', ''),
+        'bills':  request.args.get('bills', ''),
+    }
+    redirect_uri = url_for('auth_google_callback', _external=True)
+    return oauth.google.authorize_redirect(redirect_uri)
+
+
+@app.get('/auth/google/callback')
+def auth_google_callback():
+    try:
+        token = oauth.google.authorize_access_token()
+        userinfo = token.get('userinfo') or {}
+    except Exception as e:
+        logger.warning(f"Google OAuth callback error: {e}")
+        return redirect(url_for('login') + '?google_error=1')
+
+    email = (userinfo.get('email') or '').strip().lower()
+    google_sub = (userinfo.get('sub') or '').strip()
+    display_name = (userinfo.get('name') or '').strip()
+
+    if not email or not google_sub:
+        return redirect(url_for('login') + '?google_error=1')
+
+    db = get_db()
+    cursor = db.cursor()
+    ph = '%s' if USE_POSTGRES else '?'
+
+    # 1. Returning Google user — look up by google_id
+    cursor.execute(f"SELECT id, email FROM users WHERE google_id = {ph}", (google_sub,))
+    cols = [d[0] for d in cursor.description]
+    row = cursor.fetchone()
+    if row:
+        row = dict(zip(cols, row))
+        cursor.close()
+        release_db(db)
+        user = User(row['id'], row['email'])
+        session.permanent = True
+        login_user(user, remember=True)
+        track_for_user(row['id'], 'auth.google_login')
+        return redirect(url_for('home'))
+
+    # 2. Existing password-based account with same email — link Google ID
+    cursor.execute(f"SELECT id, email FROM users WHERE email = {ph}", (email,))
+    row = cursor.fetchone()
+    if row:
+        row = dict(zip(cols, row))
+        cursor.execute(f"UPDATE users SET google_id = {ph} WHERE id = {ph}", (google_sub, row['id']))
+        db.commit()
+        cursor.close()
+        release_db(db)
+        user = User(row['id'], row['email'])
+        session.permanent = True
+        login_user(user, remember=True)
+        track_for_user(row['id'], 'auth.google_link')
+        return redirect(url_for('home'))
+
+    # 3. Brand-new user — create account (Google accounts are inherently verified)
+    today_str = date.today().isoformat()
+    if USE_POSTGRES:
+        cursor.execute(
+            "INSERT INTO users (email, password, display_name, created_at, verified, google_id) "
+            "VALUES (%s, NULL, %s, %s, 1, %s) RETURNING id",
+            (email, display_name or None, today_str, google_sub),
+        )
+        user_id = cursor.fetchone()[0]
+    else:
+        cursor.execute(
+            "INSERT INTO users (email, password, display_name, created_at, verified, google_id) "
+            "VALUES (?, NULL, ?, ?, 1, ?)",
+            (email, display_name or None, today_str, google_sub),
+        )
+        user_id = cursor.lastrowid
+    db.commit()
+    cursor.close()
+    release_db(db)
+
+    seed = session.pop('google_seed', {})
+    _apply_seed_data(user_id, seed.get('income', ''), seed.get('payday', ''), seed.get('bills', ''))
+
+    logger.info(f"New Google user registered: {email}")
+    user = User(user_id, email)
+    session.permanent = True
+    login_user(user, remember=True)
+    track_for_user(user_id, 'auth.google_register')
+    return redirect(url_for('home', msg="Welcome! Your Google account is now connected."))
 
 # --- FORGOT PASSWORD ---
 # Sends a reset link to the user's email (if it exists in the database)
