@@ -4466,7 +4466,7 @@ def _apply_seed_data(user_id, seed_income, seed_payday, seed_bills, seed_balance
             if bills_amt > 0:
                 sc.execute(
                     "INSERT INTO scheduled_expenses (name, amount, day, account, user_id, frequency, month) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                    ('Monthly bills', bills_amt, 1, '', user_id, 'monthly', None),
+                    ('Monthly bills', bills_amt, 1, 'Current Account', user_id, 'monthly', None),
                 )
                 sdb.commit()
             sc.execute("UPDATE users SET cycle_mode = 'automatic' WHERE id = %s", (user_id,))
@@ -4484,7 +4484,7 @@ def _apply_seed_data(user_id, seed_income, seed_payday, seed_bills, seed_balance
             if bills_amt > 0:
                 sc.execute(
                     "INSERT INTO scheduled_expenses (name, amount, day, account, user_id, frequency, month) VALUES (?,?,?,?,?,?,?)",
-                    ('Monthly bills', bills_amt, 1, '', user_id, 'monthly', None),
+                    ('Monthly bills', bills_amt, 1, 'Current Account', user_id, 'monthly', None),
                 )
                 sdb.commit()
             sc.execute("UPDATE users SET cycle_mode = 'automatic' WHERE id = ?", (user_id,))

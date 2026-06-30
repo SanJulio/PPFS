@@ -4,8 +4,10 @@ Tests for home page affordability check and income card:
   GET  /                     — income card excludes balance adjustment transactions
 """
 
+import uuid
 import pytest
-from datetime import date
+from datetime import date, timedelta
+from werkzeug.security import generate_password_hash
 from tests.conftest import csrf
 
 
@@ -392,4 +394,63 @@ class TestSafeToSpend:
             cur = db_conn.cursor()
             cur.execute("DELETE FROM scheduled_expenses WHERE id = ?", (bill_id,))
             cur.execute("DELETE FROM income WHERE id = ?", (inc_id,))
+            cur.close()
+
+
+# ── SEEDED BILL IN FINANCIAL OVERVIEW ────────────────────────────────────────
+
+class TestSeededBillInFinancialOverview:
+    """Seeded bill (account='Current Account') must appear in calculate_financial_overview."""
+
+    def test_seeded_bill_appears_in_future_bills(self, app, db_conn):
+        """After _apply_seed_data, /api/overview reports future_bills > 0 for the seeded bill."""
+        from app import _apply_seed_data
+
+        email = f"ovtest_{uuid.uuid4().hex[:8]}@example.com"
+        cur = db_conn.cursor()
+        cur.execute(
+            "INSERT INTO users (email, password, created_at, verified, display_name) VALUES (?, ?, '2026-01-01', 1, ?)",
+            (email, generate_password_hash("TestPass1!"), "OV Test"),
+        )
+        user_id = cur.lastrowid
+        cur.close()
+
+        try:
+            _apply_seed_data(user_id, "2500", "25th", "900", "1000")
+
+            # Verify account assignment on the bill row
+            bill_row = db_conn.execute(
+                "SELECT account FROM scheduled_expenses WHERE user_id = ?", (user_id,)
+            ).fetchone()
+            assert bill_row is not None, "Seeded bill not found in DB"
+            assert bill_row["account"] == "Current Account"
+
+            # Verify bill appears in financial overview via /api/overview
+            c = app.test_client()
+            with c.session_transaction() as sess:
+                sess["_user_id"] = str(user_id)
+                sess["_fresh"] = True
+                sess["csrf_token"] = "test-csrf-fixed-token"
+
+            # Range: today → today+60 days. The seeded bill is due on day=1 each month,
+            # so at least one occurrence (the 1st of next calendar month) falls within this window.
+            today = date.today()
+            end = today + timedelta(days=60)
+            resp = c.get(f"/api/overview?start={today.isoformat()}&end={end.isoformat()}")
+            assert resp.status_code == 200
+            data = resp.get_json()
+
+            assert data["future_bills"] > 0, "Seeded bill not counted in future_bills"
+            bill_names = [b["name"] for b in data.get("future_bills_list", [])]
+            assert "Monthly bills" in bill_names, f"'Monthly bills' missing from future_bills_list: {bill_names}"
+
+        finally:
+            cur = db_conn.cursor()
+            for tbl in ("transactions", "accounts", "scheduled_expenses", "income",
+                        "savings_rules", "future_events"):
+                try:
+                    cur.execute(f"DELETE FROM {tbl} WHERE user_id = ?", (user_id,))
+                except Exception:
+                    pass
+            cur.execute("DELETE FROM users WHERE id = ?", (user_id,))
             cur.close()
