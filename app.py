@@ -1294,19 +1294,16 @@ def home():
         if _ob_row:
             _ob_dismissed = bool(_ob_row[0])
             _show_welcome = bool(_ob_row[1])
-        logger.warning(f"[DEBUG-HOME] user_id={current_user.id} ob_row={_ob_row} dismissed={_ob_dismissed} show_welcome_modal_raw={_ob_row[1] if _ob_row else 'N/A'} _show_welcome={_show_welcome}")
         if _show_welcome:
             _ph = '%s' if USE_POSTGRES else '?'
             _ob_cur.execute(f"UPDATE users SET show_welcome_modal = 0 WHERE id = {_ph}", (current_user.id,))
         _ob_db.commit()
-    except Exception as _ob_exc:
-        logger.warning(f"[DEBUG-HOME] _ob block EXCEPTION user_id={current_user.id}: {_ob_exc}")
+    except Exception:
         _ob_dismissed = False
         _show_welcome = False
     finally:
         _ob_cur.close(); release_db(_ob_db)
     show_onboarding = (len(active_accounts) == 0 and not _ob_dismissed) or _show_welcome or request.args.get('onboarding') == '1'
-    logger.warning(f"[DEBUG-HOME] user_id={current_user.id} active_accounts={active_accounts} len={len(active_accounts)} _show_welcome={_show_welcome} show_onboarding={show_onboarding}")
 
     # --- Auto-apply scheduled bills/income ---
     pending_items = []
@@ -4585,19 +4582,6 @@ def auth_google_callback():
         )
         user_id = cursor.lastrowid
     db.commit()
-    # DEBUG: confirm what was written for the new user
-    _dbg_cur = db.cursor() if False else None  # placeholder
-    try:
-        _dbg_db2 = get_db()
-        _dbg_cur2 = _dbg_db2.cursor()
-        _ph2 = '%s' if USE_POSTGRES else '?'
-        _dbg_cur2.execute(f"SELECT id, show_welcome_modal FROM users WHERE id = {_ph2}", (user_id,))
-        _dbg_row = _dbg_cur2.fetchone()
-        logger.warning(f"[DEBUG-GOOGLE] new user_id={user_id} DB row after INSERT: {dict(zip([d[0] for d in _dbg_cur2.description], _dbg_row)) if _dbg_row else 'NOT FOUND'}")
-        _dbg_cur2.close()
-        _dbg_db2.close()
-    except Exception as _dbg_e:
-        logger.warning(f"[DEBUG-GOOGLE] debug query failed: {_dbg_e}")
     cursor.close()
     release_db(db)
 
