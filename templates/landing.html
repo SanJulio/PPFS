@@ -773,10 +773,11 @@ function computeForecast(startBalance) {
 function renderForecastOutput(r) {
   var safeEl = document.getElementById('foStatSafe');
   var safeSubEl = document.getElementById('foStatSafeSub');
+  var nextPayStr = r.paydayIndexes.length > 0 ? fmtShortDate(r.dates[r.paydayIndexes[0]]) : null;
   if (r.dailySafe >= 0) {
     safeEl.textContent = fmtMoneyDec(r.dailySafe) + ' / day';
     safeEl.className = 'fo-stat-value col-green';
-    safeSubEl.textContent = fmtMoney(r.cycleNet) + ' free this cycle';
+    safeSubEl.textContent = fmtMoney(r.cycleNet) + (nextPayStr ? ' free until ' + nextPayStr : ' free this cycle');
   } else {
     safeEl.textContent = '–' + fmtMoneyDec(Math.abs(r.dailySafe)) + ' / day';
     safeEl.className = 'fo-stat-value col-amber';
