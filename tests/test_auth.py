@@ -375,3 +375,50 @@ class TestResetPassword:
         )
         assert resp.status_code == 200
         assert b"required" in resp.data.lower()
+
+
+# ── SEED DATA — account creation from landing page demo ──────────────────────
+class TestSeedDataAccount:
+    """Registration with seed params creates a 'Current Account' with the seeded balance."""
+
+    @patch("app.send_verification_email", return_value=True)
+    def test_register_with_seed_creates_account(self, mock_email, client, db_conn):
+        email = "seedtest_reg@example.com"
+        db_conn.execute("DELETE FROM users WHERE email = ?", (email,))
+
+        resp = client.post(
+            "/register",
+            data={
+                "display_name": "Seed Tester",
+                "email": email,
+                "password": "ValidPass1!",
+                "confirm": "ValidPass1!",
+                "age_confirm": "on",
+                "seed_income": "2500",
+                "seed_payday": "25th",
+                "seed_bills": "900",
+                "seed_balance": "1500.00",
+            },
+            follow_redirects=False,
+        )
+
+        assert resp.status_code in (302, 303)
+
+        uid = db_conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()["id"]
+
+        accounts = db_conn.execute(
+            "SELECT name, balance, type FROM accounts WHERE user_id = ?", (uid,)
+        ).fetchall()
+
+        assert len(accounts) == 1
+        assert accounts[0]["name"] == "Current Account"
+        assert accounts[0]["type"] == "current"
+        assert abs(accounts[0]["balance"] - 1500.00) < 0.01
+
+        # Cleanup
+        for tbl in ("transactions", "accounts", "scheduled_expenses", "income", "savings_rules", "future_events"):
+            try:
+                db_conn.execute(f"DELETE FROM {tbl} WHERE user_id = ?", (uid,))
+            except Exception:
+                pass
+        db_conn.execute("DELETE FROM users WHERE email = ?", (email,))

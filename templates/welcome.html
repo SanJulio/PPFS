@@ -603,6 +603,7 @@ html, body {
         <input type="hidden" name="seed_income" id="seedIncome">
         <input type="hidden" name="seed_payday" id="seedPayday">
         <input type="hidden" name="seed_bills" id="seedBills">
+        <input type="hidden" name="seed_balance" id="seedBalance">
         <button type="submit" class="reg-btn" id="regBtn">Create my account</button>
       </form>
       <p class="reg-login">Already have an account? <a href="/login">Log in</a></p>
@@ -749,10 +750,11 @@ function showRegErr(msg) {
 /* ── SEED PARAMS — carry income/payday/bills from landing page ── */
 (function() {
   var p = new URLSearchParams(window.location.search);
-  var income = p.get('income'); var payday = p.get('payday'); var bills = p.get('bills');
-  if (income) document.getElementById('seedIncome').value = income;
-  if (payday) document.getElementById('seedPayday').value = payday;
-  if (bills)  document.getElementById('seedBills').value  = bills;
+  var income = p.get('income'); var payday = p.get('payday'); var bills = p.get('bills'); var balance = p.get('balance');
+  if (income)  document.getElementById('seedIncome').value  = income;
+  if (payday)  document.getElementById('seedPayday').value  = payday;
+  if (bills)   document.getElementById('seedBills').value   = bills;
+  if (balance) document.getElementById('seedBalance').value = balance;
 })();
 
 /* ── SWIPE NAVIGATION for feature slides (s3–s6) ── */

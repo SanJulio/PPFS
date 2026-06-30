@@ -933,9 +933,10 @@ if (_foSignupBtn) {
     e.preventDefault();
     var income = parseFloat(document.getElementById('incomeInput').value) || 0;
     var bills = getTotalBills();
+    var balance = parseFloat(document.getElementById('balanceInput').value) || 0;
     var pill = document.querySelector('#paydayPills .pay-pill.selected');
     var payday = pill ? pill.textContent.trim() : '';
-    var params = new URLSearchParams({ income: income, payday: payday, bills: bills });
+    var params = new URLSearchParams({ income: income, payday: payday, bills: bills, balance: balance });
     window.location.href = '/welcome?' + params.toString();
   });
 }

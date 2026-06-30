@@ -4356,57 +4356,14 @@ def register_post():
     cursor.close()
     release_db(db)
 
-    # Seed income and bills from landing page forecast if params were passed
-    _seed_income = request.form.get('seed_income', '')
-    _seed_payday = request.form.get('seed_payday', '')
-    _seed_bills  = request.form.get('seed_bills', '')
-    try:
-        _inc_amt   = float(_seed_income) if _seed_income else 0.0
-        _bills_amt = float(_seed_bills)  if _seed_bills  else 0.0
-        if _inc_amt > 0 and _seed_payday:
-            _payday_map = {
-                'Weekly':           ('weekly',      None, None,               '{}'),
-                'Fortnightly':      ('fortnightly', None, None,               '{}'),
-                '1st':              ('monthly',     1,    'fixed_date',        '{"day": 1}'),
-                '15th':             ('monthly',     15,   'fixed_date',        '{"day": 15}'),
-                '25th':             ('monthly',     25,   'fixed_date',        '{"day": 25}'),
-                'Last working day': ('monthly',     None, 'last_working_day',  '{}'),
-            }
-            if _seed_payday in _payday_map:
-                _freq, _day, _rtype, _rcfg = _payday_map[_seed_payday]
-                _wday = 4 if _freq in ('weekly', 'fortnightly') else None
-                sdb = get_db(); sc = sdb.cursor()
-                if USE_POSTGRES:
-                    sc.execute(
-                        "INSERT INTO income (name, amount, frequency, account, user_id, day, weekly_day, rule_type, rule_config, weekend_rule, bank_holiday_rule, first_payment_date, is_primary) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                        ('My salary', _inc_amt, _freq, '', user_id, _day, _wday, _rtype, _rcfg, 'before', 'before', None, 1),
-                    )
-                    sdb.commit()
-                    if _bills_amt > 0:
-                        sc.execute(
-                            "INSERT INTO scheduled_expenses (name, amount, day, account, user_id, frequency, month) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                            ('Monthly bills', _bills_amt, 1, '', user_id, 'monthly', None),
-                        )
-                        sdb.commit()
-                    sc.execute("UPDATE users SET cycle_mode = 'automatic' WHERE id = %s", (user_id,))
-                else:
-                    sc.execute(
-                        "INSERT INTO income (name, amount, frequency, account, user_id, day, weekly_day, rule_type, rule_config, weekend_rule, bank_holiday_rule, first_payment_date, is_primary) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        ('My salary', _inc_amt, _freq, '', user_id, _day, _wday, _rtype, _rcfg, 'before', 'before', None, 1),
-                    )
-                    sdb.commit()
-                    if _bills_amt > 0:
-                        sc.execute(
-                            "INSERT INTO scheduled_expenses (name, amount, day, account, user_id, frequency, month) VALUES (?,?,?,?,?,?,?)",
-                            ('Monthly bills', _bills_amt, 1, '', user_id, 'monthly', None),
-                        )
-                        sdb.commit()
-                    sc.execute("UPDATE users SET cycle_mode = 'automatic' WHERE id = ?", (user_id,))
-                sdb.commit()
-                sc.close()
-                release_db(sdb)
-    except Exception as _se:
-        logger.warning(f"Seed data creation failed for user {user_id}: {_se}")
+    # Seed account, income, and bills from landing page forecast if params were passed
+    _apply_seed_data(
+        user_id,
+        request.form.get('seed_income', ''),
+        request.form.get('seed_payday', ''),
+        request.form.get('seed_bills', ''),
+        request.form.get('seed_balance', ''),
+    )
 
     logger.info(f"New user registered: {email}")
     send_verification_email(email, token)
@@ -4473,11 +4430,12 @@ def logout():
 
 # --- GOOGLE OAUTH ROUTES ---
 
-def _apply_seed_data(user_id, seed_income, seed_payday, seed_bills):
-    """Seed income and bills for a newly created user from onboarding params."""
+def _apply_seed_data(user_id, seed_income, seed_payday, seed_bills, seed_balance=''):
+    """Seed income, bills, and starting account for a newly created user from onboarding params."""
     try:
-        inc_amt   = float(seed_income) if seed_income else 0.0
-        bills_amt = float(seed_bills)  if seed_bills  else 0.0
+        inc_amt     = float(seed_income)  if seed_income  else 0.0
+        bills_amt   = float(seed_bills)   if seed_bills   else 0.0
+        balance_amt = max(0.0, float(seed_balance) if seed_balance else 0.0)
         if inc_amt <= 0 or not seed_payday:
             return
         payday_map = {
@@ -4496,6 +4454,11 @@ def _apply_seed_data(user_id, seed_income, seed_payday, seed_bills):
         sc = sdb.cursor()
         if USE_POSTGRES:
             sc.execute(
+                "INSERT INTO accounts (name, balance, type, active, include_in_overview, user_id) VALUES (%s,%s,%s,1,1,%s)",
+                ('Current Account', balance_amt, 'current', user_id),
+            )
+            sdb.commit()
+            sc.execute(
                 "INSERT INTO income (name, amount, frequency, account, user_id, day, weekly_day, rule_type, rule_config, weekend_rule, bank_holiday_rule, first_payment_date, is_primary) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 ('My salary', inc_amt, freq, '', user_id, day, wday, rtype, rcfg, 'before', 'before', None, 1),
             )
@@ -4508,6 +4471,11 @@ def _apply_seed_data(user_id, seed_income, seed_payday, seed_bills):
                 sdb.commit()
             sc.execute("UPDATE users SET cycle_mode = 'automatic' WHERE id = %s", (user_id,))
         else:
+            sc.execute(
+                "INSERT INTO accounts (name, balance, type, active, include_in_overview, user_id) VALUES (?,?,?,1,1,?)",
+                ('Current Account', balance_amt, 'current', user_id),
+            )
+            sdb.commit()
             sc.execute(
                 "INSERT INTO income (name, amount, frequency, account, user_id, day, weekly_day, rule_type, rule_config, weekend_rule, bank_holiday_rule, first_payment_date, is_primary) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 ('My salary', inc_amt, freq, '', user_id, day, wday, rtype, rcfg, 'before', 'before', None, 1),
@@ -4531,9 +4499,10 @@ def _apply_seed_data(user_id, seed_income, seed_payday, seed_bills):
 def auth_google():
     # Stash onboarding seed params before the OAuth redirect loses them
     session['google_seed'] = {
-        'income': request.args.get('income', ''),
-        'payday': request.args.get('payday', ''),
-        'bills':  request.args.get('bills', ''),
+        'income':  request.args.get('income', ''),
+        'payday':  request.args.get('payday', ''),
+        'bills':   request.args.get('bills', ''),
+        'balance': request.args.get('balance', ''),
     }
     redirect_uri = url_for('auth_google_callback', _external=True)
     return oauth.google.authorize_redirect(redirect_uri)
@@ -4609,7 +4578,7 @@ def auth_google_callback():
     release_db(db)
 
     seed = session.pop('google_seed', {})
-    _apply_seed_data(user_id, seed.get('income', ''), seed.get('payday', ''), seed.get('bills', ''))
+    _apply_seed_data(user_id, seed.get('income', ''), seed.get('payday', ''), seed.get('bills', ''), seed.get('balance', ''))
 
     logger.info(f"New Google user registered: {email}")
     user = User(user_id, email)
