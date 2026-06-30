@@ -686,10 +686,20 @@ function checkAfford() {
   var html = '';
   var baselineNeg = _lastResult.firstNegIndex !== -1;
 
+  // Suggested bill reduction: shortfall at lowest point divided by number of monthly bill hits before that point
+  var _billMonths = 0;
+  for (var _bi = 1; _bi <= r.minIndex; _bi++) {
+    if (r.dates[_bi] && r.dates[_bi].getDate() === 1) _billMonths++;
+  }
+  if (_billMonths < 1) _billMonths = 1;
+  var _suggestedBillCut = Math.max(1, Math.min(
+    Math.ceil(Math.abs(r.minBalance) / _billMonths),
+    r.totalBills > 0 ? r.totalBills : Math.ceil(Math.abs(r.minBalance))
+  ));
+
   if (baselineNeg && r.minBalance < _lastResult.minBalance - 200) {
     var firstPayDate0 = _lastResult.paydayIndexes.length > 0 ? fmtShortDate(_lastResult.dates[_lastResult.paydayIndexes[0]]) : 'your next payday';
-    var billCut0 = Math.max(1, Math.ceil((P - startBal) / 3));
-    html = '<p class="afford-result col-red"><strong>This would put you in the red.</strong> You\'d need to wait until ' + firstPayDate0 + ' or reduce your bills by £' + billCut0 + '/month.</p>';
+    html = '<p class="afford-result col-red"><strong>This would put you in the red.</strong> You\'d need to wait until ' + firstPayDate0 + ' or reduce your bills by £' + _suggestedBillCut + '/month.</p>';
   } else if (newStart >= 0 && !baselineNeg && r.endBalance > 500 && r.minBalance >= 0) {
     html = '<p class="afford-result col-green"><strong>Yes, you can afford this.</strong> Your forecast stays healthy.</p>'
          + '<p style="font-size:12px;color:#6b7280;margin:4px 0 0;">90-day end balance: ' + fmtMoney(r.endBalance) + '</p>';
@@ -706,8 +716,7 @@ function checkAfford() {
       html = '<p class="afford-result col-amber"><strong>Not right now —</strong> but you could afford this in ' + nextPay.idx + ' day' + (nextPay.idx === 1 ? '' : 's') + ' when your next income arrives (' + fmtShortDate(nextPay.date) + ').</p>';
     } else {
       var firstPayDate = _lastResult.paydayIndexes.length > 0 ? fmtShortDate(_lastResult.dates[_lastResult.paydayIndexes[0]]) : 'your next payday';
-      var billCut = Math.max(1, Math.ceil((P - startBal) / 3));
-      html = '<p class="afford-result col-red"><strong>This would put you in the red.</strong> You\'d need to wait until ' + firstPayDate + ' or reduce your bills by £' + billCut + '/month.</p>';
+      html = '<p class="afford-result col-red"><strong>This would put you in the red.</strong> You\'d need to wait until ' + firstPayDate + ' or reduce your bills by £' + _suggestedBillCut + '/month.</p>';
     }
   }
   var resultEl = document.getElementById('affordResult');
