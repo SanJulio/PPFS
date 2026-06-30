@@ -826,7 +826,7 @@ function renderForecastOutput(r) {
   var dataMax = Math.max.apply(null, r.balances);
   var yRange = (dataMax - dataMin) || Math.abs(dataMax) || 1000;
   var yBuf = yRange < 2000 ? yRange * 0.15 : yRange <= 5000 ? yRange * 0.10 : yRange * 0.06;
-  var yMin = dataMin >= 0 ? 0 : dataMin - yBuf;
+  var yMin = dataMin - yBuf;
   var yMax = dataMax + yBuf;
 
   if (_previewChart) {
