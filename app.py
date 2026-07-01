@@ -1469,6 +1469,27 @@ def home():
     except Exception as e:
         logger.debug(f"Auto-apply home check error: {e}")
 
+    # Suppress automation banner for users who signed up within the last 24 hours and
+    # have seeded data — the banner is confusing before they've oriented themselves.
+    if pending_items:
+        try:
+            _sb_db = get_db(); _sb_cur = _sb_db.cursor()
+            _sb_ph = '%s' if USE_POSTGRES else '?'
+            _sb_cur.execute(f"SELECT created_at FROM users WHERE id = {_sb_ph}", (current_user.id,))
+            _sb_row = _sb_cur.fetchone()
+            if _sb_row:
+                _sb_cutoff = (date.today() - timedelta(days=1)).isoformat()
+                if str(_sb_row[0]) >= _sb_cutoff:
+                    _sb_cur.execute(
+                        f"SELECT 1 FROM accounts WHERE user_id = {_sb_ph} AND COALESCE(is_seeded,0)=1 LIMIT 1",
+                        (current_user.id,),
+                    )
+                    if _sb_cur.fetchone():
+                        pending_items = []
+            _sb_cur.close(); release_db(_sb_db)
+        except Exception:
+            pass
+
     days_to_payday = (safe_boundary - date.today()).days + 1
     show_payday_countdown = _cycle["mode_used"] == "automatic"
 
