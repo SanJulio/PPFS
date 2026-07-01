@@ -139,7 +139,7 @@ def set_csrf_token():
 @app.before_request
 def check_csrf():
     if request.method == 'POST':
-        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid', '/dismiss-auto-apply', '/api/income-preview', '/api/edit-pending-item', '/api/edit-cycle-item', '/api/set-primary-income']
+        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid', '/dismiss-auto-apply', '/api/income-preview', '/api/edit-pending-item', '/api/edit-cycle-item', '/api/set-primary-income', '/setup/dismiss']
         if request.path not in exempt:
             token = request.form.get('csrf_token')
             if not token or token != session.get('csrf_token'):
@@ -1155,6 +1155,127 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
         "income_list": sorted(income_list, key=lambda x: x["date"]),
     }
 
+def get_setup_state(user_id):
+    """Return setup card state dict for the Home page. Never raises."""
+    db = get_db()
+    cur = db.cursor()
+    ph = '%s' if USE_POSTGRES else '?'
+    try:
+        cur.execute(f"SELECT COALESCE(setup_dismissed, 0) FROM users WHERE id = {ph}", (user_id,))
+        row = cur.fetchone()
+        if not row or row[0]:
+            return {'show': False}
+
+        cur.execute(
+            f"SELECT id, balance, COALESCE(is_seeded,0), COALESCE(user_verified,0) "
+            f"FROM accounts WHERE user_id = {ph} AND active = 1",
+            (user_id,),
+        )
+        accounts = cur.fetchall()
+
+        seeded = next((a for a in accounts if a[2] == 1), None)
+
+        cur.execute(
+            f"SELECT id, amount, frequency, COALESCE(user_verified,0) "
+            f"FROM income WHERE user_id = {ph} ORDER BY id LIMIT 1",
+            (user_id,),
+        )
+        inc_row = cur.fetchone()
+
+        cur.execute(
+            f"SELECT COUNT(*), COALESCE(SUM(amount),0) "
+            f"FROM scheduled_expenses WHERE user_id = {ph}",
+            (user_id,),
+        )
+        bills_row = cur.fetchone()
+        bill_count = int(bills_row[0]) if bills_row else 0
+        bill_total = float(bills_row[1]) if bills_row else 0.0
+
+        if seeded is not None:
+            acct_id, acct_bal, _, acct_uv = seeded
+            inc_id   = inc_row[0] if inc_row else None
+            inc_amt  = float(inc_row[1]) if inc_row else 0.0
+            inc_freq = inc_row[2] if inc_row else 'monthly'
+            inc_uv   = inc_row[3] if inc_row else 0
+
+            acct_ok  = bool(acct_uv) or abs(acct_bal - 850.0) > 0.01
+            inc_ok   = inc_row is not None and (bool(inc_uv) or abs(inc_amt - 2500.0) > 0.01)
+            bills_ok = bill_count >= 3
+            fore_ok  = acct_ok and inc_ok and bills_ok
+
+            done     = sum([acct_ok, inc_ok, bills_ok, fore_ok])
+            progress = round(done / 4 * 100 / 25) * 25
+
+            return {
+                'show': True,
+                'version': 'B',
+                'progress_percent': progress,
+                'steps': {
+                    'account': {
+                        'status': 'verified' if acct_ok else 'review',
+                        'description': f'Current balance: £{acct_bal:,.2f}',
+                        'action_url': f'/manage?tab=accounts&edit={acct_id}',
+                    },
+                    'income': {
+                        'status': 'verified' if inc_ok else 'review',
+                        'description': f'£{inc_amt:,.2f} {inc_freq}' if inc_row else 'No income set',
+                        'action_url': f'/manage?tab=income&edit={inc_id}' if inc_id else '/manage?tab=income',
+                    },
+                    'bills': {
+                        'status': 'verified' if bills_ok else 'review',
+                        'description': f'{bill_count} bill{"s" if bill_count != 1 else ""} · £{bill_total:,.2f}/month total',
+                        'action_url': '/manage?tab=bills',
+                    },
+                    'forecast': {
+                        'status': 'verified' if fore_ok else 'locked',
+                        'description': '',
+                        'action_url': '/forecast',
+                    },
+                },
+            }
+        else:
+            has_acct  = any(float(a[1]) > 0 for a in accounts)
+            has_inc   = inc_row is not None
+            has_bills = bill_count > 0
+            all_done  = has_acct and has_inc and has_bills
+
+            done     = sum([has_acct, has_inc, has_bills, all_done])
+            progress = round(done / 4 * 100 / 25) * 25
+
+            return {
+                'show': True,
+                'version': 'A',
+                'progress_percent': progress,
+                'steps': {
+                    'account': {
+                        'status': 'complete' if has_acct else 'incomplete',
+                        'description': '',
+                        'action_url': '/manage?tab=accounts',
+                    },
+                    'income': {
+                        'status': 'complete' if has_inc else ('incomplete' if has_acct else 'locked'),
+                        'description': '',
+                        'action_url': '/manage?tab=income',
+                    },
+                    'bills': {
+                        'status': 'complete' if has_bills else ('incomplete' if has_acct else 'locked'),
+                        'description': '',
+                        'action_url': '/manage?tab=bills',
+                    },
+                    'forecast': {
+                        'status': 'complete' if all_done else 'locked',
+                        'description': '',
+                        'action_url': '/forecast',
+                    },
+                },
+            }
+    except Exception:
+        return {'show': False}
+    finally:
+        cur.close()
+        release_db(db)
+
+
 # =============================================================================
 # ROUTES
 # =============================================================================
@@ -1370,6 +1491,7 @@ def home():
         cycle_end_date=cycle_end_date,
         days_to_payday=days_to_payday,
         show_payday_countdown=show_payday_countdown,
+        setup=get_setup_state(current_user.id),
     )
 
 # --- ONBOARDING DISMISS ---
@@ -1389,6 +1511,26 @@ def onboarding_dismiss():
     finally:
         cursor.close(); release_db(db)
     return {"ok": True}
+
+# --- SETUP CARD DISMISS ---
+@app.post("/setup/dismiss")
+@login_required
+def setup_dismiss():
+    data = request.get_json(silent=True) or {}
+    token = data.get('csrf_token') or request.headers.get('X-CSRF-Token')
+    if not token or token != session.get('csrf_token'):
+        return jsonify({'ok': False, 'error': 'CSRF'}), 403
+    db = get_db(); cur = db.cursor()
+    try:
+        ph = '%s' if USE_POSTGRES else '?'
+        cur.execute(f"UPDATE users SET setup_dismissed = 1 WHERE id = {ph}", (current_user.id,))
+        db.commit()
+        return jsonify({'ok': True})
+    except Exception:
+        db.rollback()
+        return jsonify({'ok': False}), 500
+    finally:
+        cur.close(); release_db(db)
 
 # --- AUTO-APPLY ROUTE ---
 # Called via AJAX when user confirms pending scheduled items from the home page banner
@@ -3295,9 +3437,9 @@ def settings_edit_account():
         if USE_POSTGRES:
             cursor.execute("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS savings_rate DECIMAL(5,2) DEFAULT 0")
             cursor.execute("ALTER TABLE accounts ADD COLUMN IF NOT EXISTS savings_type TEXT")
-            cursor.execute("UPDATE accounts SET name=%s, type=%s, balance=%s, savings_rate=%s, savings_type=%s WHERE id=%s AND user_id=%s", (name, acc_type, balance, savings_rate, savings_type, account_id, current_user.id))
+            cursor.execute("UPDATE accounts SET name=%s, type=%s, balance=%s, savings_rate=%s, savings_type=%s, user_verified=1 WHERE id=%s AND user_id=%s", (name, acc_type, balance, savings_rate, savings_type, account_id, current_user.id))
         else:
-            cursor.execute("UPDATE accounts SET name=?, type=?, balance=?, savings_type=? WHERE id=? AND user_id=?", (name, acc_type, balance, savings_type, account_id, current_user.id))
+            cursor.execute("UPDATE accounts SET name=?, type=?, balance=?, savings_type=?, user_verified=1 WHERE id=? AND user_id=?", (name, acc_type, balance, savings_type, account_id, current_user.id))
         db.commit()
 
         # Log balance change as a transaction for forecast tracking
@@ -3657,12 +3799,12 @@ def settings_edit_income():
     cursor = db.cursor()
     if USE_POSTGRES:
         cursor.execute(
-            "UPDATE income SET name=%s, amount=%s, frequency=%s, account=%s, day=%s, weekly_day=%s, rule_type=%s, rule_config=%s, weekend_rule=%s, bank_holiday_rule=%s, first_payment_date=%s WHERE id=%s AND user_id=%s",
+            "UPDATE income SET name=%s, amount=%s, frequency=%s, account=%s, day=%s, weekly_day=%s, rule_type=%s, rule_config=%s, weekend_rule=%s, bank_holiday_rule=%s, first_payment_date=%s, user_verified=1 WHERE id=%s AND user_id=%s",
             (name, amount, frequency, account, day, weekly_day, rule_type, rule_config, weekend_rule, bh_rule, first_payment_date, income_id, current_user.id)
         )
     else:
         cursor.execute(
-            "UPDATE income SET name=?, amount=?, frequency=?, account=?, day=?, weekly_day=?, rule_type=?, rule_config=?, weekend_rule=?, bank_holiday_rule=?, first_payment_date=? WHERE id=? AND user_id=?",
+            "UPDATE income SET name=?, amount=?, frequency=?, account=?, day=?, weekly_day=?, rule_type=?, rule_config=?, weekend_rule=?, bank_holiday_rule=?, first_payment_date=?, user_verified=1 WHERE id=? AND user_id=?",
             (name, amount, frequency, account, day, weekly_day, rule_type, rule_config, weekend_rule, bh_rule, first_payment_date, income_id, current_user.id)
         )
     db.commit()
@@ -4462,7 +4604,7 @@ def _apply_seed_data(user_id, seed_income, seed_payday, seed_bills, seed_balance
         sc = sdb.cursor()
         if USE_POSTGRES:
             sc.execute(
-                "INSERT INTO accounts (name, balance, type, active, include_in_overview, user_id) VALUES (%s,%s,%s,1,1,%s)",
+                "INSERT INTO accounts (name, balance, type, active, include_in_overview, user_id, is_seeded) VALUES (%s,%s,%s,1,1,%s,1)",
                 ('Current Account', balance_amt, 'current', user_id),
             )
             sdb.commit()
@@ -4480,7 +4622,7 @@ def _apply_seed_data(user_id, seed_income, seed_payday, seed_bills, seed_balance
             sc.execute("UPDATE users SET cycle_mode = 'automatic' WHERE id = %s", (user_id,))
         else:
             sc.execute(
-                "INSERT INTO accounts (name, balance, type, active, include_in_overview, user_id) VALUES (?,?,?,1,1,?)",
+                "INSERT INTO accounts (name, balance, type, active, include_in_overview, user_id, is_seeded) VALUES (?,?,?,1,1,?,1)",
                 ('Current Account', balance_amt, 'current', user_id),
             )
             sdb.commit()

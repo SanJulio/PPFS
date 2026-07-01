@@ -801,5 +801,89 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: users.setup_dismissed ---
+    # Set to 1 when user dismisses the setup guidance card; never resets.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='setup_dismissed'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN setup_dismissed INTEGER NOT NULL DEFAULT 0")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN setup_dismissed INTEGER NOT NULL DEFAULT 0")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (users.setup_dismissed): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: accounts.is_seeded ---
+    # Set to 1 for accounts created by _apply_seed_data; 0 for manually created accounts.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='accounts' AND column_name='is_seeded'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE accounts ADD COLUMN is_seeded INTEGER NOT NULL DEFAULT 0")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN is_seeded INTEGER NOT NULL DEFAULT 0")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (accounts.is_seeded): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: accounts.user_verified ---
+    # Set to 1 when the user has explicitly edited this account at least once.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='accounts' AND column_name='user_verified'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE accounts ADD COLUMN user_verified INTEGER NOT NULL DEFAULT 0")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN user_verified INTEGER NOT NULL DEFAULT 0")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (accounts.user_verified): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: income.user_verified ---
+    # Set to 1 when the user has explicitly edited this income source at least once.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='income' AND column_name='user_verified'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE income ADD COLUMN user_verified INTEGER NOT NULL DEFAULT 0")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE income ADD COLUMN user_verified INTEGER NOT NULL DEFAULT 0")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (income.user_verified): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

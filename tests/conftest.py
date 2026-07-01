@@ -59,7 +59,8 @@ def _create_test_schema(db_path: Path):
             cycle_mode TEXT NOT NULL DEFAULT 'manual',
             google_id TEXT UNIQUE,
             onboarding_dismissed INTEGER NOT NULL DEFAULT 0,
-            show_welcome_modal INTEGER NOT NULL DEFAULT 0
+            show_welcome_modal INTEGER NOT NULL DEFAULT 0,
+            setup_dismissed INTEGER NOT NULL DEFAULT 0
         )""",
         """CREATE TABLE IF NOT EXISTS accounts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,7 +70,9 @@ def _create_test_schema(db_path: Path):
             active INTEGER NOT NULL DEFAULT 1,
             include_in_overview INTEGER NOT NULL DEFAULT 1,
             user_id INTEGER NOT NULL,
-            savings_type TEXT
+            savings_type TEXT,
+            is_seeded INTEGER NOT NULL DEFAULT 0,
+            user_verified INTEGER NOT NULL DEFAULT 0
         )""",
         """CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,6 +111,7 @@ def _create_test_schema(db_path: Path):
             bank_holiday_rule TEXT DEFAULT 'before',
             first_payment_date TEXT,
             is_primary INTEGER NOT NULL DEFAULT 0,
+            user_verified INTEGER NOT NULL DEFAULT 0,
             user_id INTEGER NOT NULL
         )""",
         """CREATE TABLE IF NOT EXISTS savings_rules (
