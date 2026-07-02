@@ -452,3 +452,44 @@ class TestSeededBillInFinancialOverview:
                     pass
             cur.execute("DELETE FROM users WHERE id = ?", (user_id,))
             cur.close()
+
+
+class TestApiOverviewIncomeList:
+    """GET /api/overview returns future_income_list with name, amount, date fields."""
+
+    def test_returns_future_income_list(self, auth_client, db_conn, test_user):
+        from datetime import date, timedelta
+
+        today = date.today()
+        target = today + timedelta(days=5)
+
+        cur = db_conn.cursor()
+        cur.execute(
+            "INSERT INTO income (name, amount, frequency, account, day, user_id) "
+            "VALUES (?, ?, 'monthly', '', ?, ?)",
+            ("Test Salary", 2000.0, target.day, test_user["id"]),
+        )
+        inc_id = cur.lastrowid
+        cur.close()
+
+        try:
+            start = today.isoformat()
+            end = (today + timedelta(days=30)).isoformat()
+            resp = auth_client.get(f"/api/overview?start={start}&end={end}")
+            assert resp.status_code == 200
+            data = resp.get_json()
+
+            assert "future_income_list" in data
+            assert isinstance(data["future_income_list"], list)
+            assert len(data["future_income_list"]) >= 1
+
+            item = data["future_income_list"][0]
+            assert "name" in item
+            assert "amount" in item
+            assert "date" in item
+            assert item["name"] == "Test Salary"
+            assert item["amount"] == 2000.0
+        finally:
+            cur = db_conn.cursor()
+            cur.execute("DELETE FROM income WHERE id = ?", (inc_id,))
+            cur.close()

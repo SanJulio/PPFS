@@ -928,7 +928,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
             dates = income_engine.get_payment_dates(inc, tomorrow, income_period_end)
             for d in dates:
                 future_income += amount
-                future_income_list.append({"name": inc["name"], "amount": amount, "day": d.day})
+                future_income_list.append({"name": inc["name"], "amount": amount, "day": d.day, "date": d.isoformat()})
     except Exception as e:
         logger.debug(f"Could not load future income for overview: {e}")
 
@@ -941,7 +941,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
         "spending_balance": spending_balance,
         "future_bills": all_future_bills,
         "future_income": future_income,
-        "future_income_list": sorted(future_income_list, key=lambda x: x["day"]),
+        "future_income_list": sorted(future_income_list, key=lambda x: x.get("date", "")),
         "safe_spending": safe_spending,
         "shortfall": shortfall,
         "savings_balance": savings_balance,
@@ -1770,12 +1770,13 @@ def api_overview():
         }
     ov = calculate_financial_overview(accounts, period_end=end)
 
-    # Filter future bills to those whose due date falls on or after the selected start.
+    # Filter future bills/income to those whose date falls on or after the selected start.
     # calculate_financial_overview always uses today as the lower bound; when the custom
-    # start is in the future we need to drop bills that fall between today and start.
+    # start is in the future we need to drop items that fall between today and start.
     start_iso = start.isoformat()
     filtered_bills = [b for b in ov["future_bills_list"] if b.get("due_date", "") >= start_iso]
     filtered_bills_total = sum(b["amount"] for b in filtered_bills)
+    filtered_income = [i for i in ov["future_income_list"] if i.get("date", "") >= start_iso]
 
     return jsonify({
         "income_received": monthly["income_received"],
@@ -1784,6 +1785,8 @@ def api_overview():
         "bills_list": monthly["bills_list"],
         "future_bills": filtered_bills_total,
         "future_bills_list": filtered_bills,
+        "future_income": ov["future_income"],
+        "future_income_list": filtered_income,
         "safe_spending": ov["safe_spending"],
         "shortfall": ov["shortfall"],
         "display_start": f"{start.day} {start.strftime('%b')}",

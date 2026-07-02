@@ -543,24 +543,29 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
         <div id="safe-spending-val" class="fs-4 fw-bold amount-private {% if overview.safe_spending > 0 %}text-success{% else %}text-muted{% endif %}">£{{ "%.2f"|format(overview.safe_spending) }}</div>
       </div>
       <div id="tile-safe" class="d-none mt-2 px-1">
-        <div class="small text-muted py-1">
-          <div class="d-flex justify-content-between py-1 border-bottom">
-            <span>Current balance</span>
-            <span class="amount-private">£{{ "%.2f"|format(overview.spending_balance) }}</span>
+        <div>
+          <div class="d-flex justify-content-between align-items-center border-bottom" style="padding:10px 0;">
+            <span style="font-size:13px;color:#374151;">Balance today</span>
+            <span class="amount-private" style="font-size:13px;">£{{ "%.2f"|format(overview.spending_balance) }}</span>
           </div>
-          <div class="d-flex justify-content-between py-1 border-bottom">
-            <span>Bills remaining</span>
-            <span id="safe-bills-remaining-val" class="amount-private text-danger">−£{{ "%.2f"|format(overview.future_bills) }}</span>
+          <div id="safe-bills-row" class="d-flex justify-content-between align-items-center border-bottom safe-bkdn-row" onclick="openBillBreakdown()" style="padding:10px 0;cursor:pointer;">
+            <span style="font-size:13px;color:#374151;">Bills remaining</span>
+            <div class="d-flex align-items-center" style="gap:6px;">
+              <span id="safe-bills-remaining-val" class="amount-private text-danger" style="font-size:13px;">−£{{ "%.2f"|format(overview.future_bills) }}</span>
+              <span style="font-size:13px;color:#d1d5db;">›</span>
+            </div>
           </div>
-          {% if overview.future_income > 0 %}
-          <div class="d-flex justify-content-between py-1 border-bottom">
-            <span>Income still due</span>
-            <span class="amount-private text-success">+£{{ "%.2f"|format(overview.future_income) }}</span>
+          <div id="safe-income-row" class="d-flex justify-content-between align-items-center border-bottom safe-bkdn-row" onclick="openIncomeBreakdown()" style="padding:10px 0;cursor:pointer;{% if overview.future_income == 0 %}display:none;{% endif %}">
+            <span style="font-size:13px;color:#374151;">Income still due</span>
+            <div class="d-flex align-items-center" style="gap:6px;">
+              <span id="safe-income-due-val" class="amount-private text-success" style="font-size:13px;">+£{{ "%.2f"|format(overview.future_income) }}</span>
+              <span style="font-size:13px;color:#d1d5db;">›</span>
+            </div>
           </div>
-          {% endif %}
-          <div class="d-flex justify-content-between py-1 fw-semibold">
-            <span>End of cycle</span>
-            <span id="safe-eoc-val" class="amount-private">£{{ "%.2f"|format(overview.spending_balance - overview.future_bills + overview.future_income) }}</span>
+          {% set eoc = overview.spending_balance - overview.future_bills + overview.future_income %}
+          <div class="d-flex justify-content-between align-items-center" style="padding:10px 0;">
+            <span style="font-size:13px;font-weight:700;color:#111827;">End of cycle</span>
+            <span id="safe-eoc-val" class="amount-private {% if eoc > 0 %}text-success{% else %}text-danger{% endif %}" style="font-size:15px;font-weight:700;">£{{ "%.2f"|format(eoc) }}</span>
           </div>
         </div>
       </div>
@@ -1839,6 +1844,8 @@ var _drpOrigLabel = "{{ cycle_start_date.day }} {{ cycle_start_date.strftime('%b
 var _drpCustomActive = false;
 var _ovSpendingBalance = {{ overview.spending_balance }};
 var _ovFutureIncome = {{ overview.future_income }};
+var _curFutureBillsList = {{ overview.future_bills_list | tojson }};
+var _curFutureIncomeList = {{ overview.future_income_list | tojson }};
 
 function openDateRangePicker() {
   document.getElementById('drpStart').value = _drpCustomActive
@@ -1921,12 +1928,32 @@ function _applyOverviewData(d, start, end) {
       : '<div class="small text-muted py-1">No bills paid this cycle yet</div>';
   }
 
+  // Cache breakdown lists for popup use
+  _curFutureBillsList = d.future_bills_list || _curFutureBillsList;
+  _curFutureIncomeList = d.future_income_list || _curFutureIncomeList;
+
   // Bills left (tile summary) + Bills remaining (Safe to Spend breakdown) — always the same figure
   document.getElementById('future-bills-val').textContent = '£' + d.future_bills.toFixed(2);
   var brEl = document.getElementById('safe-bills-remaining-val');
   if (brEl) brEl.textContent = '−£' + d.future_bills.toFixed(2);
+
+  // Income still due (Safe to Spend breakdown) — show/hide and update value
+  var incRow = document.getElementById('safe-income-row');
+  var incVal = document.getElementById('safe-income-due-val');
+  if (d.future_income !== undefined) {
+    if (incVal) incVal.textContent = '+£' + d.future_income.toFixed(2);
+    if (incRow) incRow.style.display = d.future_income > 0 ? '' : 'none';
+  }
+
+  // End of cycle — value + colour
   var eocEl = document.getElementById('safe-eoc-val');
-  if (eocEl) eocEl.textContent = '£' + (_ovSpendingBalance - d.future_bills + _ovFutureIncome).toFixed(2);
+  if (eocEl) {
+    var _fi = d.future_income !== undefined ? d.future_income : _ovFutureIncome;
+    var _eoc = _ovSpendingBalance - d.future_bills + _fi;
+    eocEl.textContent = '£' + _eoc.toFixed(2);
+    eocEl.classList.remove('text-success', 'text-danger');
+    eocEl.classList.add(_eoc > 0 ? 'text-success' : 'text-danger');
+  }
   var blEl = document.getElementById('tile-bills');
   if (blEl) {
     var _months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -2024,7 +2051,9 @@ document.addEventListener('click', function() {
 <style>
 @media (hover: hover) {
   #cycleInfoBtn:hover ~ #cycleInfoTooltip { display: block !important; }
+  .safe-bkdn-row:hover { background: #f9fafb; border-radius: 6px; }
 }
+.safe-bkdn-row:active { background: #f3f4f6; border-radius: 6px; }
 </style>
 <script>
 (function() {
@@ -2201,6 +2230,83 @@ document.querySelectorAll('.navbar a').forEach(function(link) {
     setTimeout(function() { window.location.href = href; }, 150);
   });
 });
+</script>
+<!-- Safe-to-spend breakdown bottom sheet -->
+<div id="breakdownModal" onclick="if(event.target===this)_closeBreakdown()" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.45);align-items:flex-end;justify-content:center;">
+  <div id="breakdownSheet" style="width:100%;max-width:480px;background:#fff;border-radius:18px 18px 0 0;max-height:80vh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform 0.28s ease;">
+    <div style="padding:16px 20px 14px;border-bottom:1px solid #f3f4f6;display:flex;justify-content:space-between;align-items:flex-start;flex-shrink:0;">
+      <div>
+        <div id="breakdownTitle" style="font-size:16px;font-weight:700;color:#111827;"></div>
+        <div id="breakdownSubtitle" style="font-size:12px;color:#9ca3af;margin-top:3px;"></div>
+      </div>
+      <button onclick="_closeBreakdown()" style="background:none;border:none;font-size:22px;color:#9ca3af;cursor:pointer;padding:0 0 0 12px;line-height:1;">×</button>
+    </div>
+    <div id="breakdownList" style="overflow-y:auto;flex:1;padding:0 20px;"></div>
+    <div id="breakdownTotal" style="padding:14px 20px;border-top:1px solid #f3f4f6;flex-shrink:0;"></div>
+  </div>
+</div>
+<script>
+function _openBreakdownModal() {
+  var modal = document.getElementById('breakdownModal');
+  modal.style.display = 'flex';
+  requestAnimationFrame(function() { requestAnimationFrame(function() {
+    document.getElementById('breakdownSheet').style.transform = 'translateY(0)';
+  }); });
+}
+function _closeBreakdown() {
+  document.getElementById('breakdownSheet').style.transform = 'translateY(100%)';
+  setTimeout(function() { document.getElementById('breakdownModal').style.display = 'none'; }, 300);
+}
+function _fmtDs(iso) {
+  var m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var d = new Date(iso + 'T00:00:00'); return d.getDate() + ' ' + m[d.getMonth()];
+}
+function openBillBreakdown() {
+  var items = _curFutureBillsList || [];
+  document.getElementById('breakdownTitle').textContent = 'Bills remaining';
+  document.getElementById('breakdownSubtitle').textContent = document.getElementById('dateRangeLabel').textContent;
+  var list = document.getElementById('breakdownList');
+  if (!items.length) {
+    list.innerHTML = '<div style="text-align:center;padding:28px 0;font-size:14px;color:#9ca3af;">No bills due in this period.</div>';
+    document.getElementById('breakdownTotal').innerHTML = '';
+  } else {
+    list.innerHTML = items.map(function(b) {
+      var dl = b.due_date ? _fmtDs(b.due_date) : 'day ' + b.day;
+      return '<div class="d-flex justify-content-between align-items-start" style="padding:12px 0;border-bottom:1px solid #f3f4f6;">'
+        + '<div><div style="font-size:14px;font-weight:600;color:#111827;">' + _drpEsc(b.name) + '</div>'
+        + '<div style="font-size:12px;color:#9ca3af;margin-top:2px;">' + dl + '</div></div>'
+        + '<span style="font-size:14px;color:#ef4444;font-weight:600;">−£' + parseFloat(b.amount).toFixed(2) + '</span></div>';
+    }).join('');
+    var tot = items.reduce(function(s, b) { return s + parseFloat(b.amount); }, 0);
+    document.getElementById('breakdownTotal').innerHTML = '<div class="d-flex justify-content-between align-items-center">'
+      + '<span style="font-size:14px;font-weight:600;color:#111827;">Total</span>'
+      + '<span style="font-size:14px;font-weight:600;color:#ef4444;">−£' + tot.toFixed(2) + '</span></div>';
+  }
+  _openBreakdownModal();
+}
+function openIncomeBreakdown() {
+  var items = _curFutureIncomeList || [];
+  document.getElementById('breakdownTitle').textContent = 'Income still due';
+  document.getElementById('breakdownSubtitle').textContent = document.getElementById('dateRangeLabel').textContent;
+  var list = document.getElementById('breakdownList');
+  if (!items.length) {
+    list.innerHTML = '<div style="text-align:center;padding:28px 0;font-size:14px;color:#9ca3af;">No income due in this period.</div>';
+    document.getElementById('breakdownTotal').innerHTML = '';
+  } else {
+    list.innerHTML = items.map(function(i) {
+      var dl = i.date ? _fmtDs(i.date) : 'day ' + i.day;
+      return '<div class="d-flex justify-content-between align-items-start" style="padding:12px 0;border-bottom:1px solid #f3f4f6;">'
+        + '<div><div style="font-size:14px;font-weight:600;color:#111827;">' + _drpEsc(i.name) + '</div>'
+        + '<div style="font-size:12px;color:#9ca3af;margin-top:2px;">' + dl + '</div></div>'
+        + '<span style="font-size:14px;color:#10b981;font-weight:600;">+£' + parseFloat(i.amount).toFixed(2) + '</span></div>';
+    }).join('');
+    var tot = items.reduce(function(s, i) { return s + parseFloat(i.amount); }, 0);
+    document.getElementById('breakdownTotal').innerHTML = '<div class="d-flex justify-content-between align-items-center">'
+      + '<span style="font-size:14px;font-weight:600;color:#111827;">Total</span>'
+      + '<span style="font-size:14px;font-weight:600;color:#10b981;">+£' + tot.toFixed(2) + '</span></div>';
+  }
+  _openBreakdownModal();
+}
 </script>
 </body>
 </html>
