@@ -139,7 +139,7 @@ def set_csrf_token():
 @app.before_request
 def check_csrf():
     if request.method == 'POST':
-        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid', '/dismiss-auto-apply', '/api/income-preview', '/api/edit-pending-item', '/api/edit-cycle-item', '/api/set-primary-income', '/setup/dismiss']
+        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid', '/dismiss-auto-apply', '/api/income-preview', '/api/edit-pending-item', '/api/edit-cycle-item', '/api/set-primary-income', '/my-money/setup/dismiss']
         if request.path not in exempt:
             token = request.form.get('csrf_token')
             if not token or token != session.get('csrf_token'):
@@ -1155,13 +1155,13 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
         "income_list": sorted(income_list, key=lambda x: x["date"]),
     }
 
-def get_setup_state(user_id):
-    """Return setup card state dict for the Home page. Never raises."""
+def get_my_money_setup(user_id):
+    """Return My Money setup checklist state. Never raises."""
     db = get_db()
     cur = db.cursor()
     ph = '%s' if USE_POSTGRES else '?'
     try:
-        cur.execute(f"SELECT COALESCE(setup_dismissed, 0) FROM users WHERE id = {ph}", (user_id,))
+        cur.execute(f"SELECT COALESCE(setup_dismissed,0) FROM users WHERE id = {ph}", (user_id,))
         row = cur.fetchone()
         if not row or row[0]:
             return {'show': False}
@@ -1172,7 +1172,6 @@ def get_setup_state(user_id):
             (user_id,),
         )
         accounts = cur.fetchall()
-
         seeded = next((a for a in accounts if a[2] == 1), None)
 
         cur.execute(
@@ -1193,84 +1192,100 @@ def get_setup_state(user_id):
 
         if seeded is not None:
             acct_id, acct_bal, _, acct_uv = seeded
-            inc_id   = inc_row[0] if inc_row else None
-            inc_amt  = float(inc_row[1]) if inc_row else 0.0
-            inc_freq = inc_row[2] if inc_row else 'monthly'
-            inc_uv   = inc_row[3] if inc_row else 0
+            inc_id  = inc_row[0] if inc_row else None
+            inc_amt = float(inc_row[1]) if inc_row else 0.0
+            inc_frq = inc_row[2] if inc_row else 'monthly'
+            inc_uv  = inc_row[3] if inc_row else 0
 
             acct_ok  = bool(acct_uv) or abs(acct_bal - 850.0) > 0.01
             inc_ok   = inc_row is not None and (bool(inc_uv) or abs(inc_amt - 2500.0) > 0.01)
             bills_ok = bill_count >= 3
-            fore_ok  = acct_ok and inc_ok and bills_ok
 
-            done     = sum([acct_ok, inc_ok, bills_ok, fore_ok])
-            progress = round(done / 4 * 100 / 25) * 25
+            done     = sum([acct_ok, inc_ok, bills_ok])
+            progress = done * 33 if done < 3 else 100
 
-            return {
-                'show': True,
-                'version': 'B',
-                'progress_percent': progress,
-                'steps': {
-                    'account': {
-                        'status': 'verified' if acct_ok else 'review',
-                        'description': f'Current balance: £{acct_bal:,.2f}',
-                        'action_url': f'/manage?tab=accounts&edit={acct_id}',
-                    },
-                    'income': {
-                        'status': 'verified' if inc_ok else 'review',
-                        'description': f'£{inc_amt:,.2f} {inc_freq}' if inc_row else 'No income set',
-                        'action_url': f'/manage?tab=income&edit={inc_id}' if inc_id else '/manage?tab=income',
-                    },
-                    'bills': {
-                        'status': 'verified' if bills_ok else 'review',
-                        'description': f'{bill_count} bill{"s" if bill_count != 1 else ""} · £{bill_total:,.2f}/month total',
-                        'action_url': '/manage?tab=bills',
-                    },
-                    'forecast': {
-                        'status': 'verified' if fore_ok else 'locked',
-                        'description': '',
-                        'action_url': '/forecast',
-                    },
+            steps = [
+                {
+                    'key': 'account',
+                    'status': 'verified' if acct_ok else 'review',
+                    'label': 'Verify your account balance',
+                    'description': f'Current balance: £{acct_bal:,.2f}',
+                    'action_tab': f'edit_account_{acct_id}',
                 },
-            }
+                {
+                    'key': 'income',
+                    'status': 'verified' if inc_ok else 'review',
+                    'label': 'Verify your income',
+                    'description': f'£{inc_amt:,.2f} {inc_frq}' if inc_row else 'No income set',
+                    'action_tab': f'edit_income_{inc_id}' if inc_id else 'income',
+                },
+                {
+                    'key': 'bills',
+                    'status': 'verified' if bills_ok else 'review',
+                    'label': 'Check your bills',
+                    'description': f'{bill_count} bill{"s" if bill_count != 1 else ""} · £{bill_total:,.2f}/month' if bill_count else 'No bills yet',
+                    'action_tab': 'bills',
+                },
+            ]
+            return {'show': True, 'version': 'B', 'progress': progress, 'steps': steps}
+
         else:
             has_acct  = any(float(a[1]) > 0 for a in accounts)
             has_inc   = inc_row is not None
             has_bills = bill_count > 0
-            all_done  = has_acct and has_inc and has_bills
 
-            done     = sum([has_acct, has_inc, has_bills, all_done])
-            progress = round(done / 4 * 100 / 25) * 25
+            done     = sum([has_acct, has_inc, has_bills])
+            progress = done * 33 if done < 3 else 100
 
-            return {
-                'show': True,
-                'version': 'A',
-                'progress_percent': progress,
-                'steps': {
-                    'account': {
-                        'status': 'complete' if has_acct else 'incomplete',
-                        'description': '',
-                        'action_url': '/manage?tab=accounts',
-                    },
-                    'income': {
-                        'status': 'complete' if has_inc else ('incomplete' if has_acct else 'locked'),
-                        'description': '',
-                        'action_url': '/manage?tab=income',
-                    },
-                    'bills': {
-                        'status': 'complete' if has_bills else ('incomplete' if has_acct else 'locked'),
-                        'description': '',
-                        'action_url': '/manage?tab=bills',
-                    },
-                    'forecast': {
-                        'status': 'complete' if all_done else 'locked',
-                        'description': '',
-                        'action_url': '/forecast',
-                    },
+            steps = [
+                {
+                    'key': 'account',
+                    'status': 'complete' if has_acct else 'incomplete',
+                    'label': 'Add an account',
+                    'description': 'Enter your current balance to get started.',
+                    'action_tab': 'accounts',
                 },
-            }
+                {
+                    'key': 'income',
+                    'status': 'complete' if has_inc else ('incomplete' if has_acct else 'locked'),
+                    'label': 'Add your income',
+                    'description': 'Set your pay so Spendara knows your pay cycle.',
+                    'action_tab': 'income',
+                },
+                {
+                    'key': 'bills',
+                    'status': 'complete' if has_bills else ('incomplete' if has_acct else 'locked'),
+                    'label': 'Add recurring bills',
+                    'description': 'Add rent, subscriptions and regular expenses.',
+                    'action_tab': 'bills',
+                },
+            ]
+            return {'show': True, 'version': 'A', 'progress': progress, 'steps': steps}
+
     except Exception:
         return {'show': False}
+    finally:
+        cur.close()
+        release_db(db)
+
+
+def get_my_money_dot(user_id):
+    """Return True if the My Money nav dot should be shown."""
+    db = get_db()
+    cur = db.cursor()
+    ph = '%s' if USE_POSTGRES else '?'
+    try:
+        cur.execute(
+            f"SELECT COALESCE(setup_dismissed,0), created_at FROM users WHERE id = {ph}",
+            (user_id,),
+        )
+        row = cur.fetchone()
+        if not row or row[0]:
+            return False
+        cutoff = (date.today() - timedelta(days=7)).isoformat()
+        return str(row[1]) >= cutoff
+    except Exception:
+        return False
     finally:
         cur.close()
         release_db(db)
@@ -1512,7 +1527,7 @@ def home():
         cycle_end_date=cycle_end_date,
         days_to_payday=days_to_payday,
         show_payday_countdown=show_payday_countdown,
-        setup=get_setup_state(current_user.id),
+        show_my_money_dot=get_my_money_dot(current_user.id),
     )
 
 # --- ONBOARDING DISMISS ---
@@ -1533,10 +1548,10 @@ def onboarding_dismiss():
         cursor.close(); release_db(db)
     return {"ok": True}
 
-# --- SETUP CARD DISMISS ---
-@app.post("/setup/dismiss")
+# --- MY MONEY SETUP ---
+@app.post("/my-money/setup/dismiss")
 @login_required
-def setup_dismiss():
+def my_money_setup_dismiss():
     data = request.get_json(silent=True) or {}
     token = data.get('csrf_token') or request.headers.get('X-CSRF-Token')
     if not token or token != session.get('csrf_token'):
@@ -1552,6 +1567,12 @@ def setup_dismiss():
         return jsonify({'ok': False}), 500
     finally:
         cur.close(); release_db(db)
+
+
+@app.get("/my-money/setup/state")
+@login_required
+def my_money_setup_state():
+    return jsonify(get_my_money_setup(current_user.id))
 
 # --- AUTO-APPLY ROUTE ---
 # Called via AJAX when user confirms pending scheduled items from the home page banner
@@ -1880,7 +1901,8 @@ def transactions():
 
     return render_template(
         "transactions.html",
-        transactions=tx
+        transactions=tx,
+        show_my_money_dot=get_my_money_dot(current_user.id),
     )
 
 # --- BULK CATEGORIZE ---
@@ -3367,7 +3389,9 @@ def manage():
         investments=investments,
         is_pro=is_pro,
         has_primary=has_primary,
-        message=request.args.get("msg", "")
+        message=request.args.get("msg", ""),
+        my_money_setup=get_my_money_setup(current_user.id),
+        show_my_money_dot=get_my_money_dot(current_user.id),
     )
 
 @app.post("/settings/add-account")
@@ -4349,7 +4373,8 @@ def forecast():
         savings_rates=savings_rates_json,
         is_pro=is_pro,
         message=request.args.get("msg", ""),
-        today=today.isoformat()
+        today=today.isoformat(),
+        show_my_money_dot=get_my_money_dot(current_user.id),
     )
 
 @app.get("/verify-email/<token>")

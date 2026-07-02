@@ -141,6 +141,104 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     <div class="alert alert-info rounded-4 auto-dismiss">{{ message }}</div>
   {% endif %}
 
+  {% if my_money_setup and my_money_setup.show %}
+  <div class="card mb-4" id="mmSetupCard" style="border-radius:16px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);border:1px solid #dee2e6;padding:0;">
+    <div style="display:block;width:100%;height:5px;background:#dde1e7;margin:0;padding:0;flex-shrink:0;">
+      <div style="height:5px;background:var(--brand,#5b5ef4);width:{{ my_money_setup.progress }}%;transition:width 0.4s ease;"></div>
+    </div>
+    {% if my_money_setup.progress == 100 %}
+    <div class="card-body text-center py-4">
+      <div class="fw-semibold mb-2" style="font-size:15px;">✅ You're all set — your forecast is live.</div>
+      <a href="/forecast" class="text-decoration-none fw-semibold" style="color:var(--brand,#5b5ef4);font-size:14px;">See your forecast →</a>
+    </div>
+    {% else %}
+    <div class="card-body pb-2">
+      <div class="d-flex justify-content-between align-items-start mb-1">
+        <div>
+          {% if my_money_setup.version == 'A' %}
+          <div class="fw-semibold mb-1" style="font-size:15px;">Let's get your forecast ready</div>
+          <div style="font-size:13px;color:#6b7280;">Add your accounts, income and bills so Spendara can show you your real financial future.</div>
+          {% else %}
+          <div class="fw-semibold mb-1" style="font-size:15px;">Your forecast is built on estimates</div>
+          <div style="font-size:13px;color:#6b7280;">You entered these numbers in the demo. Take a minute to make sure they're accurate — your forecast depends on it.</div>
+          {% endif %}
+        </div>
+        <button onclick="dismissMyMoneySetup()" class="btn btn-link btn-sm p-0 ms-3 text-decoration-none" style="font-size:13px;white-space:nowrap;flex-shrink:0;color:#9ca3af;">Dismiss</button>
+      </div>
+      {% for step in my_money_setup.steps %}
+      {% if not loop.first %}<hr class="my-0" style="border-color:#f3f4f6;">{% endif %}
+      <div style="display:flex;align-items:center;padding-top:14px;padding-bottom:14px;{% if step.status == 'locked' %}opacity:0.45;{% endif %}">
+        <div style="width:24px;text-align:center;flex-shrink:0;margin-right:12px;">
+          {% if step.status in ('complete', 'verified') %}
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#10b981;color:#fff;font-size:12px;font-weight:700;">✓</span>
+          {% elif step.status == 'review' %}
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#f59e0b;color:#fff;font-size:12px;font-weight:700;">!</span>
+          {% elif step.status == 'locked' %}
+          <span style="font-size:14px;color:#d1d5db;line-height:1;">🔒</span>
+          {% else %}
+          <span style="display:inline-block;width:22px;height:22px;border-radius:50%;border:2px solid #d1d5db;"></span>
+          {% endif %}
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;font-weight:600;color:#1f2937;">{{ step.label }}</div>
+          {% if step.description and step.status not in ('complete', 'verified') %}
+          <div style="font-size:12px;color:#6b7280;margin-top:2px;">{{ step.description }}</div>
+          {% endif %}
+        </div>
+        {% if step.status != 'locked' %}
+        <button onclick="handleSetupAction('{{ step.action_tab }}')" class="btn btn-link btn-sm text-decoration-none p-0" style="color:var(--brand,#5b5ef4);font-size:13px;font-weight:600;white-space:nowrap;flex-shrink:0;margin-left:12px;">
+          {% if step.status in ('complete', 'verified') %}Edit →{% elif step.status == 'review' %}Review →{% else %}Set up →{% endif %}
+        </button>
+        {% endif %}
+      </div>
+      {% endfor %}
+      <div class="text-center" style="border-top:1px solid #f3f4f6;padding-top:10px;padding-bottom:2px;">
+        <button onclick="dismissMyMoneySetup()" class="btn btn-link btn-sm text-decoration-none" style="font-size:12px;color:#9ca3af;">I'll set this up later</button>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <script>
+  function dismissMyMoneySetup() {
+    var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+    fetch('/my-money/setup/dismiss', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({csrf_token:csrf})})
+      .then(function() {
+        var c = document.getElementById('mmSetupCard');
+        if (c) { c.style.transition='opacity 0.5s'; c.style.opacity='0'; setTimeout(function(){c.style.display='none';}, 500); }
+      });
+  }
+  function handleSetupAction(action) {
+    var findTabBtn = function(name) {
+      var found = null;
+      document.querySelectorAll('.tab-btn').forEach(function(b) {
+        if ((b.getAttribute('onclick')||'').indexOf("'" + name + "'") !== -1) found = b;
+      });
+      return found;
+    };
+    if (action === 'accounts' || action === 'bills' || action === 'income' || action === 'rules') {
+      var btn = findTabBtn(action);
+      if (btn) showTab(action, btn);
+      return;
+    }
+    if (action.indexOf('edit_account_') === 0) {
+      var id = action.replace('edit_account_', '');
+      var btn = findTabBtn('accounts');
+      if (btn) showTab('accounts', btn);
+      setTimeout(function() { toggleEdit('account-' + id); }, 100);
+      return;
+    }
+    if (action.indexOf('edit_income_') === 0) {
+      var id = parseInt(action.replace('edit_income_', ''), 10);
+      var btn = findTabBtn('income');
+      if (btn) showTab('income', btn);
+      setTimeout(function() { openEditIncomeModal(id); }, 100);
+      return;
+    }
+  }
+  {% if my_money_setup.progress == 100 %}setTimeout(function(){ dismissMyMoneySetup(); }, 5000);{% endif %}
+  </script>
+  {% endif %}
+
   <!-- TABS -->
   <div class="settings-tabs-wrap mb-4">
     <div class="settings-tabs">
@@ -720,7 +818,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       <small>Forecast</small>
     </a>
     <a href="/manage" class="text-decoration-none nav-active">
-      <div style="font-size:22px">🎛️</div>
+      <div style="font-size:22px;position:relative;">🎛️{% if show_my_money_dot %}<span style="position:absolute;top:2px;right:-2px;width:6px;height:6px;border-radius:50%;background:var(--brand,#5b5ef4);display:block;"></span>{% endif %}</div>
       <small>My Money</small>
     </a>
   </div>

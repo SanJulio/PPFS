@@ -278,7 +278,7 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
       <small>Forecast</small>
     </a>
     <a href="/manage" class="text-decoration-none nav-active">
-      <div style="font-size:22px">🎛️</div>
+      <div style="font-size:22px;position:relative;">🎛️{% if show_my_money_dot %}<span style="position:absolute;top:2px;right:-2px;width:6px;height:6px;border-radius:50%;background:var(--brand,#5b5ef4);display:block;"></span>{% endif %}</div>
       <small>My Money</small>
     </a>
   </div>
