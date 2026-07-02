@@ -1045,7 +1045,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
         '<div class="small" style="color:' + color + ';">' + (safe ? 'Leaves £' + after.toFixed(2) : 'Short by £' + Math.abs(after).toFixed(2)) + ' in ' + escHtml(accName) + ' on ' + data.date + '</div>' +
         breakdown +
         '</div>' +
-        lowestHtml;
+        (safe && !tight ? '' : lowestHtml);
     }
 
     var mainFetch = (snapshotData && days === dateToDays(dateInput.value))
