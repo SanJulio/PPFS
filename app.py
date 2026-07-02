@@ -1762,6 +1762,10 @@ def api_overview():
 
     monthly = calculate_monthly_spending(start, end)
 
+    import cycle_engine as _ce2
+    _api_cycle = _ce2.get_cycle(current_user.id)
+    api_safe_boundary = _api_cycle["safe_boundary"]
+
     accounts_rows = get_active_accounts(current_user.id)
     accounts = {}
     for r in accounts_rows:
@@ -1773,7 +1777,7 @@ def api_overview():
             "include_in_overview": bool(r.get("include_in_overview", 1)),
             "savings_type": r.get("savings_type"),
         }
-    ov = calculate_financial_overview(accounts, period_end=end, safe_boundary=end)
+    ov = calculate_financial_overview(accounts, period_end=end, safe_boundary=api_safe_boundary)
 
     # Filter future bills to those whose due date falls on or after the selected start.
     # calculate_financial_overview always uses today as the lower bound; when the custom
