@@ -551,7 +551,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
           </div>
           <div class="d-flex justify-content-between py-1 border-bottom">
             <span>Bills remaining</span>
-            <span class="amount-private text-danger">−£{{ "%.2f"|format(overview.future_bills) }}</span>
+            <span id="safe-bills-remaining-val" class="amount-private text-danger">−£{{ "%.2f"|format(overview.future_bills) }}</span>
           </div>
           {% if overview.future_income > 0 %}
           <div class="d-flex justify-content-between py-1 border-bottom">
@@ -561,7 +561,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
           {% endif %}
           <div class="d-flex justify-content-between py-1 fw-semibold">
             <span>End of cycle</span>
-            <span class="amount-private">£{{ "%.2f"|format(overview.spending_balance - overview.future_bills + overview.future_income) }}</span>
+            <span id="safe-eoc-val" class="amount-private">£{{ "%.2f"|format(overview.spending_balance - overview.future_bills + overview.future_income) }}</span>
           </div>
         </div>
       </div>
@@ -1838,6 +1838,8 @@ var _drpOrigStart = '{{ cycle_start_date.isoformat() }}';
 var _drpOrigEnd   = '{{ cycle_end_date.isoformat() }}';
 var _drpOrigLabel = "{{ cycle_start_date.day }} {{ cycle_start_date.strftime('%b') }} – {{ cycle_end_date.day }} {{ cycle_end_date.strftime('%b') }}";
 var _drpCustomActive = false;
+var _ovSpendingBalance = {{ overview.spending_balance }};
+var _ovFutureIncome = {{ overview.future_income }};
 
 function openDateRangePicker() {
   document.getElementById('drpStart').value = _drpCustomActive
@@ -1920,8 +1922,12 @@ function _applyOverviewData(d, start, end) {
       : '<div class="small text-muted py-1">No bills paid this cycle yet</div>';
   }
 
-  // Bills left
+  // Bills left (tile summary) + Bills remaining (Safe to Spend breakdown) — always the same figure
   document.getElementById('future-bills-val').textContent = '£' + d.future_bills.toFixed(2);
+  var brEl = document.getElementById('safe-bills-remaining-val');
+  if (brEl) brEl.textContent = '−£' + d.future_bills.toFixed(2);
+  var eocEl = document.getElementById('safe-eoc-val');
+  if (eocEl) eocEl.textContent = '£' + (_ovSpendingBalance - d.future_bills + _ovFutureIncome).toFixed(2);
   var blEl = document.getElementById('tile-bills');
   if (blEl) {
     var _months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
