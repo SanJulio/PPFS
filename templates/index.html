@@ -1370,7 +1370,13 @@ function closeFab() {
   });
 }
 
+var _qaScrollY = 0;
 function openQuickAdd() {
+  _qaScrollY = window.scrollY;
+  document.body.style.position = 'fixed';
+  document.body.style.top = '-' + _qaScrollY + 'px';
+  document.body.style.width = '100%';
+  document.body.style.overflow = 'hidden';
   var modal = document.getElementById('quickAddModal');
   modal.style.display = 'flex';
   document.getElementById('qa-amount').value = '';
@@ -1380,6 +1386,11 @@ function openQuickAdd() {
 
 function closeQuickAdd() {
   document.getElementById('quickAddModal').style.display = 'none';
+  document.body.style.position = '';
+  document.body.style.top = '';
+  document.body.style.width = '';
+  document.body.style.overflow = '';
+  window.scrollTo(0, _qaScrollY);
 }
 
 function quickFill(amount, desc, category) {
@@ -1506,13 +1517,24 @@ function onAdjAccountChange() {
   document.getElementById('adj-current').textContent = 'Current: £' + bal.toFixed(2);
   document.getElementById('adj-new-balance').value = bal.toFixed(2);
 }
+var _adjScrollY = 0;
 function openAdjustModal() {
+  _adjScrollY = window.scrollY;
+  document.body.style.position = 'fixed';
+  document.body.style.top = '-' + _adjScrollY + 'px';
+  document.body.style.width = '100%';
+  document.body.style.overflow = 'hidden';
   document.getElementById('adj-error').style.display = 'none';
   document.getElementById('adjustModal').style.display = 'flex';
   onAdjAccountChange();
 }
 function closeAdjustModal() {
   document.getElementById('adjustModal').style.display = 'none';
+  document.body.style.position = '';
+  document.body.style.top = '';
+  document.body.style.width = '';
+  document.body.style.overflow = '';
+  window.scrollTo(0, _adjScrollY);
 }
 document.getElementById('adjustModal').addEventListener('click', function(e) {
   if (e.target === this) closeAdjustModal();
