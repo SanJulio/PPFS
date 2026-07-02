@@ -2246,10 +2246,15 @@ document.querySelectorAll('.navbar a').forEach(function(link) {
   </div>
 </div>
 <script>
+var _bkdnScrollY = 0;
 function _openBreakdownModal() {
+  _bkdnScrollY = window.scrollY;
+  document.body.style.overflow = 'hidden';
+  document.body.style.position = 'fixed';
+  document.body.style.top = '-' + _bkdnScrollY + 'px';
+  document.body.style.width = '100%';
   var modal = document.getElementById('breakdownModal');
   modal.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
   requestAnimationFrame(function() { requestAnimationFrame(function() {
     document.getElementById('breakdownSheet').style.transform = 'translateY(0)';
   }); });
@@ -2258,7 +2263,11 @@ function _closeBreakdown() {
   document.getElementById('breakdownSheet').style.transform = 'translateY(100%)';
   setTimeout(function() {
     document.getElementById('breakdownModal').style.display = 'none';
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.width = '';
     document.body.style.overflow = '';
+    window.scrollTo(0, _bkdnScrollY);
   }, 300);
 }
 function _fmtDs(iso) {
@@ -2282,9 +2291,9 @@ function openBillBreakdown() {
         + '<span style="font-size:14px;color:#ef4444;font-weight:600;">−£' + parseFloat(b.amount).toFixed(2) + '</span></div>';
     }).join('');
     var tot = items.reduce(function(s, b) { return s + parseFloat(b.amount); }, 0);
-    document.getElementById('breakdownTotal').innerHTML = '<div class="d-flex justify-content-between align-items-center">'
-      + '<span style="font-size:14px;font-weight:600;color:#111827;">Total</span>'
-      + '<span style="font-size:14px;font-weight:600;color:#ef4444;">−£' + tot.toFixed(2) + '</span></div>';
+    document.getElementById('breakdownTotal').innerHTML = '<div class="d-flex justify-content-between align-items-center" style="padding:16px 0;border-top:2px solid #fca5a5;background:#fff5f5;margin:0 -20px;padding-left:20px;padding-right:20px;">'
+      + '<span style="font-size:15px;font-weight:700;color:#111827;">Total remaining</span>'
+      + '<span style="font-size:18px;font-weight:700;color:#ef4444;">−£' + tot.toFixed(2) + '</span></div>';
   }
   _openBreakdownModal();
 }
@@ -2305,9 +2314,9 @@ function openIncomeBreakdown() {
         + '<span style="font-size:14px;color:#10b981;font-weight:600;">+£' + parseFloat(i.amount).toFixed(2) + '</span></div>';
     }).join('');
     var tot = items.reduce(function(s, i) { return s + parseFloat(i.amount); }, 0);
-    document.getElementById('breakdownTotal').innerHTML = '<div class="d-flex justify-content-between align-items-center">'
-      + '<span style="font-size:14px;font-weight:600;color:#111827;">Total</span>'
-      + '<span style="font-size:14px;font-weight:600;color:#10b981;">+£' + tot.toFixed(2) + '</span></div>';
+    document.getElementById('breakdownTotal').innerHTML = '<div class="d-flex justify-content-between align-items-center" style="padding:16px 0;border-top:2px solid #6ee7b7;background:#f0fdf4;margin:0 -20px;padding-left:20px;padding-right:20px;">'
+      + '<span style="font-size:15px;font-weight:700;color:#111827;">Total due</span>'
+      + '<span style="font-size:18px;font-weight:700;color:#10b981;">+£' + tot.toFixed(2) + '</span></div>';
   }
   _openBreakdownModal();
 }
