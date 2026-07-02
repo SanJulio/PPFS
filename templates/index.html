@@ -1278,8 +1278,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
     </a>
   </div>
 </nav>
-<script type="application/json" id="bkdn-bills-init">{{ overview.future_bills_list | tojson }}</script>
-<script type="application/json" id="bkdn-income-init">{{ overview.future_income_list | tojson }}</script>
+<script type="application/json" id="ov-init-data">{"spendingBalance":{{ overview.spending_balance }},"futureIncome":{{ overview.future_income }},"futureBillsList":{{ overview.future_bills_list | tojson }},"futureIncomeList":{{ overview.future_income_list | tojson }}}</script>
 <script>
 // Toggle button to show/hide financial figures
 const privateCards = [document.getElementById('overviewCard')];
@@ -1863,10 +1862,11 @@ var _drpOrigStart = '{{ cycle_start_date.isoformat() }}';
 var _drpOrigEnd   = '{{ cycle_end_date.isoformat() }}';
 var _drpOrigLabel = "{{ cycle_start_date.day }} {{ cycle_start_date.strftime('%b') }} – {{ cycle_end_date.day }} {{ cycle_end_date.strftime('%b') }}";
 var _drpCustomActive = false;
-var _ovSpendingBalance = {{ overview.spending_balance }};
-var _ovFutureIncome = {{ overview.future_income }};
-var _curFutureBillsList = JSON.parse(document.getElementById('bkdn-bills-init').textContent);
-var _curFutureIncomeList = JSON.parse(document.getElementById('bkdn-income-init').textContent);
+var _ovInitData = JSON.parse(document.getElementById('ov-init-data').textContent);
+var _ovSpendingBalance = _ovInitData.spendingBalance;
+var _ovFutureIncome = _ovInitData.futureIncome;
+var _curFutureBillsList = _ovInitData.futureBillsList;
+var _curFutureIncomeList = _ovInitData.futureIncomeList;
 
 function openDateRangePicker() {
   document.getElementById('drpStart').value = _drpCustomActive
