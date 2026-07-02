@@ -2233,7 +2233,7 @@ document.querySelectorAll('.navbar a').forEach(function(link) {
 </script>
 <!-- Safe-to-spend breakdown bottom sheet -->
 <div id="breakdownModal" onclick="if(event.target===this)_closeBreakdown()" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.45);align-items:flex-end;justify-content:center;">
-  <div id="breakdownSheet" style="width:100%;max-width:480px;background:#fff;border-radius:18px 18px 0 0;max-height:80vh;display:flex;flex-direction:column;transform:translateY(100%);transition:transform 0.28s ease;">
+  <div id="breakdownSheet" style="width:100%;max-width:480px;background:#fff;border-radius:18px 18px 0 0;max-height:calc(85vh - 60px);display:flex;flex-direction:column;transform:translateY(100%);transition:transform 0.28s ease;margin-bottom:60px;">
     <div style="padding:16px 20px 14px;border-bottom:1px solid #f3f4f6;display:flex;justify-content:space-between;align-items:flex-start;flex-shrink:0;">
       <div>
         <div id="breakdownTitle" style="font-size:16px;font-weight:700;color:#111827;"></div>
@@ -2249,13 +2249,17 @@ document.querySelectorAll('.navbar a').forEach(function(link) {
 function _openBreakdownModal() {
   var modal = document.getElementById('breakdownModal');
   modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
   requestAnimationFrame(function() { requestAnimationFrame(function() {
     document.getElementById('breakdownSheet').style.transform = 'translateY(0)';
   }); });
 }
 function _closeBreakdown() {
   document.getElementById('breakdownSheet').style.transform = 'translateY(100%)';
-  setTimeout(function() { document.getElementById('breakdownModal').style.display = 'none'; }, 300);
+  setTimeout(function() {
+    document.getElementById('breakdownModal').style.display = 'none';
+    document.body.style.overflow = '';
+  }, 300);
 }
 function _fmtDs(iso) {
   var m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
