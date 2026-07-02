@@ -461,6 +461,11 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
               <td class="text-end fw-bold money">£{{ "%.2f"|format(bills|sum(attribute='amount')) }}</td>
               <td colspan="2" class="text-end text-muted small">per occurrence</td>
             </tr>
+            <tr>
+              <td colspan="4" class="text-end" style="font-size:13px;color:#6b7280;padding-top:2px;padding-bottom:4px;">
+                £{{ "%.2f"|format(bills_monthly_total) }} / month &nbsp;·&nbsp; £{{ "%.2f"|format(bills_annual_total) }} / year
+              </td>
+            </tr>
           </tfoot>
           {% endif %}
         </table>
@@ -532,6 +537,11 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
               <td class="fw-bold small">Total</td>
               <td class="text-end fw-bold money">£{{ "%.2f"|format(income|sum(attribute='amount')) }}</td>
               <td colspan="2" class="text-end text-muted small">per occurrence</td>
+            </tr>
+            <tr>
+              <td colspan="5" class="text-end" style="font-size:13px;color:#6b7280;padding-top:2px;padding-bottom:4px;">
+                £{{ "%.2f"|format(income_monthly_total) }} / month &nbsp;·&nbsp; £{{ "%.2f"|format(income_annual_total) }} / year
+              </td>
             </tr>
           </tfoot>
           {% endif %}

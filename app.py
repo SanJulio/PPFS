@@ -3326,6 +3326,25 @@ def settings_save_notifications():
     return redirect(url_for("settings", msg="Notification preferences saved.", tab="display"))
 
 
+def _monthly_eq(amount, frequency):
+    """Return the monthly equivalent of a recurring amount given its frequency."""
+    freq = (frequency or 'monthly').lower()
+    multipliers = {
+        'weekly': 52.0 / 12,
+        'fortnightly': 26.0 / 12,
+        '4-weekly': 13.0 / 12,
+        'yearly': 1.0 / 12,
+    }
+    return float(amount or 0) * multipliers.get(freq, 1.0)
+
+
+def normalised_totals(income_rows, bill_rows):
+    """Return (income_monthly, income_annual, bills_monthly, bills_annual) totals."""
+    inc_m = sum(_monthly_eq(i.get('amount', 0), i.get('frequency')) for i in income_rows)
+    bil_m = sum(_monthly_eq(b.get('amount', 0), b.get('frequency')) for b in bill_rows)
+    return inc_m, inc_m * 12, bil_m, bil_m * 12
+
+
 @app.get("/manage")
 @login_required
 def manage():
@@ -3374,6 +3393,9 @@ def manage():
 
     has_primary = any(i.get("is_primary") for i in income)
 
+    income_monthly_total, income_annual_total, bills_monthly_total, bills_annual_total = \
+        normalised_totals(income, bills)
+
     return render_template("manage.html",
         accounts=accounts,
         bills=bills,
@@ -3386,6 +3408,10 @@ def manage():
         message=request.args.get("msg", ""),
         my_money_setup=get_my_money_setup(current_user.id),
         show_my_money_dot=get_my_money_dot(current_user.id),
+        income_monthly_total=income_monthly_total,
+        income_annual_total=income_annual_total,
+        bills_monthly_total=bills_monthly_total,
+        bills_annual_total=bills_annual_total,
     )
 
 @app.post("/settings/add-account")
