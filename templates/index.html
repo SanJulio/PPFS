@@ -1376,7 +1376,6 @@ function openQuickAdd() {
   document.getElementById('qa-amount').value = '';
   document.getElementById('qa-description').value = '';
   document.getElementById('qa-error').style.display = 'none';
-  document.getElementById('qa-amount').focus();
 }
 
 function closeQuickAdd() {
@@ -1511,8 +1510,6 @@ function openAdjustModal() {
   document.getElementById('adj-error').style.display = 'none';
   document.getElementById('adjustModal').style.display = 'flex';
   onAdjAccountChange();
-  document.getElementById('adj-new-balance').focus();
-  document.getElementById('adj-new-balance').select();
 }
 function closeAdjustModal() {
   document.getElementById('adjustModal').style.display = 'none';
