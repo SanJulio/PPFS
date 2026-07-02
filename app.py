@@ -840,10 +840,8 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
                 "account": acc,
                 "due_date": due.isoformat(),
             })
-            # Only deduct from safe_spending if within safe_boundary
             if accounts[acc]["type"] in spending_types:
-                if safe_boundary is None or due <= safe_boundary:
-                    spending_future_bills += expense["amount"]
+                spending_future_bills += expense["amount"]
 
     # --- Savings rules — treated like bills leaving spending accounts ---
     try:
@@ -903,10 +901,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
                 "due_date": due.isoformat(),
             })
             if accounts[from_acc]["type"] in spending_types:
-                _sr_ext5 = today_date + timedelta(days=5)
-                near_term_due = due > today_date + timedelta(days=4) and due <= _sr_ext5
-                if safe_boundary is None or due <= safe_boundary or near_term_due:
-                    spending_future_bills += amt
+                spending_future_bills += amt
 
     # --- Pending income arriving later this cycle (for display in breakdown only) ---
     future_income = 0.0
@@ -926,7 +921,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
         import calendar as _cal
         month_end = date(today.year, today.month, _cal.monthrange(today.year, today.month)[1])
         tomorrow = today.date() + timedelta(days=1)
-        income_period_end = safe_boundary if safe_boundary is not None else month_end
+        income_period_end = period_end if period_end is not None else month_end
 
         for inc in income_rows:
             amount = float(inc.get("amount") or 0)
@@ -937,9 +932,9 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
     except Exception as e:
         logger.debug(f"Could not load future income for overview: {e}")
 
-    # Safe to spend = total spending balance minus all bills still due this cycle
-    safe_spending = max(0.0, spending_balance - spending_future_bills)
-    shortfall = max(0.0, spending_future_bills - spending_balance)
+    # Safe to spend = balance + income arriving in period − bills due in period
+    safe_spending = max(0.0, spending_balance + future_income - spending_future_bills)
+    shortfall = max(0.0, spending_future_bills - spending_balance - future_income)
     net_worth = spending_balance + savings_balance
 
     return {
@@ -1762,10 +1757,6 @@ def api_overview():
 
     monthly = calculate_monthly_spending(start, end)
 
-    import cycle_engine as _ce2
-    _api_cycle = _ce2.get_cycle(current_user.id)
-    api_safe_boundary = _api_cycle["safe_boundary"]
-
     accounts_rows = get_active_accounts(current_user.id)
     accounts = {}
     for r in accounts_rows:
@@ -1777,7 +1768,7 @@ def api_overview():
             "include_in_overview": bool(r.get("include_in_overview", 1)),
             "savings_type": r.get("savings_type"),
         }
-    ov = calculate_financial_overview(accounts, period_end=end, safe_boundary=api_safe_boundary)
+    ov = calculate_financial_overview(accounts, period_end=end)
 
     # Filter future bills to those whose due date falls on or after the selected start.
     # calculate_financial_overview always uses today as the lower bound; when the custom

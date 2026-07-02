@@ -541,7 +541,6 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
           <span id="arrow-safe" class="fw-bold" style="font-size:14px;color:#bbb">▾</span>
         </div>
         <div id="safe-spending-val" class="fs-4 fw-bold amount-private {% if overview.safe_spending > 0 %}text-success{% else %}text-muted{% endif %}">£{{ "%.2f"|format(overview.safe_spending) }}</div>
-        <div style="font-size:10px;color:#9ca3af;margin-top:1px;">Until next payday</div>
       </div>
       <div id="tile-safe" class="d-none mt-2 px-1">
         <div class="small text-muted py-1">
@@ -1952,6 +1951,14 @@ function _applyOverviewData(d, start, end) {
       : '<div class="small text-muted py-1">No bills remaining this month 🎉</div>';
   }
 
+  // Safe to spend — now reflects income + bills in the selected period
+  var ssEl = document.getElementById('safe-spending-val');
+  if (ssEl) {
+    ssEl.textContent = '£' + d.safe_spending.toFixed(2);
+    ssEl.classList.remove('text-success', 'text-muted');
+    ssEl.classList.add(d.safe_spending > 0 ? 'text-success' : 'text-muted');
+  }
+
   // Progress bar
   var bar = document.getElementById('cycleProgressBar');
   if (bar) {
@@ -1962,6 +1969,8 @@ function _applyOverviewData(d, start, end) {
     if (pctLbl) pctLbl.textContent = pct + '%';
   }
 
+  // Banner — update with new safe_spending for the selected period
+  _updateBanner(d.safe_spending, d.income_received, d.shortfall || 0);
 }
 function _getBestAccount() {
   var el = document.getElementById('adj-balances-json');

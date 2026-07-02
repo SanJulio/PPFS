@@ -294,8 +294,8 @@ class TestSafeToSpend:
             cur.execute("DELETE FROM scheduled_expenses WHERE id = ?", (bill_id,))
             cur.close()
 
-    def test_safe_spending_bill_before_income_is_deducted(self, auth_client, db_conn, test_user, test_account):
-        """A bill due before payday is deducted from safe_spending."""
+    def test_safe_spending_includes_future_income(self, auth_client, db_conn, test_user, test_account):
+        """Safe to spend = balance + future income − future bills."""
         from datetime import date
         today = date.today()
         bill_day = today.day + 1 if today.day < 26 else None
@@ -319,17 +319,16 @@ class TestSafeToSpend:
         try:
             resp = auth_client.get("/")
             assert resp.status_code == 200
-            # balance=1000, bill=600 before income → safe = 400 — income is future so banner
-            # is hidden; verify the safe value appears in the tile instead
-            assert "400.00" in resp.data.decode("utf-8")
+            # balance=1000, future income=2000, bill=600 → safe = 2400
+            assert "2400.00" in resp.data.decode("utf-8")
         finally:
             cur = db_conn.cursor()
             cur.execute("DELETE FROM scheduled_expenses WHERE id = ?", (bill_id,))
             cur.execute("DELETE FROM income WHERE id = ?", (inc_id,))
             cur.close()
 
-    def test_safe_spending_all_cycle_bills_deducted(self, auth_client, db_conn, test_user, test_account):
-        """All remaining bills this cycle are deducted regardless of income timing."""
+    def test_safe_spending_income_and_bills_both_counted(self, auth_client, db_conn, test_user, test_account):
+        """Both future income and future bills affect safe_spending regardless of ordering."""
         from datetime import date
         today = date.today()
         income_day = today.day + 1 if today.day < 26 else None
@@ -353,9 +352,8 @@ class TestSafeToSpend:
         try:
             resp = auth_client.get("/")
             assert resp.status_code == 200
-            # balance=1000, bill=600 → safe = 400 — income is future so banner is hidden;
-            # verify the safe value appears in the tile instead
-            assert "400.00" in resp.data.decode("utf-8")
+            # balance=1000, future income=2000, bill=600 → safe = 2400
+            assert "2400.00" in resp.data.decode("utf-8")
         finally:
             cur = db_conn.cursor()
             cur.execute("DELETE FROM income WHERE id = ?", (inc_id,))
