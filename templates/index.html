@@ -555,7 +555,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
               <span style="font-size:13px;color:#d1d5db;">›</span>
             </div>
           </div>
-          <div id="safe-income-row" class="d-flex justify-content-between align-items-center border-bottom safe-bkdn-row" onclick="openIncomeBreakdown()" style="padding:10px 0;cursor:pointer;{% if overview.future_income == 0 %}display:none;{% endif %}">
+          <div id="safe-income-row" class="d-flex justify-content-between align-items-center border-bottom safe-bkdn-row" onclick="openIncomeBreakdown()" {% if overview.future_income == 0 %}style="display:none;padding:10px 0;cursor:pointer;"{% else %}style="padding:10px 0;cursor:pointer;"{% endif %}>
             <span style="font-size:13px;color:#374151;">Income still due</span>
             <div class="d-flex align-items-center" style="gap:6px;">
               <span id="safe-income-due-val" class="amount-private text-success" style="font-size:13px;">+£{{ "%.2f"|format(overview.future_income) }}</span>
@@ -1278,6 +1278,8 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
     </a>
   </div>
 </nav>
+<script type="application/json" id="bkdn-bills-init">{{ overview.future_bills_list | tojson }}</script>
+<script type="application/json" id="bkdn-income-init">{{ overview.future_income_list | tojson }}</script>
 <script>
 // Toggle button to show/hide financial figures
 const privateCards = [document.getElementById('overviewCard')];
@@ -1863,8 +1865,8 @@ var _drpOrigLabel = "{{ cycle_start_date.day }} {{ cycle_start_date.strftime('%b
 var _drpCustomActive = false;
 var _ovSpendingBalance = {{ overview.spending_balance }};
 var _ovFutureIncome = {{ overview.future_income }};
-var _curFutureBillsList = {{ overview.future_bills_list | tojson }};
-var _curFutureIncomeList = {{ overview.future_income_list | tojson }};
+var _curFutureBillsList = JSON.parse(document.getElementById('bkdn-bills-init').textContent);
+var _curFutureIncomeList = JSON.parse(document.getElementById('bkdn-income-init').textContent);
 
 function openDateRangePicker() {
   document.getElementById('drpStart').value = _drpCustomActive
