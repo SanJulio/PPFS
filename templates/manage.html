@@ -215,10 +215,26 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       });
       return found;
     };
-    if (action === 'accounts' || action === 'bills' || action === 'income' || action === 'rules') {
-      var btn = findTabBtn(action);
-      if (btn) showTab(action, btn);
-      return;
+    var scrollToAdd = function(id) {
+      setTimeout(function() {
+        var el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    };
+    if (action === 'accounts') {
+      var btn = findTabBtn('accounts'); if (btn) showTab('accounts', btn);
+      scrollToAdd('btn-add-account'); return;
+    }
+    if (action === 'bills') {
+      var btn = findTabBtn('bills'); if (btn) showTab('bills', btn);
+      scrollToAdd('btn-add-bill'); return;
+    }
+    if (action === 'income') {
+      var btn = findTabBtn('income'); if (btn) showTab('income', btn);
+      scrollToAdd('btn-add-income'); return;
+    }
+    if (action === 'rules') {
+      var btn = findTabBtn('rules'); if (btn) showTab('rules', btn); return;
     }
     if (action.indexOf('edit_account_') === 0) {
       var id = action.replace('edit_account_', '');
@@ -355,7 +371,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <a href="/billing/upgrade" class="btn btn-dark w-100 py-3">Upgrade to Pro — £4.99/month</a>
         </div>
       {% else %}
-        <button class="btn btn-dark w-100 py-3" onclick="document.getElementById('addAccountModal').style.display='flex'">+ Add Account</button>
+        <button id="btn-add-account" class="btn btn-dark w-100 py-3" onclick="document.getElementById('addAccountModal').style.display='flex'">+ Add Account</button>
       {% endif %}
     </div>
   </div>
@@ -471,7 +487,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         </table>
       </div>
 
-      <button class="btn btn-dark w-100 py-3" onclick="document.getElementById('addBillModal').style.display='flex'">+ Add Bill</button>
+      <button id="btn-add-bill" class="btn btn-dark w-100 py-3" onclick="document.getElementById('addBillModal').style.display='flex'">+ Add Bill</button>
     </div>
   </div>
 
@@ -552,7 +568,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         ☆ Star an income source to power your automatic budget cycle.
       </p>
 
-      <button class="btn btn-dark w-100 py-3" onclick="openAddIncomeModal()">+ Add Income Source</button>
+      <button id="btn-add-income" class="btn btn-dark w-100 py-3" onclick="openAddIncomeModal()">+ Add Income Source</button>
     </div>
   </div>
 
