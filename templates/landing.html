@@ -337,6 +337,7 @@ footer a:hover { color: var(--lp-text); }
 .fo-afford-input:focus { border-color: var(--brand); }
 .fo-afford-btn { width: 100%; padding: 14px; border-radius: 10px; border: none; background: #111; color: #fff; font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 500; cursor: pointer; transition: background 0.2s; margin-top: 6px; -webkit-appearance: none; appearance: none; }
 .fo-afford-btn:hover { background: #333; }
+.afford-date-pills { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 12px; }
 .afford-result { font-size: 14px; line-height: 1.6; margin: 0; }
 
 /* ── RESPONSIVE ── */
@@ -514,7 +515,16 @@ footer a:hover { color: var(--lp-text); }
     </div>
     <div id="affordCard" class="fo-chart-card" style="display:none;">
       <div class="fo-stat-label" style="margin-bottom:6px;">Can I afford this?</div>
-      <p style="font-size:14px;color:#6b7280;margin-bottom:14px;font-weight:300;">Enter a purchase amount to see what it does to your forecast.</p>
+      <p style="font-size:14px;color:#6b7280;margin-bottom:12px;font-weight:300;">Enter a purchase amount to see what it does to your forecast.</p>
+      <div class="afford-date-pills">
+        <button class="pay-pill pay-pill-sm" onclick="setAffordDate('today')">Today</button>
+        <button class="pay-pill pay-pill-sm selected" onclick="setAffordDate('this_month')">This month</button>
+        <button class="pay-pill pay-pill-sm" onclick="setAffordDate('3_months')">In 3 months</button>
+        <button class="pay-pill pay-pill-sm" onclick="setAffordDate('custom')">Custom date</button>
+      </div>
+      <div id="affordCustomDateWrap" style="display:none;margin-bottom:12px;">
+        <input id="affordCustomDate" type="date" style="width:100%;padding:10px 12px;border:1.5px solid #e5e7eb;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:14px;color:#111;outline:none;box-sizing:border-box;" onchange="clearAffordUi()">
+      </div>
       <div class="fo-afford-input-wrap">
         <span class="fo-afford-prefix">£</span>
         <input id="affordInput" class="fo-afford-input" type="number" min="0" placeholder="e.g. 500">
@@ -677,53 +687,76 @@ function clearAfford() {
   if (_lastResult) { renderForecastOutput(_lastResult); }
 }
 
+var _affordDateMode = 'this_month';
+
+function setAffordDate(mode) {
+  _affordDateMode = mode;
+  var pills = document.querySelectorAll('.afford-date-pills .pay-pill');
+  pills.forEach(function(p) { p.classList.remove('selected'); });
+  var modeIdx = { today: 0, this_month: 1, '3_months': 2, custom: 3 }[mode];
+  if (pills[modeIdx]) pills[modeIdx].classList.add('selected');
+  var wrap = document.getElementById('affordCustomDateWrap');
+  if (wrap) wrap.style.display = mode === 'custom' ? 'block' : 'none';
+  if (mode === 'custom') {
+    var today0 = new Date(); today0.setHours(0,0,0,0);
+    var toIso = function(d) { return d.toISOString().slice(0,10); };
+    var inp = document.getElementById('affordCustomDate');
+    if (inp) {
+      inp.min = toIso(today0);
+      inp.max = toIso(new Date(today0.getTime() + 90 * 86400000));
+      if (!inp.value) inp.value = toIso(new Date(today0.getTime() + 30 * 86400000));
+    }
+  }
+  clearAffordUi();
+}
+
+function getAffordTargetDayIdx() {
+  var today0 = new Date(); today0.setHours(0,0,0,0);
+  if (_affordDateMode === 'today') return 0;
+  var target;
+  if (_affordDateMode === 'this_month') {
+    target = new Date(today0.getFullYear(), today0.getMonth() + 1, 0);
+  } else if (_affordDateMode === '3_months') {
+    target = new Date(today0.getTime() + 90 * 86400000);
+  } else {
+    var val = document.getElementById('affordCustomDate') ? document.getElementById('affordCustomDate').value : '';
+    if (!val) return 30;
+    var parts = val.split('-');
+    target = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+  }
+  var diff = Math.round((target - today0) / 86400000);
+  return Math.max(0, Math.min(90, diff));
+}
+
+function getAffordTargetLabel() {
+  if (_affordDateMode === 'today') return 'today';
+  var dayIdx = getAffordTargetDayIdx();
+  if (!_lastResult || !_lastResult.dates[dayIdx]) return 'soon';
+  return 'on ' + fmtShortDate(_lastResult.dates[dayIdx]);
+}
+
 function checkAfford() {
   var P = parseFloat(document.getElementById('affordInput').value) || 0;
   if (P <= 0 || !_lastResult) return;
-  var startBal = getStartBalance();
-  var newStart = startBal - P;
-  var r = computeForecast(newStart);
+  var dayIdx = getAffordTargetDayIdx();
+  var balAtDate = _lastResult.balances[dayIdx];
+  var afterPurchase = balAtDate - P;
+  var dateLabel = getAffordTargetLabel();
   var html = '';
-  var baselineNeg = _lastResult.firstNegIndex !== -1;
 
-  // Suggested bill reduction: shortfall at lowest point divided by number of monthly bill hits before that point
-  var _billMonths = 0;
-  for (var _bi = 1; _bi <= r.minIndex; _bi++) {
-    if (r.dates[_bi] && r.dates[_bi].getDate() === 1) _billMonths++;
-  }
-  if (_billMonths < 1) _billMonths = 1;
-  var _suggestedBillCut = Math.max(1, Math.min(
-    Math.ceil(Math.abs(r.minBalance) / _billMonths),
-    r.totalBills > 0 ? r.totalBills : Math.ceil(Math.abs(r.minBalance))
-  ));
-
-  if (baselineNeg && r.minBalance < _lastResult.minBalance - 200) {
-    var firstPayDate0 = _lastResult.paydayIndexes.length > 0 ? fmtShortDate(_lastResult.dates[_lastResult.paydayIndexes[0]]) : 'your next payday';
-    html = '<p class="afford-result col-red"><strong>This would put you in the red.</strong> You\'d need to wait until ' + firstPayDate0 + ' or reduce your bills by £' + _suggestedBillCut + '/month.</p>';
-  } else if (newStart >= 0 && !baselineNeg && r.endBalance > 500 && r.minBalance >= 0) {
-    html = '<p class="afford-result col-green"><strong>Yes, you can afford this.</strong> Your forecast stays healthy.</p>'
-         + '<p style="font-size:12px;color:#6b7280;margin:4px 0 0;">90-day end balance: ' + fmtMoney(r.endBalance) + '</p>';
-  } else if (newStart >= 0) {
-    var lowAmt = r.minBalance < 0 ? fmtMoney(Math.abs(r.minBalance)) + ' below zero' : fmtMoney(r.minBalance);
-    html = '<p class="afford-result col-amber"><strong>You can afford this, but it\'ll be tight.</strong> Your balance drops to ' + lowAmt + ' at its lowest (' + fmtShortDate(r.dates[r.minIndex]) + ').</p>';
+  if (afterPurchase >= 200) {
+    html = '<p class="afford-result col-green"><strong>Yes, you can afford this ' + dateLabel + '.</strong> Your projected balance would be ' + fmtMoney(afterPurchase) + '.</p>';
+  } else if (afterPurchase >= 0) {
+    html = '<p class="afford-result col-amber"><strong>You can afford this ' + dateLabel + ', but it\'ll be tight.</strong> You\'d have ' + fmtMoney(afterPurchase) + ' left.</p>';
   } else {
-    var nextPay = null;
-    for (var k = 0; k < _lastResult.paydayIndexes.length; k++) {
-      var idx = _lastResult.paydayIndexes[k];
-      if (idx <= 14 && newStart + _lastResult.cycleIncome >= 0) { nextPay = { idx: idx, date: _lastResult.dates[idx] }; break; }
-    }
-    if (nextPay) {
-      html = '<p class="afford-result col-amber"><strong>Not right now —</strong> but you could afford this in ' + nextPay.idx + ' day' + (nextPay.idx === 1 ? '' : 's') + ' when your next income arrives (' + fmtShortDate(nextPay.date) + ').</p>';
-    } else {
-      var firstPayDate = _lastResult.paydayIndexes.length > 0 ? fmtShortDate(_lastResult.dates[_lastResult.paydayIndexes[0]]) : 'your next payday';
-      html = '<p class="afford-result col-red"><strong>This would put you in the red.</strong> You\'d need to wait until ' + firstPayDate + ' or reduce your bills by £' + _suggestedBillCut + '/month.</p>';
-    }
+    html = '<p class="afford-result col-red"><strong>This would put you in the red ' + dateLabel + '.</strong> You\'d be ' + fmtMoney(Math.abs(afterPurchase)) + ' short.</p>';
   }
+
   var resultEl = document.getElementById('affordResult');
   resultEl.innerHTML = html;
   resultEl.style.display = 'block';
   document.getElementById('affordClear').style.display = 'inline';
-  renderForecastOutput(r);
+  renderForecastOutput(computeForecast(getStartBalance() - P));
 }
 
 function getStartBalance() {
