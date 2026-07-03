@@ -1396,7 +1396,6 @@ function closeQuickAdd() {
 
 function quickFill(amount, desc, category) {
   document.getElementById('qa-amount').value = amount;
-  document.getElementById('qa-description').value = desc;
   var catEl = document.getElementById('qa-category');
   if (catEl && category) {
     for (var i = 0; i < catEl.options.length; i++) {
@@ -1407,6 +1406,7 @@ function quickFill(amount, desc, category) {
 
 function setQaType(type) {
   qaType = type;
+  document.getElementById('qa-description').value = '';
   var expBtn = document.getElementById('qa-expense-btn');
   var incBtn = document.getElementById('qa-income-btn');
   var trfBtn = document.getElementById('qa-transfer-btn');
