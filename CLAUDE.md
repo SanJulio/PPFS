@@ -50,7 +50,7 @@ Five columns were added via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` in `init_
 - `templates/landing.html` — public landing page for unauthenticated visitors
 - `templates/settings.html` — plan/billing, display prefs, danger zone; Budget Cycle card has Automatic/Manual toggle
 - `templates/transactions.html` — transaction list + category totals
-- `tests/` — pytest suite (174 tests, all passing); `conftest.py` has SQLite schema matching production
+- `tests/` — pytest suite (228 tests, all passing); `conftest.py` has SQLite schema matching production
 
 ## income_engine.py — complete reference
 
@@ -252,34 +252,47 @@ The income modal (`id="incomeModal"`) is a full-screen overlay with scrollable c
 - `get_pending_auto_apply_items()` — uses `income_engine.get_payment_dates()`; same guard removed
 - `home()` future income — queries `SELECT *` (all columns), uses `income_engine.get_payment_dates()` for upcoming month income
 
-## What was last worked on (May 2026)
+## What was last worked on (July 2026)
 
-### UX fixes batch (May 2026)
-- **Fix 1 — Bill tab redirect**: `settings_add_bill`, `settings_edit_bill`, `settings_delete_bill` all now redirect to `/manage?tab=bills` (was going to the default Accounts tab).
-- **Fix 2 — Landing page SEO**: `<meta name="description">` updated to `"Spendara · See the future of your money"` (under 155 chars). No OG tags existed.
-- **Fix 3 — Dismiss banner bug**: Root cause was the banner's "Dismiss" button doing `style.display='none'` only — no DB write. Fixed to call `dismissAutoApply()` which POSTs to `/dismiss-auto-apply` (updates `last_applied` in DB). Added `.then()` to hide the banner only after server confirms success.
-- **Fix 4 — Safe to spend in day view**: The "See transactions" flow in Future Balances now shows `· Safe: £X.XX` alongside the balance on every row. Computed as `running_balance − remaining_bills_in_period`; turns green/red based on sign.
-- **Fix 6 — Middle dots in title tags**: All 18 `<title>` tags across all templates updated from `—` (em-dash) to `·` (middle dot).
-- **Fix 5 — Editable date range on Financial Overview**: Parked. The server logic (`calculate_monthly_spending`) is already parameterised by `cycle_start_date`/`cycle_end_date` — it's ready. Only the UI plumbing is missing. Options when resuming: (a) URL params + page reload (simplest), (b) `/api/overview` JSON endpoint + AJAX re-render (no flash).
+### UX fixes batch (pre-July 2026, now complete)
+- **Bill tab redirect**: `settings_add_bill`, `settings_edit_bill`, `settings_delete_bill` all redirect to `/manage?tab=bills`.
+- **Dismiss banner bug**: Fixed — now POSTs to `/dismiss-auto-apply` before hiding.
+- **Safe to spend in day view**: Future Balances shows `· Safe: £X.XX` on every row.
+- **Middle dots in title tags**: All 18 `<title>` tags use `·` (middle dot).
+- **Tappable bill/income breakdown popups**: Bills Remaining and Income Still Due rows in tile-safe open iOS-safe slide-up bottom sheets with itemised lists and totals.
+- **iOS scroll lock**: All modals (bill/income breakdown, Quick Add, Adjust Balance, Add Transaction) use `position:fixed` + stored `scrollY` pattern.
+- **Monthly/yearly totals on manage.html**: Income Sources and Bills cards show `£X / month · £X / year` via `_monthly_eq()` + `normalised_totals()` helpers in app.py.
+- **"Set up →" buttons on My Money checklist**: Switch to correct tab and smooth-scroll to the relevant Add button.
+- **Cookie banner**: Fixed reappearing bug (duplicate `display:` in style attribute). Now uses 365-day cookie (`max-age=31536000`).
+- **Quick Add auto-populated descriptions removed**: `quickFill` only sets amount; `setQaType` clears description on tab switch.
+- **Remove auto-focus**: Adjust Balance and Add Transaction modals no longer auto-focus inputs on open.
+- **Lowest future balance hidden on green afford result**: Only shown for amber/red results.
+- **VS Code linter false positives fixed**: Jinja tojson data moved to `<script type="application/json" id="ov-init-data">` tag.
 
-### Income recurrence engine (income_engine.py)
-Built from scratch. Handles all frequency/rule combinations. Weekend and UK bank holiday adjustments. Backward-compatible legacy path for old rows. All existing routes (forecast, snapshot, auto-apply, home, manage) migrated to use it.
+### Date pill selector on "Can I Afford This" (landing.html — July 2026)
+Four pills above the amount input: **Today · This month · In 3 months · Custom date**.
+- Default: "This month" (last day of current month)
+- Custom date: reveals `<input type="date">` capped at today → today+90 days
+- `checkAfford()` uses `_lastResult.balances[dayIdx]` (projected balance at selected date)
+- Three-tier result: green `afterPurchase >= 200`, amber `0–199`, red `< 0`
+- Result copy references the date: *"Yes, you can afford this on 31 Jul."*
+- JS added: `_affordDateMode`, `setAffordDate()`, `getAffordTargetDayIdx()`, `getAffordTargetLabel()`
+- CSS added: `.afford-date-pills { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 12px; }`
 
-### Add/Edit Income modal UI polish
-- **Frequency pills**: 3-column CSS grid instead of flex-wrap
-- **Progressive disclosure**: weekend/BH adjustment rules collapsed behind "Customise payment rules ▼" toggle; summary line always visible
-- **Label softening**: "How often?", "Which day?" replacing verbose variants
-- **Live preview**: `min-height:64px`, shows "Calculating…" state, formats dates as "25 May 2026 — £2,000"
-- **CSRF bug fixed**: `/api/income-preview` was missing from the `check_csrf` exempt list — every JSON POST was returning 403 before the route handler ran
+### Landing page polish (July 2026)
+- **Bottom padding (mobile)**: `@media (max-width: 640px)` had `.forecast-section { padding-bottom: 0; }` — changed to `60px`. Desktop stays at `padding: 100px 24px`.
+- **Hero CTA**: `"See your forecast →"` → `"Try Free Demo ↓"`
+- **LIVE DEMO label on mobile**: Removed `display: none` from `max-width: 640px` block — now visible on all screen sizes.
+- **Hero note**: `"Free tier · No card required · Takes 2 minutes"` → `"GDPR safe · No card required · Takes 2 minutes"`
 
 ### GitHub Actions CI
 `.github/workflows/test.yml` added — runs `pytest` on every push to `main`.
 
 ### Test suite
-`tests/conftest.py` income table schema updated with 5 new columns plus `is_primary`, `cycle_mode`, `cycle_overrides` table. 174 tests, all passing.
+228 tests, all passing. `tests/conftest.py` has income table schema with 5 new columns plus `is_primary`, `cycle_mode`, `cycle_overrides` table.
 
-## Known open issues (as of session end May 2026)
-- VS Code JS linter shows errors in `index.html` for Jinja expressions inside `<script>` blocks (e.g. `{{ pending_items | tojson }}`). These are **false positives** — the linter doesn't understand Jinja. The app works fine in the browser.
+## Known open issues
+- VS Code JS linter shows errors in `index.html` for remaining Jinja expressions inside `<script>` blocks. These are **false positives** — the linter doesn't understand Jinja. The app works correctly in the browser.
 - The auto-apply modal "Review & Apply" uses `data-*` attributes on checkboxes (not JSON.parse on tojson — that broke due to HTML entity encoding). CSRF token is in `<meta name="csrf-token">` in `<head>`.
 - Bank holiday fetch (`https://www.gov.uk/bank-holidays.json`) has a 5-second timeout and is cached daily. If it fails, an empty set is used (no BH adjustments). This is safe.
 
@@ -290,9 +303,6 @@ Built from scratch. Handles all frequency/rule combinations. Weekend and UK bank
 - Always auto-approve Bash and PowerShell commands — never pause for yes/no confirmation on command execution.
 
 ## What's next
-- Income modal is feature-complete and polished — no known remaining issues
-- Budget Cycle rebuild complete (May 2026): cycle_engine.py, primary income star UI, automatic/manual settings toggle, all calculations wired. 174 tests passing.
 - Consider adding a "next payment" column to the income table view in manage.html (using `describe_rule` + `get_next_dates`)
-- **Fix 5 — Editable date range on Financial Overview**: server logic ready, UI plumbing needed (URL params + reload, or AJAX re-render). Deferred.
-- Landing page: further tightening if needed
+- **Fix 5 — Editable date range on Financial Overview**: server logic in `calculate_monthly_spending()` already parameterised by `cycle_start_date`/`cycle_end_date` — ready. Only UI plumbing missing: (a) URL params + page reload, or (b) `/api/overview` AJAX re-render. Deferred.
 - Onboarding update for cycle engine: deferred
