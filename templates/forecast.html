@@ -44,8 +44,11 @@ body { background: #f2f4f7; padding-bottom: 140px; }
   font-weight: 600;
   font-size: 12px;
 }
-.btn-filter { border-radius: 999px; font-size: 13px; padding: 6px 16px; }
-.btn-filter.active { background: var(--brand); color: white; border-color: var(--brand); }
+.forecast-summary-line { font-size: 16px; font-weight: 600; line-height: 1.4; color: #111; }
+.filter-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #888; margin-bottom: 6px; }
+.account-filter-track { display: flex; gap: 4px; background: #e4e6ef; border-radius: 14px; padding: 4px; }
+.filter-seg-btn { flex: 1; border: none; background: transparent; border-radius: 10px; padding: 9px 8px; font-size: 13px; font-weight: 700; color: #555; cursor: pointer; transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease; }
+.filter-seg-btn.active { background: #fff; color: var(--brand); box-shadow: 0 2px 6px rgba(0,0,0,0.14); }
 #dayPanel { transition: opacity 0.15s; }
 .day-item { display:flex; align-items:center; justify-content:space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; gap: 12px; }
 .day-item:last-child { border-bottom: none; }
@@ -124,13 +127,17 @@ body { background: #f2f4f7; padding-bottom: 140px; }
   </div>
   {% endif %}
 
-  <div class="d-flex gap-2 mb-2 flex-wrap" id="forecastFilterBar">
-    <button class="btn btn-outline-secondary btn-filter" id="filterAll" onclick="setFilter('all', this)">All</button>
-    <button class="btn btn-outline-secondary btn-filter active" id="filterCurrent" onclick="setFilter('current', this)">Current</button>
-    <button class="btn btn-outline-secondary btn-filter" id="filterSavings" onclick="setFilter('savings', this)">Savings</button>
-    <button class="btn btn-outline-secondary btn-filter" id="filterCash" onclick="setFilter('cash', this)">Cash</button>
+  <div class="mb-3" id="forecastFilterWrap">
+    <div class="filter-label">Viewing</div>
+    <div class="account-filter-track" id="forecastFilterBar">
+      <button class="filter-seg-btn" id="filterAll" onclick="setFilter('all', this)">All</button>
+      <button class="filter-seg-btn active" id="filterCurrent" onclick="setFilter('current', this)">Current</button>
+      <button class="filter-seg-btn" id="filterSavings" onclick="setFilter('savings', this)">Savings</button>
+      <button class="filter-seg-btn" id="filterCash" onclick="setFilter('cash', this)">Cash</button>
+    </div>
   </div>
 
+  <div id="forecastSummary" class="mb-3"></div>
   <div id="insightsStrip"></div>
   <div id="warnings"></div>
 
@@ -247,7 +254,7 @@ upcomingItems.forEach(function(item) {
 if (accountNames.length === 0) {
   document.getElementById('forecastEmpty').classList.remove('d-none');
   document.getElementById('v1Section').style.display = 'none';
-  document.getElementById('forecastFilterBar').style.display = 'none';
+  document.getElementById('forecastFilterWrap').style.display = 'none';
 }
 
 function filteredAccounts() {
@@ -606,6 +613,7 @@ function escHtml(str) {
 
 function renderInsights() {
   var box = document.getElementById('insightsStrip');
+  var summaryBox = document.getElementById('forecastSummary');
   if (!box || snapshots.length === 0) return;
 
   var visible = filteredAccounts().filter(function(acc) {
@@ -617,13 +625,18 @@ function renderInsights() {
   // Find earliest date any visible account goes negative
   var daysUntilNegative = null;
   var negAccount = null;
+  var negDateStr = null;
   visible.forEach(function(acc) {
     snapshots.forEach(function(s, i) {
       if (s[acc] < 0 && daysUntilNegative === null) {
         var today = new Date(TODAY_ISO);
         var negDate = new Date(s.date);
         var diff = Math.round((negDate - today) / 86400000);
-        if (diff >= 0) { daysUntilNegative = diff; negAccount = acc; }
+        if (diff >= 0) {
+          daysUntilNegative = diff;
+          negAccount = acc;
+          negDateStr = negDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+        }
       }
     });
   });
@@ -635,10 +648,43 @@ function renderInsights() {
     var total = visible.reduce(function(sum, acc) { return sum + (s[acc] || 0); }, 0);
     if (lowestTotal === null || total < lowestTotal) { lowestTotal = total; lowestDate = s.date; }
   });
+  var lowestDateStr = lowestDate ? new Date(lowestDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
 
   // Find end total
   var last = snapshots[snapshots.length - 1];
   var endTotal = visible.reduce(function(sum, acc) { return sum + (last[acc] || 0); }, 0);
+  var totalDays = snapshots.length - 1;
+
+  // Find next payday among visible accounts (only matters when there's no risk to report)
+  var nextPayday = null;
+  if (daysUntilNegative === null) {
+    for (var i = 0; i < upcomingItems.length; i++) {
+      var item = upcomingItems[i];
+      if (item.type === 'income' && item.date >= TODAY_ISO && visible.indexOf(item.account) !== -1) {
+        var today2 = new Date(TODAY_ISO);
+        var payDate = new Date(item.date);
+        nextPayday = {
+          dateStr: payDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+          daysUntil: Math.max(0, Math.round((payDate - today2) / 86400000)),
+          account: item.account
+        };
+        break;
+      }
+    }
+  }
+
+  // ── Plain-English summary sentence ──────────────────────────────────────
+  if (summaryBox) {
+    var summaryHtml;
+    if (daysUntilNegative !== null) {
+      summaryHtml = 'Your <strong>' + escHtml(negAccount) + '</strong> is forecast to go negative on <strong>' + negDateStr + '</strong>. ' +
+        'Lowest point: £' + Math.abs(lowestTotal).toLocaleString('en-GB', {minimumFractionDigits:0,maximumFractionDigits:0}) + '.';
+    } else {
+      summaryHtml = 'Your balance stays healthy for the next ' + totalDays + ' days. ' +
+        'Lowest point: £' + lowestTotal.toLocaleString('en-GB', {minimumFractionDigits:0,maximumFractionDigits:0}) + ' on ' + lowestDateStr + '.';
+    }
+    summaryBox.innerHTML = '<div class="forecast-summary-line">' + summaryHtml + '</div>';
+  }
 
   // Build cards
   var cards = '';
@@ -656,27 +702,31 @@ function renderInsights() {
       '<div class="ic-val" style="' + valStyle + 'color:' + urgency + ';">' + daysUntilNegative + ' days</div>' +
       '<div class="ic-sub" style="' + subStyle + '">' + escHtml(negAccount) + ' goes negative</div>' +
     '</div>';
+  } else if (nextPayday) {
+    cards += '<div class="ic" style="background:#d1fae5;' + cardStyle + '">' +
+      '<div class="ic-label" style="' + labelStyle + 'color:#065f46;">💰 Next payday</div>' +
+      '<div class="ic-val" style="' + valStyle + 'color:#065f46;">' + nextPayday.dateStr + '</div>' +
+      '<div class="ic-sub" style="' + subStyle + '">' + (nextPayday.daysUntil === 0 ? 'Today' : 'In ' + nextPayday.daysUntil + ' day' + (nextPayday.daysUntil === 1 ? '' : 's')) + ' · ' + escHtml(nextPayday.account) + '</div>' +
+    '</div>';
   } else {
     cards += '<div class="ic" style="background:#d1fae5;' + cardStyle + '">' +
       '<div class="ic-label" style="' + labelStyle + 'color:#065f46;">✅ Status</div>' +
       '<div class="ic-val" style="' + valStyle + 'color:#065f46;">All safe</div>' +
-      '<div class="ic-sub" style="' + subStyle + '">90 days ahead</div>' +
+      '<div class="ic-sub" style="' + subStyle + '">' + totalDays + ' days ahead</div>' +
     '</div>';
   }
 
   if (lowestTotal !== null && lowestDate) {
-    var d = new Date(lowestDate);
-    var dateStr = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
     var isNeg = lowestTotal < 0;
     cards += '<div class="ic" style="background:' + (isNeg ? '#fde8e8' : '#f8f9fa') + ';' + cardStyle + '">' +
       '<div class="ic-label" style="' + labelStyle + 'color:#555;">📉 Lowest point</div>' +
       '<div class="ic-val" style="' + valStyle + 'color:' + (isNeg ? '#dc3545' : '#111') + ';">£' + Math.abs(lowestTotal).toLocaleString('en-GB', {minimumFractionDigits:0,maximumFractionDigits:0}) + '</div>' +
-      '<div class="ic-sub" style="' + subStyle + '">' + dateStr + (isNeg ? ' (negative)' : '') + '</div>' +
+      '<div class="ic-sub" style="' + subStyle + '">' + lowestDateStr + (isNeg ? ' (negative)' : '') + '</div>' +
     '</div>';
   }
 
   cards += '<div class="ic" style="background:#f0f4ff;' + cardStyle + '">' +
-    '<div class="ic-label" style="' + labelStyle + 'color:#3730a3;">🏁 In 90 days</div>' +
+    '<div class="ic-label" style="' + labelStyle + 'color:#3730a3;">🏁 In ' + totalDays + ' days</div>' +
     '<div class="ic-val" style="' + valStyle + 'color:#111;">£' + endTotal.toLocaleString('en-GB', {minimumFractionDigits:0,maximumFractionDigits:0}) + '</div>' +
     '<div class="ic-sub" style="' + subStyle + '">Combined balance</div>' +
   '</div>';
