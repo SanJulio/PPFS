@@ -3431,10 +3431,10 @@ def settings_add_account():
     savings_type_raw = (request.form.get("savings_type") or "").strip()
     savings_type = savings_type_raw if acc_type == "savings" and savings_type_raw in ("variable", "fixed") else None
 
-    # Free tier limit: max 2 accounts
+    # Free tier limit: max 3 accounts
     if not user_is_pro():
         existing = get_active_accounts(current_user.id)
-        if len(existing) >= 2:
+        if len(existing) >= 3:
             return redirect(url_for("manage", msg="FREE_LIMIT_ACCOUNTS"))
 
     db = get_db()
