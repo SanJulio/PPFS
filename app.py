@@ -1954,7 +1954,7 @@ def actions():
         bank_connected = _get_bank_connection(current_user.id) is not None
     except Exception:
         bank_connected = False
-    return render_template("actions.html", accounts=accounts, investments=investments, message=request.args.get("msg", ""), today=date.today().isoformat(), recent_tx=recent_tx, bank_connected=bank_connected)
+    return render_template("actions.html", accounts=accounts, investments=investments, message=request.args.get("msg", ""), today=date.today().isoformat(), recent_tx=recent_tx, bank_connected=bank_connected, truelayer_live=TRUELAYER_LIVE)
 
 # --- FLOW PAGE ---
 # Shows each account's monthly cash flow: bills paid, bills still to pay,
@@ -3242,6 +3242,7 @@ def settings():
         primary_income_name=primary_income_name,
         cycle_info=cycle_info,
         next_cycle_start=next_cycle_start,
+        truelayer_live=TRUELAYER_LIVE,
     )
 
 
@@ -5551,11 +5552,16 @@ def sitemap():
 
 
 # --- TRUELAYER OPEN BANKING ---
+# Single source of truth for sandbox vs live: TRUELAYER_ENV on Render.
+# Defaults to "sandbox" so an unset env var can never accidentally expose
+# the live-looking "Connect your bank" flow to real users.
+TRUELAYER_ENV           = os.environ.get("TRUELAYER_ENV", "sandbox").strip().lower()
+TRUELAYER_LIVE          = TRUELAYER_ENV == "live"
 
 TRUELAYER_CLIENT_ID     = os.environ.get("TRUELAYER_CLIENT_ID", "")
 TRUELAYER_CLIENT_SECRET = os.environ.get("TRUELAYER_CLIENT_SECRET", "")
-TRUELAYER_AUTH_URL      = "https://auth.truelayer-sandbox.com"
-TRUELAYER_API_URL       = "https://api.truelayer-sandbox.com"
+TRUELAYER_AUTH_URL      = "https://auth.truelayer.com" if TRUELAYER_LIVE else "https://auth.truelayer-sandbox.com"
+TRUELAYER_API_URL       = "https://api.truelayer.com" if TRUELAYER_LIVE else "https://api.truelayer-sandbox.com"
 TRUELAYER_REDIRECT_URI  = os.environ.get("TRUELAYER_REDIRECT_URI", "https://spendara.co.uk/truelayer/callback")
 TRUELAYER_SCOPES        = "info accounts balance cards transactions direct_debits standing_orders offline_access"
 
@@ -5652,6 +5658,8 @@ def _get_valid_token(user_id):
 @app.get("/connect-bank")
 @login_required
 def connect_bank():
+    if not TRUELAYER_LIVE:
+        return redirect(url_for("actions", msg="Bank connection is coming soon — not available yet."))
     _ensure_bank_connections_table()
     import urllib.parse
     params = {
@@ -5739,6 +5747,8 @@ def truelayer_callback():
 @app.get("/sync-bank")
 @login_required
 def sync_bank():
+    if not TRUELAYER_LIVE:
+        return redirect(url_for("actions", msg="Bank connection is coming soon — not available yet."))
     import requests as _req
     token = _get_valid_token(current_user.id)
     if not token:

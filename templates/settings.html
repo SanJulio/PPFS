@@ -197,7 +197,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           ('Future events', '—', '✓'),
           ('Investments tracker', '—', '✓'),
           ('Weekly digest email', '—', '✓'),
-          ('Open banking', 'Coming soon', 'Coming soon'),
+          ('Open banking', '✓' if truelayer_live else 'Coming soon', '✓' if truelayer_live else 'Coming soon'),
           ('Priority support', '—', '✓'),
         ] %}
         {% for feat, free_val, pro_val in features %}
