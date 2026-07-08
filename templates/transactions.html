@@ -258,12 +258,17 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
     <option>Other</option>
   </select>
   <button onclick="applyBulkCategory()" class="btn btn-light btn-sm rounded-3 fw-semibold" style="font-size:13px; white-space:nowrap;">Apply</button>
+  <button onclick="applyBulkDelete()" class="btn btn-sm rounded-3" style="background:#dc3545; color:#fff; font-size:13px;" title="Delete selected">🗑</button>
   <button onclick="clearSelection()" class="btn btn-sm rounded-3" style="background:rgba(255,255,255,0.1); color:#fff; font-size:13px;">✕</button>
 </div>
 <form id="bulkForm" method="POST" action="/transactions/bulk-categorize" style="display:none;">
   <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
   <input type="hidden" name="category" id="bulkFormCategory">
   <div id="bulkFormIds"></div>
+</form>
+<form id="bulkDeleteForm" method="POST" action="/transactions/bulk-delete" style="display:none;">
+  <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+  <div id="bulkDeleteIds"></div>
 </form>
 
 </div>
@@ -365,6 +370,20 @@ function applyBulkCategory() {
     container.appendChild(inp);
   });
   document.getElementById('bulkForm').submit();
+}
+function applyBulkDelete() {
+  var checked = Array.from(document.querySelectorAll('.tx-check:checked'));
+  if (checked.length === 0) return;
+  var n = checked.length;
+  if (!confirm('Delete ' + n + ' transaction' + (n === 1 ? '' : 's') + '? The account balance will NOT be adjusted.')) return;
+  var container = document.getElementById('bulkDeleteIds');
+  container.innerHTML = '';
+  checked.forEach(function(cb) {
+    var inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = 'tx_ids'; inp.value = cb.dataset.id;
+    container.appendChild(inp);
+  });
+  document.getElementById('bulkDeleteForm').submit();
 }
 
 function toggleTx(id) {

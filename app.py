@@ -1897,6 +1897,7 @@ def transactions():
         "transactions.html",
         transactions=tx,
         show_my_money_dot=get_my_money_dot(current_user.id),
+        message=request.args.get("msg", ""),
     )
 
 # --- BULK CATEGORIZE ---
@@ -1925,6 +1926,34 @@ def bulk_categorize():
     cursor.close()
     release_db(db)
     return redirect(url_for('transactions', msg='Categories updated'))
+
+
+@app.post("/transactions/bulk-delete")
+@login_required
+def bulk_delete():
+    if request.form.get('csrf_token') != session.get('csrf_token'):
+        return redirect(url_for('transactions'))
+    tx_ids = request.form.getlist('tx_ids')
+    if not tx_ids:
+        return redirect(url_for('transactions'))
+    from database import get_db, USE_POSTGRES, release_db
+    db = get_db()
+    cursor = db.cursor()
+    deleted = 0
+    for raw_id in tx_ids:
+        try:
+            tid = int(raw_id)
+        except (ValueError, TypeError):
+            continue
+        if USE_POSTGRES:
+            cursor.execute("DELETE FROM transactions WHERE id = %s AND user_id = %s", (tid, current_user.id))
+        else:
+            cursor.execute("DELETE FROM transactions WHERE id = ? AND user_id = ?", (tid, current_user.id))
+        deleted += cursor.rowcount
+    db.commit()
+    cursor.close()
+    release_db(db)
+    return redirect(url_for('transactions', msg=f"{deleted} transaction{'s' if deleted != 1 else ''} deleted."))
 
 
 # --- ACTIONS PAGE ---
