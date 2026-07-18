@@ -167,12 +167,13 @@ class TestGetOccurrencesBetween:
         assert date(2026, 4, 30) in results
 
     def test_monthly_day_29_in_february_non_leap(self):
-        # 2026 is not a leap year — day 29 clamps to 28
+        # 2029 is not a leap year — day 29 clamps to 28 (a Wednesday, so no
+        # weekend shift interferes with what this test is checking)
         item = {"frequency": "monthly", "day": 29}
-        start = date(2026, 2, 1)
-        end = date(2026, 2, 28)
+        start = date(2029, 2, 1)
+        end = date(2029, 2, 28)
         results = self.fn(item, start, end)
-        assert date(2026, 2, 28) in results
+        assert date(2029, 2, 28) in results
 
     def test_monthly_default_frequency(self):
         # No 'frequency' key — defaults to monthly
@@ -192,12 +193,14 @@ class TestGetOccurrencesBetween:
         assert len(results) == 1
 
     def test_yearly_fires_across_year_boundary(self):
+        # 1 March falls on a weekend in both years — Sat in 2025, Sun in 2026 —
+        # so each occurrence shifts to the following Monday
         item = {"frequency": "yearly", "day": 1, "month": 3}
         start = date(2025, 1, 1)
         end = date(2026, 12, 31)
         results = self.fn(item, start, end)
-        assert date(2025, 3, 1) in results
-        assert date(2026, 3, 1) in results
+        assert date(2025, 3, 3) in results
+        assert date(2026, 3, 2) in results
 
     def test_yearly_outside_range_excluded(self):
         item = {"frequency": "yearly", "day": 1, "month": 12}

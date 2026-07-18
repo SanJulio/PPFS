@@ -95,6 +95,9 @@ class TestScheduledExpenses:
         if target <= today:
             target = target.replace(year=target.year + (1 if target.month == 12 else 0),
                                     month=target.month % 12 + 1)
+        # Day 15 may land on a weekend and shift to the following Monday —
+        # give the window a 2-day buffer so the expense is captured either way
+        target += timedelta(days=2)
 
         accounts = {"Current": {"balance": 1000.0, "type": "current", "active": True}}
         expenses = [{"day": 15, "amount": 100.0, "account": "Current", "frequency": "monthly"}]
@@ -129,6 +132,9 @@ class TestScheduledExpenses:
         import calendar as cal
         last_day = cal.monthrange(today.year, today.month)[1]
         target = today + timedelta(days=(last_day - today.day + 1))
+        # Day 1 may land on a weekend and shift to the following Monday —
+        # give the window a 2-day buffer so both expenses are captured either way
+        target += timedelta(days=2)
 
         accounts = {"Current": {"balance": 2000.0, "type": "current", "active": True}}
         expenses = [

@@ -6,6 +6,8 @@ import json
 import csv
 from pathlib import Path
 
+from bill_engine import shift_weekend_to_monday
+
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "Data"
 
@@ -649,7 +651,11 @@ def simulate_balances_until(target_date, accounts, scheduled_expenses, future_ev
         for expense in scheduled_expenses:
             if expense["day"] is None:
                 continue
-            if expense["day"] == sim_day.day:
+            try:
+                nominal = date(sim_day.year, sim_day.month, expense["day"])
+            except ValueError:
+                continue
+            if shift_weekend_to_monday(nominal) == sim_day:
                 acc = expense["account"]
                 if acc in simulated:
                     simulated[acc] -= expense["amount"]

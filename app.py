@@ -30,6 +30,7 @@ from werkzeug.datastructures import CallbackDict
 # simulate_balances_until is used for forecast and "can I afford it" features
 from Tracker import simulate_balances_until
 import income_engine
+from bill_engine import shift_weekend_to_monday
 
 from models import (
     add_transaction,
@@ -495,7 +496,7 @@ def _get_occurrences_between(item, start_date, end_date):
         while (y, m) <= (end_date.year, end_date.month):
             actual_day = min(day, _cal.monthrange(y, m)[1])
             try:
-                candidate = _date(y, m, actual_day)
+                candidate = shift_weekend_to_monday(_date(y, m, actual_day))
                 if start_date <= candidate <= end_date:
                     results.append(candidate)
             except ValueError:
@@ -510,7 +511,7 @@ def _get_occurrences_between(item, start_date, end_date):
         for yr in range(start_date.year, end_date.year + 1):
             actual_day = min(day, _cal.monthrange(yr, bill_month)[1])
             try:
-                candidate = _date(yr, bill_month, actual_day)
+                candidate = shift_weekend_to_monday(_date(yr, bill_month, actual_day))
                 if start_date <= candidate <= end_date:
                     results.append(candidate)
             except ValueError:
@@ -794,7 +795,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
             if freq == "monthly":
                 for (_ey, _em) in future_check_months:
                     dim = _cal2.monthrange(_ey, _em)[1]
-                    due = date(_ey, _em, min(expense["day"], dim))
+                    due = shift_weekend_to_monday(date(_ey, _em, min(expense["day"], dim)))
                     if today_date < due <= period_end:
                         candidates.append(due)
             elif freq == "yearly":
@@ -804,7 +805,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
                         if _em != exp_month:
                             continue
                         dim = _cal2.monthrange(_ey, _em)[1]
-                        due = date(_ey, _em, min(expense["day"], dim))
+                        due = shift_weekend_to_monday(date(_ey, _em, min(expense["day"], dim)))
                         if today_date < due <= period_end:
                             candidates.append(due)
             else:
@@ -816,13 +817,14 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
                     next_month = today_date.replace(day=1) + _rel(months=1)
                     days_next = _cal2.monthrange(next_month.year, next_month.month)[1]
                     next_due = next_month.replace(day=min(expense["day"], days_next))
+                next_due = shift_weekend_to_monday(next_due)
                 if today_date < next_due <= period_end:
                     candidates.append(next_due)
         else:
             # No period_end: legacy path — bill due later this calendar month
             if expense["day"] > current_day:
                 dim = _cal2.monthrange(today_date.year, today_date.month)[1]
-                candidates.append(date(today_date.year, today_date.month, min(expense["day"], dim)))
+                candidates.append(shift_weekend_to_monday(date(today_date.year, today_date.month, min(expense["day"], dim))))
 
         for due in candidates:
             last_applied = expense.get("last_applied")
@@ -1081,7 +1083,7 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
         if freq == "monthly":
             for (ey, em) in check_months:
                 dim = _cal.monthrange(ey, em)[1]
-                due = date(ey, em, min(expense["day"], dim))
+                due = shift_weekend_to_monday(date(ey, em, min(expense["day"], dim)))
                 if cycle_start_date <= due <= today_cap:
                     candidates.append(due)
         elif freq == "yearly":
@@ -1092,7 +1094,7 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
                 if em != expense_month:
                     continue
                 dim = _cal.monthrange(ey, em)[1]
-                due = date(ey, em, min(expense["day"], dim))
+                due = shift_weekend_to_monday(date(ey, em, min(expense["day"], dim)))
                 if cycle_start_date <= due <= today_cap:
                     candidates.append(due)
         for due in candidates:
@@ -1625,7 +1627,7 @@ def mark_bill_paid():
     today = _date.today()
     days_in_month = _cal.monthrange(today.year, today.month)[1]
     due_day = min(day, days_in_month)
-    due_date_str = _date(today.year, today.month, due_day).isoformat()
+    due_date_str = shift_weekend_to_monday(_date(today.year, today.month, due_day)).isoformat()
 
     add_transaction(today.isoformat(), name, -abs(amount), account, current_user.id, type='bill', category='Bills')
     update_account_balance(account, -abs(amount), current_user.id)
@@ -2060,7 +2062,17 @@ def flow():
         acc_bills_paid = [b for b in bills_paid_this_month if b["account"] == acc_name]
 
         # bills still to pay from this account this month
-        acc_bills_to_pay = [b for b in bills if b["account"] == acc_name and b["day"] > current_day]
+        _dim = calendar.monthrange(year, month)[1]
+        acc_bills_to_pay = []
+        for b in bills:
+            if b["account"] != acc_name or b["day"] is None:
+                continue
+            try:
+                nominal_due = shift_weekend_to_monday(date(year, month, min(b["day"], _dim)))
+            except ValueError:
+                continue
+            if nominal_due > today:
+                acc_bills_to_pay.append(b)
 
         # income received to this account this month
         acc_income_received = [i for i in income_received_this_month if i["account"] == acc_name]
@@ -3041,12 +3053,22 @@ def api_snapshot():
             acc = expense.get("account", "")
             amt = float(expense["amount"])
             applies = False
-            if freq == "monthly" and exp_day == sim_day.day:
-                applies = True
+            if freq == "monthly":
+                try:
+                    nominal = date(sim_day.year, sim_day.month, exp_day)
+                except ValueError:
+                    nominal = None
+                if nominal is not None and shift_weekend_to_monday(nominal) == sim_day:
+                    applies = True
             elif freq == "yearly":
                 exp_month = expense.get("month")
-                if exp_day == sim_day.day and exp_month == sim_day.month:
-                    applies = True
+                if exp_month == sim_day.month:
+                    try:
+                        nominal = date(sim_day.year, sim_day.month, exp_day)
+                    except ValueError:
+                        nominal = None
+                    if nominal is not None and shift_weekend_to_monday(nominal) == sim_day:
+                        applies = True
             if applies:
                 bills_due.append({"name": expense["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc, "item_id": expense.get("id"), "item_type": "bill"})
                 if acc in simulated:
@@ -4312,14 +4334,26 @@ def forecast():
                 simulated[acc] += amt
 
         for expense in scheduled:
+            exp_day = expense.get("day")
+            if exp_day is None:
+                continue
             freq = expense.get("frequency") or "monthly"
             if freq == "yearly":
-                # Fire once a year on the specific day+month
-                if expense["day"] == sim_day.day and expense.get("month") == sim_day.month and expense["account"] in simulated:
-                    simulated[expense["account"]] -= float(expense["amount"])
+                # Fire once a year on the specific day+month, shifted off weekends
+                if expense.get("month") == sim_day.month:
+                    try:
+                        nominal = date(sim_day.year, sim_day.month, exp_day)
+                    except ValueError:
+                        nominal = None
+                    if nominal is not None and shift_weekend_to_monday(nominal) == sim_day and expense["account"] in simulated:
+                        simulated[expense["account"]] -= float(expense["amount"])
             else:
-                # Monthly: fire on the given day every month
-                if expense["day"] == sim_day.day and expense["account"] in simulated:
+                # Monthly: fire on the given day every month, shifted off weekends
+                try:
+                    nominal = date(sim_day.year, sim_day.month, exp_day)
+                except ValueError:
+                    nominal = None
+                if nominal is not None and shift_weekend_to_monday(nominal) == sim_day and expense["account"] in simulated:
                     simulated[expense["account"]] -= float(expense["amount"])
 
         for event in future_events:
@@ -4370,7 +4404,7 @@ def forecast():
             if ann_month:
                 for year in [today.year, today.year + 1]:
                     try:
-                        d = date(year, ann_month, bill["day"])
+                        d = shift_weekend_to_monday(date(year, ann_month, bill["day"]))
                         if today <= d <= end_date:
                             upcoming_items.append({"date": d.isoformat(), "name": bill["name"], "amount": float(bill["amount"]), "account": bill["account"], "type": "bill", "id": bill["id"]})
                     except ValueError:
@@ -4381,7 +4415,7 @@ def forecast():
                 max_day = calendar.monthrange(m_year, m_month)[1]
                 bill_day = min(bill["day"], max_day)
                 try:
-                    occurrence = date(m_year, m_month, bill_day)
+                    occurrence = shift_weekend_to_monday(date(m_year, m_month, bill_day))
                     if today <= occurrence <= end_date:
                         upcoming_items.append({"date": occurrence.isoformat(), "name": bill["name"], "amount": float(bill["amount"]), "account": bill["account"], "type": "bill", "id": bill["id"]})
                 except ValueError:
