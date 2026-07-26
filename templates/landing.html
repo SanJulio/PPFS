@@ -143,8 +143,14 @@ nav {
 }
 .hero-beta-line {
   font-family: 'Inter', sans-serif; font-size: 14px; color: var(--lp-accent);
-  margin: 0 auto 40px; max-width: 440px; font-weight: 500; line-height: 1.5;
+  margin: 0 auto 20px; max-width: 440px; font-weight: 500; line-height: 1.5;
   opacity: 0; animation: heroLine 0.6s ease 0.7s forwards;
+}
+.hero-divider {
+  width: 48px; height: 1px; border: none;
+  background: rgba(167,139,250,0.35);
+  margin: 0 auto 20px;
+  opacity: 0; animation: heroLine 0.6s ease 0.8s forwards;
 }
 
 /* ── HERO: subheading pairing ── */
@@ -437,7 +443,8 @@ footer a:hover { color: var(--lp-text); }
   .hero-logo-mark img { width: 131.8px; height: 131.8px; left: -11.1px; top: -15.3px; }
   .hero-beta-badge-wrap { margin-bottom: 22px; }
   .hero-beta-badge { padding: 9px 26px; font-size: 17px; border-width: 2px; }
-  .hero-beta-line { font-size: 17px; max-width: 560px; margin-bottom: 60px; }
+  .hero-beta-line { font-size: 17px; max-width: 560px; margin-bottom: 28px; }
+  .hero-divider { margin-bottom: 28px; }
   .hero-subgrid { max-width: 1000px; gap: 14px 28px; margin-bottom: 56px; }
   .hero-subcol { font-size: 26px; }
   .hero-features { max-width: 1000px; gap: 28px; margin-bottom: 56px; }
@@ -508,6 +515,7 @@ footer a:hover { color: var(--lp-text); }
       <span class="hero-beta-badge">Beta</span>
     </div>
     <p class="hero-beta-line">Early access is open — be one of the first to use it.</p>
+    <hr class="hero-divider">
 
     <div class="hero-subgrid">
       <div class="hero-subcol">View your finances<br>like never before</div>
