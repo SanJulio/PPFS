@@ -12,9 +12,21 @@ Rules under test:
 
 import json
 import pytest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import patch
 from tests.conftest import csrf
+
+
+class _FrozenDateTime(datetime):
+    """datetime subclass with a fixed .today() - patched onto app.datetime so
+    calculate_financial_overview() sees a deterministic 'today' regardless of
+    the real calendar date. Only overrides today(); everything else behaves
+    like a normal datetime/date so unrelated code paths aren't affected."""
+    _frozen = datetime(2026, 1, 15)
+
+    @classmethod
+    def today(cls):
+        return cls._frozen
 
 
 # ---------------------------------------------------------------------------
@@ -200,13 +212,23 @@ class TestOverviewSavingsRules:
             _delete_savings_rule(db_conn, rule_id)
 
     def test_past_savings_rule_not_included(self, auth_client, test_user, current_account, savings_account, db_conn):
-        """A savings rule whose day has passed this month should not appear in Bills left."""
-        today = date.today()
-        if today.day == 1:
-            pytest.skip("Cannot test past-day rule on day 1 of month")
+        """A savings rule whose day has passed this month should not appear in Bills left.
+
+        Uses a fixed 'today' (15th of the month, patched onto app.datetime) rather
+        than the real calendar date. calculate_financial_overview() has an
+        intentional near-term lookahead (~today+4 to today+5 days) that surfaces
+        a rule's *next* occurrence when it crosses a month boundary soon - so
+        asserting "never appears" using the real date would fail during the last
+        few days of any month, when day-1-of-next-month legitimately falls inside
+        that window. Freezing 'today' to the 15th keeps this test about the
+        intended behaviour (a day-1 rule already passed this month) rather than
+        an unrelated near-month-end interaction.
+        """
         rule_id = _add_savings_rule(db_conn, test_user["id"], "Past save", 150, 1, "Current", "Flex Saver")
         try:
-            data = self._get_overview(auth_client)
+            with patch("app.datetime", _FrozenDateTime):
+                resp = auth_client.get("/api/overview?start=2026-01-01&end=2026-01-31")
+            data = resp.get_json()
             bill_names = [b["name"] for b in data.get("future_bills_list", [])]
             assert "Past save" not in bill_names, \
                 f"Past-month savings rule should not be in Bills left, got: {bill_names}"
