@@ -187,6 +187,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <div class="col-3 py-2 fw-semibold small text-muted">Free</div>
           <div class="col-3 py-2 fw-semibold small" style="color:var(--brand);">Pro</div>
         </div>
+        {% set open_banking_status = '✓' if truelayer_live else 'Coming soon' %}
         {% set features = [
           ('Accounts', '3 max', 'Unlimited'),
           ('Forecast horizon', '30 days', '90 days'),
@@ -197,7 +198,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           ('Future events', '—', '✓'),
           ('Investments tracker', '—', '✓'),
           ('Weekly digest email', '—', '✓'),
-          ('Open banking', '✓' if truelayer_live else 'Coming soon', '✓' if truelayer_live else 'Coming soon'),
+          ('Open banking', open_banking_status, open_banking_status),
           ('Priority support', '—', '✓'),
         ] %}
         {% for feat, free_val, pro_val in features %}
