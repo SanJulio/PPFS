@@ -52,6 +52,7 @@ def _create_test_schema(db_path: Path):
             verify_token_expires_at TEXT,
             is_pro INTEGER NOT NULL DEFAULT 0,
             stripe_customer_id TEXT,
+            notification_digest VARCHAR(10) DEFAULT 'off',
             auto_apply_enabled INTEGER NOT NULL DEFAULT 1,
             auto_apply_confirm INTEGER NOT NULL DEFAULT 1,
             budget_cycle_start INTEGER NOT NULL DEFAULT 1,

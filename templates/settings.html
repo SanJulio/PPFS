@@ -158,18 +158,16 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       {% else %}
         <!-- Free user -->
         <h5 class="mb-1">Your Plan</h5>
-        <p class="text-muted small mb-4">You're on the free plan — 3 accounts, 30-day forecast only.</p>
+        <p class="text-muted small mb-4">You're on the free plan — 3 accounts max.</p>
 
         <div class="rounded-4 p-4 mb-4" style="background: #111; color: white;">
           <div class="fw-bold mb-1" style="font-size:18px;">Spendara Pro</div>
           <div style="font-size:28px; font-weight:700; margin-bottom:4px;">£4.99<span style="font-size:14px; font-weight:400;">/month</span></div>
           <ul class="small mb-4" style="color: rgba(255,255,255,0.8); padding-left: 18px;">
             <li>Unlimited accounts</li>
-            <li>Full 90-day forecast with warnings</li>
             <li>Savings rules & automation</li>
             <li>Future events planner</li>
             <li>Investments tracker</li>
-            <li>Weekly digest email</li>
             <li>Priority support</li>
             <li>Cancel any time</li>
           </ul>
@@ -190,14 +188,14 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         {% set open_banking_status = '✓' if truelayer_live else 'Coming soon' %}
         {% set features = [
           ('Accounts', '3 max', 'Unlimited'),
-          ('Forecast horizon', '30 days', '90 days'),
+          ('Forecast horizon', '90 days', '90 days'),
           ('Transaction history', '✓', '✓'),
           ('Bills & income tracking', '✓', '✓'),
           ('CSV import', '✓', '✓'),
+          ('Weekly digest email', '✓', '✓'),
           ('Savings rules', '—', '✓'),
           ('Future events', '—', '✓'),
           ('Investments tracker', '—', '✓'),
-          ('Weekly digest email', '—', '✓'),
           ('Open banking', open_banking_status, open_banking_status),
           ('Priority support', '—', '✓'),
         ] %}
@@ -371,7 +369,6 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     <div class="card p-4 mb-4">
       <h5 class="mb-1">Notifications</h5>
       <p class="text-muted small mb-4">Get an email summary of your spending sent to your inbox.</p>
-      {% if is_pro %}
       <form method="POST" action="/settings/save-notifications">
         <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
         <div class="d-flex gap-2 mb-4">
@@ -386,13 +383,6 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         <div class="text-muted small mb-3" id="digestDesc"></div>
         <button type="submit" class="btn btn-dark w-100">Save</button>
       </form>
-      {% else %}
-      <div class="rounded-4 p-3 text-center" style="background:#f8f9fa; border:2px dashed #dee2e6;">
-        <div class="fw-bold mb-1">⭐ Pro feature</div>
-        <div class="text-muted small mb-3">Weekly and monthly digest emails are available on Pro.</div>
-        <a href="/billing/upgrade" class="btn btn-dark w-100 py-2">Upgrade to Pro — £4.99/month</a>
-      </div>
-      {% endif %}
     </div>
   </div>
 

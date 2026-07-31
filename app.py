@@ -3359,8 +3359,6 @@ def settings_save_notifications():
     digest = request.form.get("notification_digest", "off")
     if digest not in ("off", "weekly", "monthly"):
         digest = "off"
-    if digest != "off" and not user_is_pro():
-        digest = "off"
     db = get_db()
     cursor = db.cursor()
     try:
@@ -4176,8 +4174,7 @@ def forecast():
 
     track('page_view.forecast')
     today = date.today()
-    is_pro = user_is_pro()
-    forecast_days = 90 if is_pro else 30
+    forecast_days = 90
     cache_key = f"forecast_{current_user.id}_{today.isoformat()}_{forecast_days}"
     force_refresh = request.args.get("refresh") == "1"
 
@@ -4194,7 +4191,6 @@ def forecast():
                 upcoming=cached_data.get("upcoming", "[]"),
                 hist_snapshots=cached_data.get("hist_snapshots", "[]"),
                 savings_rates=cached_data.get("savings_rates", "{}"),
-                is_pro=cached_data.get("is_pro", True),
                 message=request.args.get("msg", ""),
                 today=today.isoformat()
             )
@@ -4443,7 +4439,6 @@ def forecast():
         "upcoming": upcoming_json,
         "hist_snapshots": hist_snapshots_json,
         "savings_rates": savings_rates_json,
-        "is_pro": is_pro
     })
 
     return render_template(
@@ -4455,7 +4450,6 @@ def forecast():
         upcoming=upcoming_json,
         hist_snapshots=hist_snapshots_json,
         savings_rates=savings_rates_json,
-        is_pro=is_pro,
         message=request.args.get("msg", ""),
         today=today.isoformat(),
         show_my_money_dot=get_my_money_dot(current_user.id),

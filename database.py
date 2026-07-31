@@ -246,6 +246,27 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: users.notification_digest ---
+    # User's preferred spending-summary email frequency: 'off', 'weekly', or 'monthly'
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='notification_digest'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN notification_digest VARCHAR(10) DEFAULT 'off'")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN notification_digest VARCHAR(10) DEFAULT 'off'")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (notification_digest): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     # --- MIGRATION: transactions.category ---
     # Adds spending category to transactions (e.g. Food, Transport, Bills)
     try:
