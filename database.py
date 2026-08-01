@@ -19,17 +19,6 @@ USE_POSTGRES = DATABASE_URL is not None
 if USE_POSTGRES:
     import psycopg2
     import psycopg2.extras
-    import certifi
-
-    # Full certificate verification (chain + hostname) rather than just an
-    # encrypted-but-unverified channel — protects against an active
-    # man-in-the-middle presenting a different certificate, not just passive
-    # eavesdropping. Uses certifi's bundled CA store rather than sslrootcert=
-    # 'system' since that depends on the OS trust store being wired up the
-    # same way libpq expects on every platform this might run on (confirmed
-    # unreliable on at least one dev machine) — certifi is a pinned Python
-    # dependency, so it behaves identically in every environment.
-    PG_SSL_KWARGS = {"sslmode": "verify-full", "sslrootcert": certifi.where()}
 
 # SQLite fallback paths (only used locally)
 BASE_DIR = Path(__file__).parent
@@ -41,7 +30,7 @@ DB_PATH = BASE_DIR / "ppfs.db"
 # Postgres on production (Render), SQLite locally
 def get_db():
     if USE_POSTGRES:
-        conn = psycopg2.connect(DATABASE_URL, **PG_SSL_KWARGS)
+        conn = psycopg2.connect(DATABASE_URL)
         conn.autocommit = False
         return conn
     else:

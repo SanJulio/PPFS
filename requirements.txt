@@ -9,4 +9,3 @@ stripe
 python-dateutil
 authlib
 requests
-certifi
