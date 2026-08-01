@@ -12,6 +12,18 @@ from unittest.mock import patch
 import pytest
 
 
+class _FrozenDate(date):
+    """date subclass with a fixed .today() - patched onto Tracker.date so
+    simulate_balances_until() sees a deterministic 'today' regardless of the
+    real calendar date. Only overrides today(); everything else behaves like
+    a normal date so unrelated code paths aren't affected."""
+    _frozen = date(2026, 1, 15)
+
+    @classmethod
+    def today(cls):
+        return cls._frozen
+
+
 def _friday_after(d: date) -> date:
     """Return the first Friday on or after d."""
     days_ahead = (4 - d.weekday()) % 7
@@ -127,8 +139,16 @@ class TestScheduledExpenses:
         assert abs(final["Current"] - 1000.0) < 0.01
 
     def test_multiple_expenses_accumulate(self):
-        today = date.today()
-        # Both expenses fire on day 1 — target first of next month
+        """Uses a fixed 'today' (15th of January 2026) rather than the real
+        calendar date. Scheduled expenses shift off weekends via
+        shift_weekend_to_monday(), so when 'today' itself is the 1st of a
+        month AND that 1st falls on a weekend, this month's day-1 expense
+        gets shifted to a date that's still in the future relative to today -
+        landing inside the same simulation window as *next* month's day-1
+        occurrence and double-counting what the test expects to see once.
+        Freezing 'today' to a safe mid-month date guarantees only next
+        month's occurrence falls in range, regardless of the real date."""
+        today = _FrozenDate._frozen
         import calendar as cal
         last_day = cal.monthrange(today.year, today.month)[1]
         target = today + timedelta(days=(last_day - today.day + 1))
@@ -142,7 +162,8 @@ class TestScheduledExpenses:
             {"day": 1, "amount": 300.0, "account": "Current", "frequency": "monthly"},
         ]
 
-        final, _ = _simulate(target, accounts, expenses)
+        with patch("Tracker.date", _FrozenDate):
+            final, _ = _simulate(target, accounts, expenses)
         assert abs(final["Current"] - (2000.0 - 500.0)) < 0.01
 
 

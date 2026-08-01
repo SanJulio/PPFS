@@ -425,6 +425,7 @@ VALID_EVENTS = {
     'action.add_expense', 'action.add_income', 'action.transfer', 'action.pay_bill',
     'action.receive_income', 'action.import_csv', 'action.afford_check', 'action.investment_update',
     'billing.upgrade_start', 'billing.upgrade_complete', 'billing.cancel',
+    'billing.payment_failed', 'billing.subscription_past_due', 'billing.subscription_recovered',
 }
 
 def track(event: str):
@@ -5330,6 +5331,9 @@ def billing_portal():
 # We verify the signature to make sure it's genuinely from Stripe (not a forged request)
 # checkout.session.completed → user paid → set is_pro=1, save stripe_customer_id
 # customer.subscription.deleted → user cancelled → set is_pro=0
+# customer.subscription.updated → status changed → is_pro=0 for past_due/unpaid/canceled,
+#   is_pro=1 for active/trialing (covers payment-retry recovery)
+# invoice.payment_failed → Stripe is still retrying, don't revoke access yet — just log/track
 @app.post("/stripe/webhook")
 def stripe_webhook():
     payload = request.get_data()
@@ -5382,6 +5386,63 @@ def stripe_webhook():
             logger.info(f"Pro deactivated for customer_id={customer_id}")
             if uid_row:
                 track_for_user(uid_row[0], 'billing.cancel')
+
+    # Subscription status changed — keep is_pro in sync with the subscription's current
+    # status. Stripe sends this alongside subscription.deleted when a subscription is
+    # fully cancelled (both end up setting is_pro=0, so they agree rather than race),
+    # and it's also how we learn a subscription recovered after a failed-payment retry.
+    elif event["type"] == "customer.subscription.updated":
+        sub_obj = event["data"]["object"]
+        customer_id = sub_obj.get("customer")
+        status = sub_obj.get("status")
+
+        if status in ("past_due", "unpaid", "canceled"):
+            new_is_pro = 0
+        elif status in ("active", "trialing"):
+            new_is_pro = 1
+        else:
+            new_is_pro = None
+
+        if customer_id and new_is_pro is not None:
+            db = get_db()
+            cursor = db.cursor()
+            if USE_POSTGRES:
+                cursor.execute("SELECT id FROM users WHERE stripe_customer_id = %s", (customer_id,))
+            else:
+                cursor.execute("SELECT id FROM users WHERE stripe_customer_id = ?", (customer_id,))
+            uid_row = cursor.fetchone()
+            if USE_POSTGRES:
+                cursor.execute("UPDATE users SET is_pro = %s WHERE stripe_customer_id = %s", (new_is_pro, customer_id))
+            else:
+                cursor.execute("UPDATE users SET is_pro = ? WHERE stripe_customer_id = ?", (new_is_pro, customer_id))
+            db.commit()
+            cursor.close()
+            release_db(db)
+            logger.info(f"Subscription status '{status}' for customer_id={customer_id} -> is_pro={new_is_pro}")
+            if uid_row:
+                track_for_user(uid_row[0], 'billing.subscription_recovered' if new_is_pro else 'billing.subscription_past_due')
+
+    # Payment failed — Stripe retries failed payments over a dunning cycle before the
+    # subscription actually lapses, so don't revoke access here. Just log it so at-risk
+    # subscriptions are visible; the real access change happens via the status update
+    # above (past_due/unpaid) or the eventual subscription.deleted.
+    elif event["type"] == "invoice.payment_failed":
+        invoice_obj = event["data"]["object"]
+        customer_id = invoice_obj.get("customer")
+        logger.warning(f"Stripe payment failed for customer_id={customer_id}")
+
+        if customer_id:
+            db = get_db()
+            cursor = db.cursor()
+            if USE_POSTGRES:
+                cursor.execute("SELECT id FROM users WHERE stripe_customer_id = %s", (customer_id,))
+            else:
+                cursor.execute("SELECT id FROM users WHERE stripe_customer_id = ?", (customer_id,))
+            uid_row = cursor.fetchone()
+            cursor.close()
+            release_db(db)
+            if uid_row:
+                track_for_user(uid_row[0], 'billing.payment_failed')
 
     return "OK", 200
 
