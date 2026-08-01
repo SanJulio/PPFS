@@ -100,7 +100,8 @@ class PostgresSession(CallbackDict, SessionMixin):
 class PostgresSessionInterface(SessionInterface):
     def _get_db(self):
         import psycopg2
-        return psycopg2.connect(os.environ.get("DATABASE_URL"))
+        from database import PG_SSL_KWARGS
+        return psycopg2.connect(os.environ.get("DATABASE_URL"), **PG_SSL_KWARGS)
 
     def _release_db(self, conn):
         try:
