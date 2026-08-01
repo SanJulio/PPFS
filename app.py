@@ -55,6 +55,35 @@ def bust_forecast_cache(user_id):
     for k in stale:
         forecast_cache.pop(k, None)
 
+# In-memory holding area for a parsed CSV import awaiting user confirmation.
+# Keeps raw bank transaction rows out of the persistent (Postgres-backed)
+# flask_sessions table entirely — the session only holds an opaque token, so an
+# abandoned import never leaves real transaction data sitting in the database.
+_pending_imports = {}
+IMPORT_CACHE_TTL = 1800  # 30 minutes in seconds
+
+
+def _purge_expired_imports():
+    """Drop any pending imports older than IMPORT_CACHE_TTL. Called whenever a
+    new import is parsed, so the cache can't grow unbounded with abandoned ones."""
+    now = time.time()
+    stale = [t for t, (stored_at, _, _) in _pending_imports.items() if now - stored_at > IMPORT_CACHE_TTL]
+    for t in stale:
+        _pending_imports.pop(t, None)
+
+
+def _get_pending_import(token):
+    """Return (rows, account) for a still-valid import token, or (None, None) if
+    the token is missing or the entry has expired."""
+    entry = _pending_imports.get(token)
+    if not entry:
+        return None, None
+    stored_at, rows, account = entry
+    if time.time() - stored_at > IMPORT_CACHE_TTL:
+        _pending_imports.pop(token, None)
+        return None, None
+    return rows, account
+
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "Data"
 
@@ -4640,7 +4669,7 @@ def register_post():
         request.form.get('seed_balance', ''),
     )
 
-    logger.info(f"New user registered: {email}")
+    logger.info(f"New user registered: user_id={user_id}")
     send_verification_email(email, token)
 
     user = User(user_id, email)
@@ -4685,10 +4714,10 @@ def login_post():
     row = dict(zip(cols, row))
 
     if not row["password"] or not check_password_hash(row["password"], password):
-        logger.warning(f"Failed login attempt for email: {email}")
+        logger.warning(f"Failed login attempt for user_id={row['id']}")
         return render_template("login.html", error="Invalid email or password.")
 
-    logger.info(f"Successful login for user: {email}")
+    logger.info(f"Successful login for user_id={row['id']}")
 
     user = User(row["id"], row["email"])
     login_user(user, remember=True)
@@ -4699,7 +4728,7 @@ def login_post():
 @app.get("/logout")
 def logout():
     if current_user.is_authenticated:
-        logger.info(f"User logout: {current_user.email}")
+        logger.info(f"User logout: user_id={current_user.id}")
     logout_user()
     return redirect("/")
 
@@ -4855,7 +4884,7 @@ def auth_google_callback():
     seed = session.pop('google_seed', {})
     _apply_seed_data(user_id, seed.get('income', ''), seed.get('payday', ''), seed.get('bills', ''), seed.get('balance', ''))
 
-    logger.info(f"New Google user registered: {email}")
+    logger.info(f"New Google user registered: user_id={user_id}")
     user = User(user_id, email)
     session.permanent = True
     login_user(user, remember=True)
@@ -5176,8 +5205,10 @@ def import_csv():
     if err:
         return render_template('import.html', accounts=accounts, preview=None, error=err, selected_account=selected_account)
 
-    session['import_rows'] = rows
-    session['import_account'] = selected_account
+    _purge_expired_imports()
+    token = secrets.token_urlsafe(16)
+    _pending_imports[token] = (time.time(), rows, selected_account)
+    session['import_token'] = token
 
     return render_template('import.html', accounts=accounts, preview=rows, error=None, selected_account=selected_account)
 
@@ -5188,8 +5219,9 @@ def import_confirm():
     if request.form.get('csrf_token') != session.get('csrf_token'):
         return redirect(url_for('import_csv'))
 
-    rows = session.pop('import_rows', None)
-    account = session.pop('import_account', None)
+    token = session.pop('import_token', None)
+    rows, account = _get_pending_import(token)
+    _pending_imports.pop(token, None)
 
     if not rows or not account:
         return redirect(url_for('import_csv'))

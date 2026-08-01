@@ -422,3 +422,55 @@ class TestSeedDataAccount:
             except Exception:
                 pass
         db_conn.execute("DELETE FROM users WHERE email = ?", (email,))
+
+
+# ── PRIVACY: no plaintext emails in logs ──────────────────────────────────────
+# Production logs (Render) should never contain a user's email address for any
+# auth action - only their internal user_id, which isn't PII on its own.
+class TestNoEmailInLogs:
+    @patch("app.send_verification_email", return_value=True)
+    def test_register_logs_user_id_not_email(self, mock_email, client, db_conn, caplog):
+        import logging
+        email = "logcheck_register@example.com"
+        db_conn.execute("DELETE FROM users WHERE email = ?", (email,))
+        with caplog.at_level(logging.INFO):
+            client.post(
+                "/register",
+                data={
+                    "display_name": "Log Check",
+                    "email": email,
+                    "password": "ValidPass1!",
+                    "confirm": "ValidPass1!",
+                    "age_confirm": "on",
+                },
+            )
+        assert email not in caplog.text
+        assert "New user registered: user_id=" in caplog.text
+        db_conn.execute("DELETE FROM users WHERE email = ?", (email,))
+
+    def test_successful_login_logs_user_id_not_email(self, client, test_user, caplog):
+        import logging
+        with caplog.at_level(logging.INFO):
+            client.post(
+                "/login",
+                data={"email": test_user["email"], "password": test_user["password"]},
+            )
+        assert test_user["email"] not in caplog.text
+        assert f"Successful login for user_id={test_user['id']}" in caplog.text
+
+    def test_failed_login_logs_user_id_not_email(self, client, test_user, caplog):
+        import logging
+        with caplog.at_level(logging.INFO):
+            client.post(
+                "/login",
+                data={"email": test_user["email"], "password": "WrongPass99!"},
+            )
+        assert test_user["email"] not in caplog.text
+        assert f"Failed login attempt for user_id={test_user['id']}" in caplog.text
+
+    def test_logout_logs_user_id_not_email(self, auth_client, test_user, caplog):
+        import logging
+        with caplog.at_level(logging.INFO):
+            auth_client.get("/logout")
+        assert test_user["email"] not in caplog.text
+        assert f"User logout: user_id={test_user['id']}" in caplog.text
