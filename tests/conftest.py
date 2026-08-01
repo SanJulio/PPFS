@@ -73,7 +73,8 @@ def _create_test_schema(db_path: Path):
             user_id INTEGER NOT NULL,
             savings_type TEXT,
             is_seeded INTEGER NOT NULL DEFAULT 0,
-            user_verified INTEGER NOT NULL DEFAULT 0
+            user_verified INTEGER NOT NULL DEFAULT 0,
+            savings_rate NUMERIC(5,2) DEFAULT 0
         )""",
         """CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,7 +85,8 @@ def _create_test_schema(db_path: Path):
             type TEXT NOT NULL DEFAULT 'manual',
             category TEXT NOT NULL DEFAULT 'Other',
             auto_generated INTEGER NOT NULL DEFAULT 0,
-            user_id INTEGER NOT NULL
+            user_id INTEGER NOT NULL,
+            truelayer_tx_id TEXT
         )""",
         """CREATE TABLE IF NOT EXISTS scheduled_expenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -166,6 +168,25 @@ def _create_test_schema(db_path: Path):
             date TEXT NOT NULL,
             amount REAL NOT NULL,
             UNIQUE(user_id, type, source_id, date)
+        )""",
+        """CREATE TABLE IF NOT EXISTS balance_adjustments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            account TEXT NOT NULL,
+            old_balance REAL NOT NULL,
+            new_balance REAL NOT NULL,
+            delta REAL NOT NULL,
+            category TEXT NOT NULL DEFAULT 'Various',
+            recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )""",
+        """CREATE TABLE IF NOT EXISTS bank_connections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            provider TEXT,
+            access_token TEXT NOT NULL,
+            refresh_token TEXT,
+            token_expiry TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
         )""",
     ]
 

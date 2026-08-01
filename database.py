@@ -906,5 +906,357 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- SCHEMA-DRIFT FIXES (added retroactively — these columns/tables/indexes
+    # already existed on production, applied directly outside this migration
+    # process at some point, but were never added here. Added now so init_db()
+    # run against a fresh database actually reproduces production's real schema. ---
+
+    # --- MIGRATION: users.verified ---
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='verified'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (users.verified): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: users.verify_token ---
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='verify_token'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN verify_token TEXT")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN verify_token TEXT")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (users.verify_token): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: users.onboarding_dismissed ---
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='onboarding_dismissed'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN onboarding_dismissed BOOLEAN DEFAULT FALSE")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN onboarding_dismissed BOOLEAN DEFAULT 0")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (users.onboarding_dismissed): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: accounts.user_id (+ index) ---
+    # Every account belongs to a user — this is load-bearing for the whole
+    # multi-user app, but was never captured as a formal migration.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='accounts' AND column_name='user_id'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE accounts ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+            db.commit()
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id)")
+        db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (accounts.user_id): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: accounts.savings_rate ---
+    # Optional interest/growth rate shown on savings accounts in the forecast.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='accounts' AND column_name='savings_rate'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE accounts ADD COLUMN savings_rate NUMERIC(5,2) DEFAULT 0")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN savings_rate NUMERIC(5,2) DEFAULT 0")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (accounts.savings_rate): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: transactions.user_id (+ index) ---
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='transactions' AND column_name='user_id'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE transactions ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+            db.commit()
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)")
+        db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (transactions.user_id): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: transactions.truelayer_tx_id ---
+    # Lets synced Open Banking transactions be matched against re-syncs to avoid duplicates.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='transactions' AND column_name='truelayer_tx_id'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE transactions ADD COLUMN truelayer_tx_id TEXT")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN truelayer_tx_id TEXT")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (transactions.truelayer_tx_id): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: scheduled_expenses.user_id (+ index) ---
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='scheduled_expenses' AND column_name='user_id'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE scheduled_expenses ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE scheduled_expenses ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+            db.commit()
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_scheduled_expenses_user_id ON scheduled_expenses(user_id)")
+        db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (scheduled_expenses.user_id): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: income.user_id (+ index) ---
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='income' AND column_name='user_id'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE income ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE income ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+            db.commit()
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_income_user_id ON income(user_id)")
+        db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (income.user_id): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: income.weekly_day ---
+    # 0=Monday..4=Friday, for weekly-frequency income rows (legacy path in income_engine.py).
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='income' AND column_name='weekly_day'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE income ADD COLUMN weekly_day INTEGER DEFAULT 4")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE income ADD COLUMN weekly_day INTEGER DEFAULT 4")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (income.weekly_day): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: savings_rules.user_id (+ index) ---
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='savings_rules' AND column_name='user_id'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE savings_rules ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE savings_rules ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+            db.commit()
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_savings_rules_user_id ON savings_rules(user_id)")
+        db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (savings_rules.user_id): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: future_events.user_id (+ index) ---
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='future_events' AND column_name='user_id'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE future_events ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE future_events ADD COLUMN user_id INTEGER NOT NULL DEFAULT 1")
+            db.commit()
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_future_events_user_id ON future_events(user_id)")
+        db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (future_events.user_id): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: investments/investment_updates user_id indexes ---
+    # The columns were already present in the base CREATE TABLE; only the
+    # indexes were missing.
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_investments_user_id ON investments(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_investment_updates_user_id ON investment_updates(user_id)")
+        db.commit()
+    except Exception as e:
+        logger.error(f"Index migration error (investments/investment_updates user_id): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: balance_adjustments table ---
+    # Records each manual balance edit (old/new/delta) for forecast history.
+    # app.py also lazily creates this on first use (quick_adjust/api_balance_adjustments)
+    # as a defensive fallback, but it belongs here so a fresh init_db() is complete.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS balance_adjustments (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    account TEXT NOT NULL,
+                    old_balance NUMERIC(12,2) NOT NULL,
+                    new_balance NUMERIC(12,2) NOT NULL,
+                    delta NUMERIC(12,2) NOT NULL,
+                    category TEXT NOT NULL DEFAULT 'Various',
+                    recorded_at TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS balance_adjustments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    account TEXT NOT NULL,
+                    old_balance REAL NOT NULL,
+                    new_balance REAL NOT NULL,
+                    delta REAL NOT NULL,
+                    category TEXT NOT NULL DEFAULT 'Various',
+                    recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+            """)
+        db.commit()
+    except Exception as e:
+        logger.error(f"Table creation error (balance_adjustments): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: bank_connections table ---
+    # Stores TrueLayer Open Banking OAuth tokens per user (one active connection at a time).
+    # app.py also lazily creates this on first use (_ensure_bank_connections_table) as a
+    # defensive fallback, but it belongs here so a fresh init_db() is complete.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS bank_connections (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    provider TEXT,
+                    access_token TEXT NOT NULL,
+                    refresh_token TEXT,
+                    token_expiry TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS bank_connections (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    provider TEXT,
+                    access_token TEXT NOT NULL,
+                    refresh_token TEXT,
+                    token_expiry TEXT,
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            """)
+        db.commit()
+    except Exception as e:
+        logger.error(f"Table creation error (bank_connections): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)
