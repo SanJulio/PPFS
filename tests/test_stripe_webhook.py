@@ -2,16 +2,35 @@
 Tests for the Stripe webhook handler (app.py: stripe_webhook()).
 
 Stripe's signature verification (stripe.Webhook.construct_event) is mocked so these
-tests can post arbitrary event payloads without a real signing secret. Each test
-supplies a python dict shaped like the real event Stripe would send.
+tests can post arbitrary events without a real signing secret - but the *event itself*
+is a real stripe.Event/StripeObject tree (built via stripe.Event.construct_from()),
+not a plain dict. This matters: StripeObject does not implement .get() (only
+__getitem__ and attribute access), so a handler that does
+`event["data"]["object"].get("customer")` works fine against a plain-dict mock but
+raises AttributeError against a real Stripe object - which is exactly the bug that
+crashed checkout.session.completed handling in live mode. Using real StripeObject
+fixtures here means this class of bug gets caught by the suite going forward.
 """
 from unittest.mock import patch
 
 import pytest
+import stripe
+
+
+def _build_event(event_type, data_object):
+    """Build a real stripe.Event (nested StripeObject tree), matching the shape
+    Stripe's SDK actually hands the webhook handler - not a plain dict."""
+    payload = {
+        "id": "evt_test",
+        "object": "event",
+        "type": event_type,
+        "data": {"object": data_object},
+    }
+    return stripe.Event.construct_from(payload, None)
 
 
 def _post_event(client, event_type, data_object):
-    fake_event = {"type": event_type, "data": {"object": data_object}}
+    fake_event = _build_event(event_type, data_object)
     with patch("app.stripe.Webhook.construct_event", return_value=fake_event):
         return client.post(
             "/stripe/webhook",
@@ -41,7 +60,11 @@ class TestCheckoutSessionCompleted:
         resp = _post_event(
             client,
             "checkout.session.completed",
-            {"metadata": {"user_id": str(test_user["id"])}, "customer": "cus_new456"},
+            {
+                "object": "checkout.session",
+                "metadata": {"user_id": str(test_user["id"])},
+                "customer": "cus_new456",
+            },
         )
         assert resp.status_code == 200
         row = db_conn.execute(
@@ -50,13 +73,26 @@ class TestCheckoutSessionCompleted:
         assert bool(row["is_pro"]) is True
         assert row["stripe_customer_id"] == "cus_new456"
 
+    def test_missing_metadata_does_not_crash(self, client, db_conn, test_user):
+        """A session with no metadata at all should be a no-op, not a 500."""
+        resp = _post_event(
+            client,
+            "checkout.session.completed",
+            {"object": "checkout.session", "customer": "cus_new456"},
+        )
+        assert resp.status_code == 200
+        row = db_conn.execute(
+            "SELECT is_pro FROM users WHERE id = ?", (test_user["id"],)
+        ).fetchone()
+        assert bool(row["is_pro"]) is False
+
 
 class TestSubscriptionDeleted:
     def test_deactivates_pro(self, client, db_conn, pro_user_with_customer):
         resp = _post_event(
             client,
             "customer.subscription.deleted",
-            {"customer": pro_user_with_customer["stripe_customer_id"]},
+            {"object": "subscription", "customer": pro_user_with_customer["stripe_customer_id"]},
         )
         assert resp.status_code == 200
         assert _get_is_pro(db_conn, pro_user_with_customer["id"]) is False
@@ -68,7 +104,7 @@ class TestSubscriptionUpdated:
         resp = _post_event(
             client,
             "customer.subscription.updated",
-            {"customer": pro_user_with_customer["stripe_customer_id"], "status": status},
+            {"object": "subscription", "customer": pro_user_with_customer["stripe_customer_id"], "status": status},
         )
         assert resp.status_code == 200
         assert _get_is_pro(db_conn, pro_user_with_customer["id"]) is False
@@ -82,7 +118,7 @@ class TestSubscriptionUpdated:
         resp = _post_event(
             client,
             "customer.subscription.updated",
-            {"customer": pro_user_with_customer["stripe_customer_id"], "status": status},
+            {"object": "subscription", "customer": pro_user_with_customer["stripe_customer_id"], "status": status},
         )
         assert resp.status_code == 200
         assert _get_is_pro(db_conn, pro_user_with_customer["id"]) is True
@@ -92,7 +128,7 @@ class TestSubscriptionUpdated:
         resp = _post_event(
             client,
             "customer.subscription.updated",
-            {"customer": pro_user_with_customer["stripe_customer_id"], "status": "incomplete_expired"},
+            {"object": "subscription", "customer": pro_user_with_customer["stripe_customer_id"], "status": "incomplete_expired"},
         )
         assert resp.status_code == 200
         assert _get_is_pro(db_conn, pro_user_with_customer["id"]) is True
@@ -102,12 +138,12 @@ class TestSubscriptionUpdated:
         r1 = _post_event(
             client,
             "customer.subscription.updated",
-            {"customer": pro_user_with_customer["stripe_customer_id"], "status": "canceled"},
+            {"object": "subscription", "customer": pro_user_with_customer["stripe_customer_id"], "status": "canceled"},
         )
         r2 = _post_event(
             client,
             "customer.subscription.deleted",
-            {"customer": pro_user_with_customer["stripe_customer_id"]},
+            {"object": "subscription", "customer": pro_user_with_customer["stripe_customer_id"]},
         )
         assert r1.status_code == 200 and r2.status_code == 200
         assert _get_is_pro(db_conn, pro_user_with_customer["id"]) is False
@@ -119,7 +155,7 @@ class TestInvoicePaymentFailed:
         resp = _post_event(
             client,
             "invoice.payment_failed",
-            {"customer": pro_user_with_customer["stripe_customer_id"]},
+            {"object": "invoice", "customer": pro_user_with_customer["stripe_customer_id"]},
         )
         assert resp.status_code == 200
         assert _get_is_pro(db_conn, pro_user_with_customer["id"]) is True
@@ -130,7 +166,7 @@ class TestUnhandledEventTypes:
         resp = _post_event(
             client,
             "customer.updated",
-            {"customer": pro_user_with_customer["stripe_customer_id"]},
+            {"object": "customer", "customer": pro_user_with_customer["stripe_customer_id"]},
         )
         assert resp.status_code == 200
         assert _get_is_pro(db_conn, pro_user_with_customer["id"]) is True

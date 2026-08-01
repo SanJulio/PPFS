@@ -5347,7 +5347,11 @@ def stripe_webhook():
 
     # Payment completed — activate Pro
     if event["type"] == "checkout.session.completed":
-        session_obj = event["data"]["object"]
+        # .to_dict() converts the StripeObject (and nested StripeObjects like
+        # metadata) into plain dicts — StripeObject itself has no .get(), only
+        # __getitem__/attribute access, so calling .get() directly on it raises
+        # AttributeError in live mode (this is exactly what crashed the webhook).
+        session_obj = event["data"]["object"].to_dict()
         user_id = session_obj.get("metadata", {}).get("user_id")
         customer_id = session_obj.get("customer")
 
@@ -5366,7 +5370,7 @@ def stripe_webhook():
 
     # Subscription cancelled — deactivate Pro
     elif event["type"] == "customer.subscription.deleted":
-        customer_id = event["data"]["object"].get("customer")
+        customer_id = event["data"]["object"].to_dict().get("customer")
 
         if customer_id:
             db = get_db()
@@ -5392,7 +5396,7 @@ def stripe_webhook():
     # fully cancelled (both end up setting is_pro=0, so they agree rather than race),
     # and it's also how we learn a subscription recovered after a failed-payment retry.
     elif event["type"] == "customer.subscription.updated":
-        sub_obj = event["data"]["object"]
+        sub_obj = event["data"]["object"].to_dict()
         customer_id = sub_obj.get("customer")
         status = sub_obj.get("status")
 
@@ -5427,7 +5431,7 @@ def stripe_webhook():
     # subscriptions are visible; the real access change happens via the status update
     # above (past_due/unpaid) or the eventual subscription.deleted.
     elif event["type"] == "invoice.payment_failed":
-        invoice_obj = event["data"]["object"]
+        invoice_obj = event["data"]["object"].to_dict()
         customer_id = invoice_obj.get("customer")
         logger.warning(f"Stripe payment failed for customer_id={customer_id}")
 
