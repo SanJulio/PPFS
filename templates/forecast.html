@@ -78,7 +78,10 @@ body { background: #f2f4f7; padding-bottom: 140px; }
 <div class="page-wrapper">
 <div class="top-bar">
 <div class="container d-flex align-items-center justify-content-between" style="padding-top:clamp(14px,4vw,30px);padding-bottom:clamp(14px,4vw,30px);">
-  <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:clamp(52px,14vw,96px);object-fit:contain;"></a>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <a href="/"><img src="{{ url_for('static', filename='6000-logo.png') }}" alt="Spendara" style="height:clamp(52px,14vw,96px);object-fit:contain;"></a>
+    <span style="display:inline-flex;align-items:center;flex-shrink:0;background:rgba(91,76,245,0.14);color:#5b4cf5;border:1px solid rgba(91,76,245,0.35);border-radius:50px;padding:3px 10px;font-size:10px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;">Beta</span>
+  </div>
   <div style="display:flex;align-items:center;gap:10px;">
     <a href="/calendar" class="text-decoration-none" title="Calendar">
       <div style="width:44px;text-align:center;border:2px solid #ddd;border-radius:8px;overflow:hidden;line-height:1;">
