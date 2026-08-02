@@ -74,7 +74,8 @@ def _create_test_schema(db_path: Path):
             savings_type TEXT,
             is_seeded INTEGER NOT NULL DEFAULT 0,
             user_verified INTEGER NOT NULL DEFAULT 0,
-            savings_rate NUMERIC(5,2) DEFAULT 0
+            savings_rate NUMERIC(5,2) DEFAULT 0,
+            is_locked INTEGER NOT NULL DEFAULT 0
         )""",
         """CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

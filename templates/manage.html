@@ -293,11 +293,14 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           </thead>
           <tbody>
             {% for a in accounts %}
-            <tr>
-              <td>{{ a.name }}</td>
+            <tr{% if a.get('is_locked') %} style="opacity:0.55;"{% endif %}>
+              <td>{{ a.name }}{% if a.get('is_locked') %} <span class="badge text-bg-secondary">🔒 Locked</span>{% endif %}</td>
               <td class="acc-col-type"><span class="badge {% if a.type == 'current' %}text-bg-primary{% elif a.type == 'savings' %}text-bg-success{% elif a.type == 'cash' %}text-bg-warning{% else %}text-bg-light{% endif %}">{{ a.type }}</span>{% if a.type == 'savings' and a.get('savings_type') == 'fixed' %}<span class="badge text-bg-secondary ms-1">Fixed</span>{% endif %}</td>
               <td class="text-end money">£{{ "%.2f"|format(a.balance) }}</td>
               <td class="text-end">
+                {% if a.get('is_locked') %}
+                <a href="/billing/upgrade" class="btn btn-sm btn-outline-dark">⭐ Unlock</a>
+                {% else %}
                 <div class="d-flex gap-1 justify-content-end manage-actions">
                   <button class="btn btn-sm btn-outline-secondary" onclick="toggleEdit('account-{{ a.id }}')">Edit</button>
                   <form method="POST" action="/settings/deactivate-account" onsubmit="return confirm('Deactivate {{ a.name }}?')">
@@ -306,8 +309,14 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                     <button class="btn btn-sm btn-outline-danger">Remove</button>
                   </form>
                 </div>
+                {% endif %}
               </td>
             </tr>
+            {% if a.get('is_locked') %}
+            <tr style="background:#fff8e6;">
+              <td colspan="4" class="small text-muted py-2">🔒 This account is locked because you're over the Free plan's 3-account limit. Your data is safe — <a href="/billing/upgrade" class="fw-bold text-dark">upgrade to Pro</a> to unlock it and use it again.</td>
+            </tr>
+            {% endif %}
             <tr id="account-{{ a.id }}" style="display:none; background:#f8f9fa;">
               <td colspan="4">
                 <form method="POST" action="/settings/edit-account" class="p-2">
@@ -449,7 +458,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                     <div class="col-6">
                       <select class="form-select form-select-sm" name="account" required>
                         {% for a in accounts %}
-                          <option value="{{ a.name }}" {% if a.name == b.account %}selected{% endif %}>{{ a.name }}</option>
+                          <option value="{{ a.name }}" {% if a.name == b.account %}selected{% endif %} {% if a.get('is_locked') %}disabled{% endif %}>{{ a.name }}{% if a.get('is_locked') %} (Locked){% endif %}</option>
                         {% endfor %}
                       </select>
                     </div>
@@ -636,14 +645,14 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                     <div class="col-12">
                       <select class="form-select form-select-sm" name="from_account" required>
                         {% for a in accounts %}
-                          <option value="{{ a.name }}" {% if a.name == r.from_account %}selected{% endif %}>{{ a.name }}</option>
+                          <option value="{{ a.name }}" {% if a.name == r.from_account %}selected{% endif %} {% if a.get('is_locked') %}disabled{% endif %}>{{ a.name }}{% if a.get('is_locked') %} (Locked){% endif %}</option>
                         {% endfor %}
                       </select>
                     </div>
                     <div class="col-12">
                       <select class="form-select form-select-sm" name="to_account" required>
                         {% for a in accounts %}
-                          <option value="{{ a.name }}" {% if a.name == r.to_account %}selected{% endif %}>{{ a.name }}</option>
+                          <option value="{{ a.name }}" {% if a.name == r.to_account %}selected{% endif %} {% if a.get('is_locked') %}disabled{% endif %}>{{ a.name }}{% if a.get('is_locked') %} (Locked){% endif %}</option>
                         {% endfor %}
                       </select>
                     </div>
@@ -724,7 +733,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                     <div class="col-6">
                       <select class="form-select form-select-sm" name="account" required>
                         {% for a in accounts %}
-                          <option value="{{ a.name }}" {% if a.name == e.account %}selected{% endif %}>{{ a.name }}</option>
+                          <option value="{{ a.name }}" {% if a.name == e.account %}selected{% endif %} {% if a.get('is_locked') %}disabled{% endif %}>{{ a.name }}{% if a.get('is_locked') %} (Locked){% endif %}</option>
                         {% endfor %}
                       </select>
                     </div>
@@ -1246,7 +1255,7 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
       <div class="mb-3">
         <select class="form-select" name="account" required>
           <option value="">Select account</option>
-          {% for a in accounts %}<option value="{{ a.name }}">{{ a.name }}</option>{% endfor %}
+          {% for a in accounts %}<option value="{{ a.name }}" {% if a.get('is_locked') %}disabled{% endif %}>{{ a.name }}{% if a.get('is_locked') %} (Locked — upgrade to Pro){% endif %}</option>{% endfor %}
         </select>
       </div>
       <button class="btn btn-dark w-100 py-3">Add Bill</button>
@@ -1288,7 +1297,7 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
         <label class="form-label small fw-semibold mb-1">Account</label>
         <select class="form-select" id="incomeAccount" name="account" required onchange="incomeFieldChanged()">
           <option value="">Select account</option>
-          {% for a in accounts %}<option value="{{ a.name }}">{{ a.name }}</option>{% endfor %}
+          {% for a in accounts %}<option value="{{ a.name }}" {% if a.get('is_locked') %}disabled{% endif %}>{{ a.name }}{% if a.get('is_locked') %} (Locked — upgrade to Pro){% endif %}</option>{% endfor %}
         </select>
       </div>
 
@@ -1476,13 +1485,13 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
       <div class="mb-2">
         <select class="form-select" name="from_account" required>
           <option value="">From account</option>
-          {% for a in accounts %}<option value="{{ a.name }}">{{ a.name }}</option>{% endfor %}
+          {% for a in accounts %}<option value="{{ a.name }}" {% if a.get('is_locked') %}disabled{% endif %}>{{ a.name }}{% if a.get('is_locked') %} (Locked — upgrade to Pro){% endif %}</option>{% endfor %}
         </select>
       </div>
       <div class="mb-3">
         <select class="form-select" name="to_account" required>
           <option value="">To account (savings)</option>
-          {% for a in accounts %}<option value="{{ a.name }}">{{ a.name }}</option>{% endfor %}
+          {% for a in accounts %}<option value="{{ a.name }}" {% if a.get('is_locked') %}disabled{% endif %}>{{ a.name }}{% if a.get('is_locked') %} (Locked — upgrade to Pro){% endif %}</option>{% endfor %}
         </select>
       </div>
       <button class="btn btn-dark w-100 py-3">Add Savings Rule</button>
@@ -1505,7 +1514,7 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
       <div class="mb-3">
         <select class="form-select" name="account" required>
           <option value="">Select account</option>
-          {% for a in accounts %}<option value="{{ a.name }}">{{ a.name }}</option>{% endfor %}
+          {% for a in accounts %}<option value="{{ a.name }}" {% if a.get('is_locked') %}disabled{% endif %}>{{ a.name }}{% if a.get('is_locked') %} (Locked — upgrade to Pro){% endif %}</option>{% endfor %}
         </select>
       </div>
       <button class="btn btn-dark w-100 py-3">Add Event</button>

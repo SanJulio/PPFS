@@ -1258,5 +1258,29 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: accounts.is_locked ---
+    # Set when a user downgrades from Pro to Free while over the free account
+    # limit (3). The oldest 3 active accounts (by id, i.e. creation order —
+    # accounts has no created_at column) stay active; the rest are locked:
+    # visible with data intact, but read-only until the user re-upgrades.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='accounts' AND column_name='is_locked'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE accounts ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (accounts.is_locked): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

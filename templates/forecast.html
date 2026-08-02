@@ -117,6 +117,16 @@ body { background: #f2f4f7; padding-bottom: 140px; }
   </div>
   {% endif %}
 
+  {% if locked_count %}
+  <div class="rounded-4 p-3 mb-3 d-flex align-items-center justify-content-between gap-3" style="background:#fff8e6; border:1.5px solid #f5d98a;">
+    <div>
+      <div class="fw-semibold" style="font-size:14px;">🔒 {{ locked_count }} account{{ 's' if locked_count != 1 else '' }} locked</div>
+      <div class="text-muted" style="font-size:12px;">Not included in this forecast — upgrade to Pro to include {{ 'them' if locked_count != 1 else 'it' }}.</div>
+    </div>
+    <a href="/billing/upgrade" class="btn btn-dark btn-sm text-nowrap">Upgrade</a>
+  </div>
+  {% endif %}
+
   <div class="mb-3" id="forecastFilterWrap">
     <div class="filter-label">Viewing</div>
     <div class="account-filter-track" id="forecastFilterBar">

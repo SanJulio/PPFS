@@ -630,10 +630,15 @@ def run_auto_apply_backfill(user_id):
 def get_pending_auto_apply_items(user_id):
     """Returns list of items due today (or overdue since last_applied) that need applying.
     Each entry: {type, item_id, name, amount, account, due_date}
-    Amount is negative for bills, positive for income."""
+    Amount is negative for bills, positive for income.
+    Bills/income tied to a locked account are excluded — a locked account's
+    balance is meant to be frozen, so auto-apply must never silently touch it
+    (the interactive routes already block this; this is the same rule for the
+    background/silent path)."""
     from datetime import date as _date, timedelta
 
     today = _date.today()
+    locked_names = {r["name"] for r in get_active_accounts(user_id) if r.get("is_locked")}
 
     db = get_db()
     cursor = db.cursor()
@@ -660,6 +665,8 @@ def get_pending_auto_apply_items(user_id):
     for bill in bills:
         if bill.get('day') is None:
             continue
+        if bill.get('account') in locked_names:
+            continue
         last_applied = _date.fromisoformat(bill['last_applied'])
         search_from = last_applied + timedelta(days=1)
         if search_from > today:
@@ -675,6 +682,8 @@ def get_pending_auto_apply_items(user_id):
             })
 
     for inc in income_items:
+        if inc.get('account') in locked_names:
+            continue
         last_applied = _date.fromisoformat(inc['last_applied'])
         search_from = last_applied + timedelta(days=1)
         if search_from > today:
@@ -789,6 +798,12 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
             continue
         if not info.get("include_in_overview", 1):
             continue
+        # Locked accounts (from a Pro->Free downgrade) are frozen — no new
+        # activity can touch them — so their balance can't be trusted to stay
+        # current. Counting it here would present a stale figure with the
+        # same confidence as live data; excluding it is the honest choice.
+        if info.get("is_locked"):
+            continue
         acc_type = info.get("type")
         balance = float(info.get("balance", 0.0))
         if acc_type in spending_types:
@@ -861,7 +876,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
             if last_applied and last_applied >= due.isoformat():
                 continue
             acc = expense["account"]
-            if acc not in accounts:
+            if acc not in accounts or accounts[acc].get("is_locked"):
                 continue
             all_future_bills += expense["amount"]
             future_bills_list.append({
@@ -895,7 +910,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
             continue
         freq = rule.get("frequency", "monthly")
         from_acc = rule.get("from_account", "")
-        if from_acc not in accounts:
+        if from_acc not in accounts or accounts[from_acc].get("is_locked"):
             continue
 
         sr_candidates = []
@@ -1377,6 +1392,7 @@ def home():
 
     accounts_rows = get_active_accounts(current_user.id)
     accounts = {}
+    locked_accounts = {r["name"] for r in accounts_rows if r.get("is_locked")}
 
     for r in accounts_rows:
         accounts[r["name"]] = {
@@ -1386,6 +1402,7 @@ def home():
             "active": bool(r["active"]),
             "include_in_overview": bool(r.get("include_in_overview", 1)),
             "savings_type": r.get("savings_type"),
+            "is_locked": bool(r.get("is_locked")),
         }
 
     import cycle_engine as _ce
@@ -1495,6 +1512,7 @@ def home():
                             "active": bool(r["active"]),
                             "include_in_overview": bool(r.get("include_in_overview", 1)),
                             "savings_type": r.get("savings_type"),
+                            "is_locked": bool(r.get("is_locked")),
                         }
                     overview = calculate_financial_overview(accounts, period_end=cycle_end_date, safe_boundary=safe_boundary)
                     monthly = calculate_monthly_spending(cycle_start_date, cycle_end_date)
@@ -1539,6 +1557,7 @@ def home():
         "index.html",
         message=request.args.get("msg", ""),
         accounts=active_accounts,
+        locked_accounts=locked_accounts,
         overview=overview,
         balances=balances,
         monthly=monthly,
@@ -1799,6 +1818,7 @@ def api_overview():
             "active": bool(r["active"]),
             "include_in_overview": bool(r.get("include_in_overview", 1)),
             "savings_type": r.get("savings_type"),
+            "is_locked": bool(r.get("is_locked")),
         }
     ov = calculate_financial_overview(accounts, period_end=end)
 
@@ -1996,6 +2016,7 @@ def actions():
     track('page_view.actions')
     accounts_rows = get_active_accounts(current_user.id)
     accounts = [r["name"] for r in accounts_rows]
+    locked_accounts = {r["name"] for r in accounts_rows if r.get("is_locked")}
 
     db = get_db()
     cursor = db.cursor()
@@ -2015,7 +2036,7 @@ def actions():
         bank_connected = _get_bank_connection(current_user.id) is not None
     except Exception:
         bank_connected = False
-    return render_template("actions.html", accounts=accounts, investments=investments, message=request.args.get("msg", ""), today=date.today().isoformat(), recent_tx=recent_tx, bank_connected=bank_connected, truelayer_live=TRUELAYER_LIVE)
+    return render_template("actions.html", accounts=accounts, locked_accounts=locked_accounts, investments=investments, message=request.args.get("msg", ""), today=date.today().isoformat(), recent_tx=recent_tx, bank_connected=bank_connected, truelayer_live=TRUELAYER_LIVE)
 
 # --- FLOW PAGE ---
 # Shows each account's monthly cash flow: bills paid, bills still to pay,
@@ -2210,6 +2231,11 @@ def bills_pay():
         return redirect(url_for("bills", msg="Bill not found."))
 
     bill = dict(zip(cols, row))
+
+    if _is_account_locked(current_user.id, bill["account"]):
+        redirect_to = request.form.get("redirect_to") or url_for("flow")
+        return redirect(f"{redirect_to}?msg='{bill['account']}'+is+locked+—+upgrade+to+Pro+to+unlock+it.")
+
     paid_date_raw = (request.form.get("paid_date") or "").strip()
     try:
         paid_date_str = date.fromisoformat(paid_date_raw).isoformat()
@@ -2253,6 +2279,11 @@ def income_pay():
         return redirect(url_for("flow", msg="Income not found."))
 
     income = dict(zip(cols, row))
+
+    if _is_account_locked(current_user.id, income["account"]):
+        redirect_to = request.form.get("redirect_to") or url_for("flow")
+        return redirect(f"{redirect_to}?msg='{income['account']}'+is+locked+—+upgrade+to+Pro+to+unlock+it.")
+
     paid_date_raw = (request.form.get("paid_date") or "").strip()
     try:
         paid_date_str = date.fromisoformat(paid_date_raw).isoformat()
@@ -2289,6 +2320,9 @@ def add_expense():
     if not description or not amount_raw or not account:
         return redirect(url_for("home", msg="Missing fields. Try again."))
 
+    if _is_account_locked(current_user.id, account):
+        return redirect(url_for("actions", msg=f"'{account}' is locked — upgrade to Pro to unlock it."))
+
     amount, err = validate_amount(amount_raw)
     if err:
         return redirect(url_for("actions", msg=err))
@@ -2323,6 +2357,9 @@ def add_income():
     if not description or not amount_raw or not account:
         return redirect(url_for("home", msg="Missing fields. Try again."))
 
+    if _is_account_locked(current_user.id, account):
+        return redirect(url_for("actions", msg=f"'{account}' is locked — upgrade to Pro to unlock it."))
+
     amount, err = validate_amount(amount_raw)
     if err:
         return redirect(url_for("actions", msg=err))
@@ -2356,6 +2393,9 @@ def quick_add():
 
     if not amount_raw or not account:
         return {"ok": False, "error": "Missing amount or account"}, 400
+
+    if _is_account_locked(current_user.id, account):
+        return {"ok": False, "error": f"'{account}' is locked — upgrade to Pro to unlock it."}, 403
 
     amount, err = validate_amount(amount_raw)
     if err:
@@ -2396,6 +2436,9 @@ def quick_adjust():
 
     if not account:
         return {"ok": False, "error": "Missing account"}, 400
+
+    if _is_account_locked(current_user.id, account):
+        return {"ok": False, "error": f"'{account}' is locked — upgrade to Pro to unlock it."}, 403
 
     delta = round(new_balance - old_balance, 2)
     if abs(delta) < 0.001:
@@ -2702,6 +2745,12 @@ def transfer():
     if from_account == to_account:
         return redirect(url_for("home", msg="Cannot transfer to same account."))
 
+    locked_account = from_account if _is_account_locked(current_user.id, from_account) else (
+        to_account if _is_account_locked(current_user.id, to_account) else None
+    )
+    if locked_account:
+        return redirect(url_for("actions", msg=f"'{locked_account}' is locked — upgrade to Pro to unlock it."))
+
     amount, err = validate_amount(amount_raw)
     if err:
         return redirect(url_for("actions", msg=err))
@@ -2875,11 +2924,13 @@ def afford():
     accounts_rows = get_active_accounts(current_user.id)
 
     accounts = {}
+    locked_accounts = {r["name"] for r in accounts_rows if r.get("is_locked")}
     for r in accounts_rows:
         accounts[r["name"]] = {
             "balance": r["balance"],
             "type": r["type"],
-            "active": bool(r["active"])
+            "active": bool(r["active"]),
+            "is_locked": bool(r.get("is_locked")),
         }
     from database import get_db, USE_POSTGRES
     db = get_db()
@@ -2934,10 +2985,13 @@ def afford():
     horizon = date(next_year, next_month, last_day)
 
     results = []
-    spending_accounts = [a for a in accounts if accounts[a]["type"] in ("current","cash") and accounts[a]["active"]]
+    # Locked accounts can't actually be used for a purchase (blocked server-side),
+    # and their frozen balance shouldn't feed the simulation as if it were live.
+    unlocked_accounts = {k: v for k, v in accounts.items() if not v.get("is_locked")}
+    spending_accounts = [a for a in unlocked_accounts if unlocked_accounts[a]["type"] in ("current","cash") and unlocked_accounts[a]["active"]]
 
     for acc in spending_accounts:
-        temp_accounts = {k: v.copy() for k, v in accounts.items()}
+        temp_accounts = {k: v.copy() for k, v in unlocked_accounts.items()}
         temp_accounts[acc]["balance"] -= amount
 
         final_bal, lowest_bal = simulate_balances_until(horizon, temp_accounts, scheduled, future_events, afford_savings_rules)
@@ -2965,6 +3019,7 @@ def afford():
         "index.html",
         message="",
         accounts=[a for a in accounts if accounts[a]["active"]],
+        locked_accounts=locked_accounts,
         balances=[{"name":a,"balance":accounts[a]["balance"],"type":accounts[a]["type"]} for a in accounts if accounts[a]["active"]],
         overview=calculate_financial_overview(accounts),
         afford_results=results,
@@ -2993,6 +3048,10 @@ def api_snapshot():
     cursor = db.cursor()
 
     accounts_rows = get_active_accounts(current_user.id)
+    # Locked accounts are frozen and excluded from this simulation entirely —
+    # same reasoning as forecast(): a balance that can't change shouldn't be
+    # projected forward as if it were live.
+    accounts_rows = [r for r in accounts_rows if not r.get("is_locked")]
     accounts = {}
     for r in accounts_rows:
         accounts[r["name"]] = {
@@ -3069,10 +3128,11 @@ def api_snapshot():
         # Income
         for row in snap_income_by_date.get(sim_day, []):
             acc = row.get("account", "")
+            if acc not in simulated:
+                continue
             amt = float(row["amount"])
             income_arriving.append({"name": row["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc, "item_id": row.get("id"), "item_type": "income"})
-            if acc in simulated:
-                simulated[acc] += amt
+            simulated[acc] += amt
 
         # Scheduled expenses
         for expense in scheduled:
@@ -3081,6 +3141,8 @@ def api_snapshot():
                 continue
             freq = expense.get("frequency", "monthly")
             acc = expense.get("account", "")
+            if acc not in simulated:
+                continue
             amt = float(expense["amount"])
             applies = False
             if freq == "monthly":
@@ -3108,10 +3170,11 @@ def api_snapshot():
         for event in future_events:
             if event["date"] == sim_day:
                 acc = event["account"]
+                if acc not in simulated:
+                    continue
                 amt = float(event["amount"])
                 bills_due.append({"name": event["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc, "item_id": None, "item_type": "event"})
-                if acc in simulated:
-                    simulated[acc] -= amt
+                simulated[acc] -= amt
 
         # Savings rules — deduct from source, deposit to destination
         for rule in snap_savings_rules:
@@ -3511,9 +3574,11 @@ def settings_add_account():
     savings_type_raw = (request.form.get("savings_type") or "").strip()
     savings_type = savings_type_raw if acc_type == "savings" and savings_type_raw in ("variable", "fixed") else None
 
-    # Free tier limit: max 3 accounts
+    # Free tier limit: max 3 accounts. Locked accounts (from a past downgrade)
+    # don't count against this — they're not usable, so they shouldn't eat
+    # into the allowance of usable accounts a Free user gets.
     if not user_is_pro():
-        existing = get_active_accounts(current_user.id)
+        existing = [a for a in get_active_accounts(current_user.id) if not a.get("is_locked")]
         if len(existing) >= 3:
             return redirect(url_for("manage", msg="FREE_LIMIT_ACCOUNTS"))
 
@@ -3554,6 +3619,10 @@ def settings_edit_account():
 
     if not name or not acc_type or not balance:
         return redirect(url_for("manage", msg="Missing fields."))
+
+    if _is_account_locked_by_id(current_user.id, account_id):
+        return redirect(url_for("manage", msg="This account is locked — upgrade to Pro to unlock it."))
+
     try:
         balance = float(balance)
     except ValueError:
@@ -4221,11 +4290,19 @@ def forecast():
                 upcoming=cached_data.get("upcoming", "[]"),
                 hist_snapshots=cached_data.get("hist_snapshots", "[]"),
                 savings_rates=cached_data.get("savings_rates", "{}"),
+                locked_count=cached_data.get("locked_count", 0),
                 message=request.args.get("msg", ""),
                 today=today.isoformat()
             )
 
     accounts_rows = get_active_accounts(current_user.id)
+    # Locked accounts (from a Pro->Free downgrade) are frozen and excluded from
+    # the forecast entirely — including a balance that can't change would
+    # present an increasingly stale number with the same confidence as live
+    # data. The template shows a note with the count so the user knows why
+    # their forecast covers fewer accounts than they actually have.
+    locked_count = sum(1 for r in accounts_rows if r.get("is_locked"))
+    accounts_rows = [r for r in accounts_rows if not r.get("is_locked")]
     accounts = {}
     savings_rates = {}
     for r in accounts_rows:
@@ -4424,6 +4501,8 @@ def forecast():
     for bill in scheduled:
         if bill.get("day") is None:
             continue
+        if bill.get("account") not in accounts:
+            continue
         freq = bill.get("frequency") or "monthly"
         if freq == "yearly":
             ann_month = bill.get("month")
@@ -4452,6 +4531,8 @@ def forecast():
                     m_year += 1
 
     for inc in income_rows:
+        if inc.get("account") not in accounts:
+            continue
         for d in income_engine.get_payment_dates(inc, today, end_date):
             upcoming_items.append({"date": d.isoformat(), "name": inc["name"], "amount": float(inc["amount"]), "account": inc["account"], "type": "income", "id": inc["id"]})
 
@@ -4469,6 +4550,7 @@ def forecast():
         "upcoming": upcoming_json,
         "hist_snapshots": hist_snapshots_json,
         "savings_rates": savings_rates_json,
+        "locked_count": locked_count,
     })
 
     return render_template(
@@ -4477,6 +4559,7 @@ def forecast():
         account_names=account_names_json,
         account_types=account_types_json,
         initial_balances=initial_balances_json,
+        locked_count=locked_count,
         upcoming=upcoming_json,
         hist_snapshots=hist_snapshots_json,
         savings_rates=savings_rates_json,
@@ -5177,20 +5260,24 @@ def parse_bank_csv(content: str):
 def import_csv():
     accounts_rows = get_active_accounts(current_user.id)
     accounts = [r["name"] for r in accounts_rows]
+    locked_accounts = {r["name"] for r in accounts_rows if r.get("is_locked")}
 
     if request.method == 'GET':
         track('page_view.import')
-        return render_template('import.html', accounts=accounts, preview=None, error=None, selected_account=None)
+        return render_template('import.html', accounts=accounts, locked_accounts=locked_accounts, preview=None, error=request.args.get('msg'), selected_account=None)
 
     # Validate CSRF
     if request.form.get('csrf_token') != session.get('csrf_token'):
-        return render_template('import.html', accounts=accounts, preview=None, error="Invalid request.", selected_account=None)
+        return render_template('import.html', accounts=accounts, locked_accounts=locked_accounts, preview=None, error="Invalid request.", selected_account=None)
 
     selected_account = (request.form.get('account') or '').strip()
     file = request.files.get('csv_file')
 
+    if selected_account and _is_account_locked(current_user.id, selected_account):
+        return render_template('import.html', accounts=accounts, locked_accounts=locked_accounts, preview=None, error=f"'{selected_account}' is locked — upgrade to Pro to unlock it.", selected_account=selected_account)
+
     if not file or not file.filename:
-        return render_template('import.html', accounts=accounts, preview=None, error="Please select a CSV file.", selected_account=selected_account)
+        return render_template('import.html', accounts=accounts, locked_accounts=locked_accounts, preview=None, error="Please select a CSV file.", selected_account=selected_account)
 
     try:
         content = file.read().decode('utf-8-sig')
@@ -5199,18 +5286,18 @@ def import_csv():
             file.seek(0)
             content = file.read().decode('latin-1')
         except Exception:
-            return render_template('import.html', accounts=accounts, preview=None, error="Could not read the file.", selected_account=selected_account)
+            return render_template('import.html', accounts=accounts, locked_accounts=locked_accounts, preview=None, error="Could not read the file.", selected_account=selected_account)
 
     rows, err = parse_bank_csv(content)
     if err:
-        return render_template('import.html', accounts=accounts, preview=None, error=err, selected_account=selected_account)
+        return render_template('import.html', accounts=accounts, locked_accounts=locked_accounts, preview=None, error=err, selected_account=selected_account)
 
     _purge_expired_imports()
     token = secrets.token_urlsafe(16)
     _pending_imports[token] = (time.time(), rows, selected_account)
     session['import_token'] = token
 
-    return render_template('import.html', accounts=accounts, preview=rows, error=None, selected_account=selected_account)
+    return render_template('import.html', accounts=accounts, locked_accounts=locked_accounts, preview=rows, error=None, selected_account=selected_account)
 
 
 @app.post('/import/confirm')
@@ -5225,6 +5312,9 @@ def import_confirm():
 
     if not rows or not account:
         return redirect(url_for('import_csv'))
+
+    if _is_account_locked(current_user.id, account):
+        return redirect(url_for('import_csv', msg=f"'{account}' is locked — upgrade to Pro to unlock it."))
 
     # Only import rows the user checked — collect category per original index
     selected_rows = []
@@ -5398,6 +5488,7 @@ def stripe_webhook():
             cursor.close()
             release_db(db)
             logger.info(f"Pro activated for user_id={user_id}")
+            sync_account_locks(int(user_id), True)
             track_for_user(int(user_id), 'billing.upgrade_complete')
 
     # Subscription cancelled — deactivate Pro
@@ -5421,6 +5512,7 @@ def stripe_webhook():
             release_db(db)
             logger.info(f"Pro deactivated for customer_id={customer_id}")
             if uid_row:
+                sync_account_locks(uid_row[0], False)
                 track_for_user(uid_row[0], 'billing.cancel')
 
     # Subscription status changed — keep is_pro in sync with the subscription's current
@@ -5456,6 +5548,7 @@ def stripe_webhook():
             release_db(db)
             logger.info(f"Subscription status '{status}' for customer_id={customer_id} -> is_pro={new_is_pro}")
             if uid_row:
+                sync_account_locks(uid_row[0], bool(new_is_pro))
                 track_for_user(uid_row[0], 'billing.subscription_recovered' if new_is_pro else 'billing.subscription_past_due')
 
     # Payment failed — Stripe retries failed payments over a dunning cycle before the
@@ -5495,6 +5588,77 @@ def user_is_pro():
     cursor.close()
     release_db(db)
     return bool(row[0] if USE_POSTGRES else row["is_pro"]) if row else False
+
+
+# --- HELPER: lock/unlock accounts on Pro <-> Free transitions ---
+# Free tier allows 3 accounts. A user who was ever Pro can have more than
+# that; downgrading shouldn't delete anything, but accounts beyond the
+# oldest 3 (by id, i.e. creation order — accounts has no created_at column)
+# become locked: visible with data intact, but read-only until they
+# re-upgrade, at which point everything unlocks exactly as it was.
+def sync_account_locks(user_id, is_pro):
+    db = get_db()
+    cursor = db.cursor()
+    try:
+        if is_pro:
+            if USE_POSTGRES:
+                cursor.execute("UPDATE accounts SET is_locked = 0 WHERE user_id = %s", (user_id,))
+            else:
+                cursor.execute("UPDATE accounts SET is_locked = 0 WHERE user_id = ?", (user_id,))
+        else:
+            if USE_POSTGRES:
+                cursor.execute("SELECT id FROM accounts WHERE user_id = %s AND active = 1 ORDER BY id ASC", (user_id,))
+            else:
+                cursor.execute("SELECT id FROM accounts WHERE user_id = ? AND active = 1 ORDER BY id ASC", (user_id,))
+            active_ids = [row[0] for row in cursor.fetchall()]
+            keep_ids = set(active_ids[:3])
+            for acc_id in active_ids:
+                lock_value = 0 if acc_id in keep_ids else 1
+                if USE_POSTGRES:
+                    cursor.execute("UPDATE accounts SET is_locked = %s WHERE id = %s", (lock_value, acc_id))
+                else:
+                    cursor.execute("UPDATE accounts SET is_locked = ? WHERE id = ?", (lock_value, acc_id))
+        db.commit()
+    finally:
+        cursor.close()
+        release_db(db)
+    # A cached forecast computed before this lock/unlock transition would show
+    # the wrong set of accounts for up to FORECAST_CACHE_TTL - bust it so the
+    # next load reflects the new lock state immediately.
+    bust_forecast_cache(user_id)
+
+
+def _is_account_locked(user_id, account_name):
+    """True if the named account belongs to user_id and is currently locked
+    (Free-tier downgrade lock) — used to block adding new activity against it."""
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT is_locked FROM accounts WHERE user_id = %s AND name = %s", (user_id, account_name))
+    else:
+        cursor.execute("SELECT is_locked FROM accounts WHERE user_id = ? AND name = ?", (user_id, account_name))
+    row = cursor.fetchone()
+    cursor.close()
+    release_db(db)
+    if not row:
+        return False
+    return bool(row[0] if USE_POSTGRES else row["is_locked"])
+
+
+def _is_account_locked_by_id(user_id, account_id):
+    """Same as _is_account_locked() but keyed by account id rather than name."""
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT is_locked FROM accounts WHERE user_id = %s AND id = %s", (user_id, account_id))
+    else:
+        cursor.execute("SELECT is_locked FROM accounts WHERE user_id = ? AND id = ?", (user_id, account_id))
+    row = cursor.fetchone()
+    cursor.close()
+    release_db(db)
+    if not row:
+        return False
+    return bool(row[0] if USE_POSTGRES else row["is_locked"])
 
 
 # --- ADMIN ANALYTICS ---

@@ -174,7 +174,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <label class="form-label">Account</label>
           <select class="form-select" name="account" required>
             {% for a in accounts %}
-              <option value="{{ a }}">{{ a }}</option>
+              <option value="{{ a }}" {% if a in locked_accounts %}disabled{% endif %}>{{ a }}{% if a in locked_accounts %} (Locked — upgrade to Pro){% endif %}</option>
             {% endfor %}
           </select>
         </div>
@@ -210,7 +210,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <label class="form-label">Account</label>
           <select class="form-select" name="account" required>
             {% for a in accounts %}
-              <option value="{{ a }}">{{ a }}</option>
+              <option value="{{ a }}" {% if a in locked_accounts %}disabled{% endif %}>{{ a }}{% if a in locked_accounts %} (Locked — upgrade to Pro){% endif %}</option>
             {% endfor %}
           </select>
         </div>
@@ -229,7 +229,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <label class="form-label">From account</label>
           <select class="form-select" name="from_account" required>
             {% for a in accounts %}
-              <option value="{{ a }}">{{ a }}</option>
+              <option value="{{ a }}" {% if a in locked_accounts %}disabled{% endif %}>{{ a }}{% if a in locked_accounts %} (Locked — upgrade to Pro){% endif %}</option>
             {% endfor %}
           </select>
         </div>
@@ -238,7 +238,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <label class="form-label">To account</label>
           <select class="form-select" name="to_account" required>
             {% for a in accounts %}
-              <option value="{{ a }}">{{ a }}</option>
+              <option value="{{ a }}" {% if a in locked_accounts %}disabled{% endif %}>{{ a }}{% if a in locked_accounts %} (Locked — upgrade to Pro){% endif %}</option>
             {% endfor %}
           </select>
         </div>

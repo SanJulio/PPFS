@@ -230,7 +230,7 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
       <label id="qa-account-label" class="form-label fw-semibold" style="font-size:13px;">Account *</label>
       <select id="qa-account" class="form-select" style="font-size:15px;">
         {% for acc in accounts %}
-        <option value="{{ acc }}">{{ acc }}</option>
+        <option value="{{ acc }}" {% if acc in locked_accounts %}disabled{% endif %}>{{ acc }}{% if acc in locked_accounts %} (Locked — upgrade to Pro){% endif %}</option>
         {% endfor %}
       </select>
     </div>
@@ -238,7 +238,7 @@ var HOME_CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('
       <label class="form-label fw-semibold" style="font-size:13px;">To account *</label>
       <select id="qa-to-account" class="form-select" style="font-size:15px;">
         {% for acc in accounts %}
-        <option value="{{ acc }}">{{ acc }}</option>
+        <option value="{{ acc }}" {% if acc in locked_accounts %}disabled{% endif %}>{{ acc }}{% if acc in locked_accounts %} (Locked — upgrade to Pro){% endif %}</option>
         {% endfor %}````
       </select>
     </div>
@@ -485,6 +485,13 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
       <button id="toggleAmountsBtn" onclick="toggleAmounts()" class="btn btn-sm" style="border-radius:999px; padding:6px 14px; font-size:13px; font-weight:600; background:white; border:2px solid #dee2e6; color:#555;">Show</button>
     </div>
   </div>
+
+  {% if locked_accounts %}
+  <div class="rounded-4 p-2 px-3 mb-3 d-flex align-items-center justify-content-between gap-2" style="background:#fff8e6; border:1.5px solid #f5d98a;">
+    <div style="font-size:12px;color:#7a5c00;">🔒 {{ locked_accounts|length }} account{{ 's' if locked_accounts|length != 1 else '' }} locked — not included above. <a href="/billing/upgrade" class="fw-bold text-dark">Upgrade to Pro</a> to include {{ 'them' if locked_accounts|length != 1 else 'it' }}.</div>
+  </div>
+  {% endif %}
+
   <div class="row g-3">
 
     <!-- Row 1: Available | Bills left -->
