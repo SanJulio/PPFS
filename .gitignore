@@ -1,6 +1,7 @@
 # secrets / local junk
 .env
 *.log
+.claude/settings.local.json
 
 # local databases
 *.db
