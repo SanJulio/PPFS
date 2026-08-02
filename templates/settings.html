@@ -400,6 +400,63 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
     {% endif %}
 
     <div class="card p-4 mb-4">
+      <h5 class="mb-1">Spending Alert Threshold</h5>
+      <p class="text-muted small mb-3">Get warned in the app when a balance drops to a level you choose - separate from Safe to Spend.</p>
+
+      <form method="POST" action="/settings/save-alert-threshold" id="alertThresholdForm">
+        <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+        <input type="hidden" name="mode" id="alertModeInput" value="{{ alert_mode or 'off' }}">
+
+        <div class="d-flex gap-2 mb-3 flex-wrap">
+          <button type="button" id="btnAlertOff" onclick="setAlertMode('off')"
+            class="btn btn-sm px-3 {{ 'btn-dark' if not alert_mode else 'btn-outline-secondary' }}">
+            Off
+          </button>
+          <button type="button" id="btnAlertOverall" onclick="setAlertMode('overall')"
+            class="btn btn-sm px-3 {{ 'btn-dark' if alert_mode == 'overall' else 'btn-outline-secondary' }}">
+            Overall
+          </button>
+          <button type="button" id="btnAlertPerAccount" onclick="setAlertMode('per_account')"
+            class="btn btn-sm px-3 {{ 'btn-dark' if alert_mode == 'per_account' else 'btn-outline-secondary' }}">
+            Per account
+          </button>
+        </div>
+
+        <div id="alertOverallSection"{% if alert_mode != 'overall' %} style="display:none;"{% endif %}>
+          <label class="fw-semibold small">Warn me if my total balance drops to (£)</label>
+          <input type="text" name="overall_threshold" class="form-control mb-3" style="max-width:180px;"
+            value="{{ '%.2f'|format(alert_overall_threshold) if alert_overall_threshold is not none else '' }}">
+          <p class="text-muted small mb-3">Combined balance across all your active accounts (locked accounts aren't counted).</p>
+        </div>
+
+        <div id="alertPerAccountSection"{% if alert_mode != 'per_account' %} style="display:none;"{% endif %}>
+          <p class="text-muted small mb-2">Leave a box blank for no alert on that account.</p>
+          {% for a in alert_accounts %}
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <label class="small mb-0" style="min-width:120px;">{{ a.name }}</label>
+            <span class="text-muted small">£</span>
+            <input type="text" name="threshold_{{ a.id }}" class="form-control" style="max-width:130px;"
+              value="{{ '%.2f'|format(a.alert_threshold) if a.alert_threshold is not none else '' }}">
+          </div>
+          {% endfor %}
+        </div>
+
+        <button type="submit" class="btn btn-dark btn-sm">Save</button>
+      </form>
+    </div>
+
+    <script>
+    function setAlertMode(mode) {
+      document.getElementById('alertModeInput').value = mode;
+      document.getElementById('alertOverallSection').style.display = mode === 'overall' ? '' : 'none';
+      document.getElementById('alertPerAccountSection').style.display = mode === 'per_account' ? '' : 'none';
+      document.getElementById('btnAlertOff').className = 'btn btn-sm px-3 ' + (mode === 'off' ? 'btn-dark' : 'btn-outline-secondary');
+      document.getElementById('btnAlertOverall').className = 'btn btn-sm px-3 ' + (mode === 'overall' ? 'btn-dark' : 'btn-outline-secondary');
+      document.getElementById('btnAlertPerAccount').className = 'btn btn-sm px-3 ' + (mode === 'per_account' ? 'btn-dark' : 'btn-outline-secondary');
+    }
+    </script>
+
+    <div class="card p-4 mb-4">
       <div class="d-flex align-items-center gap-2 mb-1">
         <h5 class="mb-0">Automation</h5>
         <button type="button" onclick="toggleExplainer()" class="btn btn-sm text-muted p-0" style="font-size:13px; text-decoration:underline; background:none; border:none;">What does this mean?</button>

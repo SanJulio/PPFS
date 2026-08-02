@@ -835,6 +835,58 @@ def _resolve_income_rows(income_rows, user_id):
     return resolved
 
 
+# --- SPENDING ALERT THRESHOLD ---
+# Optional, user-defined low-balance warning - separate from Safe to Spend.
+# Off by default (alert_mode NULL): no logic runs, nothing changes for users
+# who haven't set one up. 'overall' checks the combined balance of all active,
+# unlocked accounts against a single figure; 'per_account' checks each
+# account against its own stored threshold. Locked accounts are excluded from
+# both modes - same reasoning as calculate_financial_overview(): a frozen
+# balance from a Pro-to-Free downgrade can't be trusted as current, so it
+# shouldn't feed a live warning any more than it feeds the forecast.
+def get_triggered_spending_alerts(user_id, accounts):
+    """Returns a list of {"account": name_or_None, "balance": float, "threshold": float}
+    for every threshold currently at or below its balance. Empty list if the
+    user has no alert_mode set, or nothing has crossed."""
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT alert_mode, alert_overall_threshold FROM users WHERE id = %s", (user_id,))
+    else:
+        cursor.execute("SELECT alert_mode, alert_overall_threshold FROM users WHERE id = ?", (user_id,))
+    row = cursor.fetchone()
+    cursor.close()
+    release_db(db)
+    if not row:
+        return []
+    alert_mode = row[0] if USE_POSTGRES else row["alert_mode"]
+    overall_threshold = row[1] if USE_POSTGRES else row["alert_overall_threshold"]
+    if not alert_mode:
+        return []
+
+    unlocked = {
+        name: info for name, info in accounts.items()
+        if info.get("active", True) and not info.get("is_locked")
+    }
+
+    alerts = []
+    if alert_mode == "overall":
+        if overall_threshold is not None:
+            total = sum(float(info.get("balance", 0.0)) for info in unlocked.values())
+            if total <= float(overall_threshold):
+                alerts.append({"account": None, "balance": total, "threshold": float(overall_threshold)})
+    elif alert_mode == "per_account":
+        for name, info in unlocked.items():
+            thr = info.get("alert_threshold")
+            if thr is None:
+                continue
+            bal = float(info.get("balance", 0.0))
+            if bal <= float(thr):
+                alerts.append({"account": name, "balance": bal, "threshold": float(thr)})
+        alerts.sort(key=lambda a: a["account"].lower())
+    return alerts
+
+
 # --- FINANCIAL OVERVIEW CALCULATION ---
 # Splits accounts into spending (current/cash) and savings, then calculates:
 # - spending balance (total in spending accounts)
@@ -1496,6 +1548,7 @@ def home():
             "include_in_overview": bool(r.get("include_in_overview", 1)),
             "savings_type": r.get("savings_type"),
             "is_locked": bool(r.get("is_locked")),
+            "alert_threshold": r.get("alert_threshold"),
         }
 
     import cycle_engine as _ce
@@ -1606,6 +1659,7 @@ def home():
                             "include_in_overview": bool(r.get("include_in_overview", 1)),
                             "savings_type": r.get("savings_type"),
                             "is_locked": bool(r.get("is_locked")),
+                            "alert_threshold": r.get("alert_threshold"),
                         }
                     overview = calculate_financial_overview(accounts, period_end=cycle_end_date, safe_boundary=safe_boundary)
                     monthly = calculate_monthly_spending(cycle_start_date, cycle_end_date)
@@ -1646,6 +1700,12 @@ def home():
     days_to_payday = (safe_boundary - date.today()).days + 1
     show_payday_countdown = _cycle["mode_used"] == "automatic"
 
+    try:
+        spending_alerts = get_triggered_spending_alerts(current_user.id, accounts)
+    except Exception as e:
+        logger.debug(f"Spending alert threshold check error: {e}")
+        spending_alerts = []
+
     return render_template(
         "index.html",
         message=request.args.get("msg", ""),
@@ -1667,6 +1727,7 @@ def home():
         days_to_payday=days_to_payday,
         show_payday_countdown=show_payday_countdown,
         show_my_money_dot=get_my_money_dot(current_user.id),
+        spending_alerts=spending_alerts,
     )
 
 # --- ONBOARDING DISMISS ---
@@ -3514,6 +3575,29 @@ def settings():
     except Exception:
         pass
 
+    # Spending Alert Threshold (off / overall / per-account)
+    alert_mode = None
+    alert_overall_threshold = None
+    alert_accounts = []
+    try:
+        _db4 = get_db()
+        _cur4 = _db4.cursor()
+        if USE_POSTGRES:
+            _cur4.execute("SELECT alert_mode, alert_overall_threshold FROM users WHERE id = %s", (current_user.id,))
+        else:
+            _cur4.execute("SELECT alert_mode, alert_overall_threshold FROM users WHERE id = ?", (current_user.id,))
+        _row6 = _cur4.fetchone()
+        if _row6:
+            alert_mode = _row6[0] if USE_POSTGRES else _row6["alert_mode"]
+            alert_overall_threshold = _row6[1] if USE_POSTGRES else _row6["alert_overall_threshold"]
+        _cur4.close()
+        release_db(_db4)
+        # Locked accounts aren't shown here - a threshold on a frozen account
+        # could never trigger meaningfully, so they're not configurable.
+        alert_accounts = [a for a in get_active_accounts(current_user.id) if not a.get("is_locked")]
+    except Exception:
+        pass
+
     return render_template("settings.html",
         is_pro=is_pro,
         message=request.args.get("msg", ""),
@@ -3529,6 +3613,9 @@ def settings():
         truelayer_live=TRUELAYER_LIVE,
         employment_type=employment_type,
         self_employed_income=self_employed_income,
+        alert_mode=alert_mode,
+        alert_overall_threshold=alert_overall_threshold,
+        alert_accounts=alert_accounts,
     )
 
 
@@ -3609,6 +3696,76 @@ def settings_save_notifications():
     cursor.close()
     release_db(db)
     return redirect(url_for("settings", msg="Notification preferences saved.", tab="display"))
+
+
+# --- SPENDING ALERT THRESHOLD SETTINGS ---
+# Saves the user's low-balance warning setup: off / overall / per-account.
+# Switchable anytime, like income averaging - always reads the current
+# rows/mode from scratch rather than trusting stale form state.
+@app.post("/settings/save-alert-threshold")
+@login_required
+def settings_save_alert_threshold():
+    if request.form.get("csrf_token") != session.get("csrf_token"):
+        return redirect(url_for("settings"))
+
+    mode = (request.form.get("mode") or "off").strip()
+    if mode not in ("off", "overall", "per_account"):
+        mode = "off"
+
+    db = get_db()
+    cursor = db.cursor()
+
+    if mode == "off":
+        if USE_POSTGRES:
+            cursor.execute("UPDATE users SET alert_mode = NULL, alert_overall_threshold = NULL WHERE id = %s", (current_user.id,))
+            cursor.execute("UPDATE accounts SET alert_threshold = NULL WHERE user_id = %s", (current_user.id,))
+        else:
+            cursor.execute("UPDATE users SET alert_mode = NULL, alert_overall_threshold = NULL WHERE id = ?", (current_user.id,))
+            cursor.execute("UPDATE accounts SET alert_threshold = NULL WHERE user_id = ?", (current_user.id,))
+        db.commit()
+        cursor.close()
+        release_db(db)
+        return redirect(url_for("settings", msg="Spending alert turned off.", tab="display"))
+
+    if mode == "overall":
+        threshold, err = validate_amount(request.form.get("overall_threshold"))
+        if err:
+            cursor.close()
+            release_db(db)
+            return redirect(url_for("settings", msg=err, tab="display"))
+        if USE_POSTGRES:
+            cursor.execute("UPDATE users SET alert_mode = 'overall', alert_overall_threshold = %s WHERE id = %s", (threshold, current_user.id))
+        else:
+            cursor.execute("UPDATE users SET alert_mode = 'overall', alert_overall_threshold = ? WHERE id = ?", (threshold, current_user.id))
+        db.commit()
+        cursor.close()
+        release_db(db)
+        return redirect(url_for("settings", msg="Spending alert saved.", tab="display"))
+
+    # mode == "per_account"
+    if USE_POSTGRES:
+        cursor.execute("UPDATE users SET alert_mode = 'per_account' WHERE id = %s", (current_user.id,))
+    else:
+        cursor.execute("UPDATE users SET alert_mode = 'per_account' WHERE id = ?", (current_user.id,))
+
+    accounts_rows = get_active_accounts(current_user.id)
+    for acc in accounts_rows:
+        # Locked accounts are frozen/read-only - a threshold on one could
+        # never be usefully acted on, so they're not configurable here.
+        if acc.get("is_locked"):
+            continue
+        raw = (request.form.get(f"threshold_{acc['id']}") or "").strip()
+        value = None
+        if raw:
+            value, _ = validate_amount(raw)  # invalid/blank/non-positive -> cleared, not a hard error
+        if USE_POSTGRES:
+            cursor.execute("UPDATE accounts SET alert_threshold = %s WHERE id = %s AND user_id = %s", (value, acc["id"], current_user.id))
+        else:
+            cursor.execute("UPDATE accounts SET alert_threshold = ? WHERE id = ? AND user_id = ?", (value, acc["id"], current_user.id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+    return redirect(url_for("settings", msg="Spending alert saved.", tab="display"))
 
 
 def _monthly_eq(amount, frequency):

@@ -1305,5 +1305,73 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: users.alert_mode ---
+    # Optional user-defined low-balance warning, separate from Safe to Spend.
+    # NULL (not set up), 'overall', or 'per_account'. When 'overall',
+    # alert_overall_threshold holds the combined-balance figure; when
+    # 'per_account', each account's own threshold lives on
+    # accounts.alert_threshold instead (see migration below).
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='alert_mode'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN alert_mode TEXT DEFAULT NULL")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN alert_mode TEXT DEFAULT NULL")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (users.alert_mode): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: users.alert_overall_threshold ---
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='alert_overall_threshold'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN alert_overall_threshold REAL DEFAULT NULL")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN alert_overall_threshold REAL DEFAULT NULL")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (users.alert_overall_threshold): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: accounts.alert_threshold ---
+    # Per-account low-balance figure, only read when the owning user's
+    # alert_mode = 'per_account'. NULL means no threshold set for that
+    # specific account, even in per-account mode.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='accounts' AND column_name='alert_threshold'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE accounts ADD COLUMN alert_threshold REAL DEFAULT NULL")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN alert_threshold REAL DEFAULT NULL")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (accounts.alert_threshold): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

@@ -62,7 +62,9 @@ def _create_test_schema(db_path: Path):
             onboarding_dismissed INTEGER NOT NULL DEFAULT 0,
             show_welcome_modal INTEGER NOT NULL DEFAULT 0,
             setup_dismissed INTEGER NOT NULL DEFAULT 0,
-            employment_type TEXT NOT NULL DEFAULT 'employed'
+            employment_type TEXT NOT NULL DEFAULT 'employed',
+            alert_mode TEXT DEFAULT NULL,
+            alert_overall_threshold REAL DEFAULT NULL
         )""",
         """CREATE TABLE IF NOT EXISTS accounts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,7 +78,8 @@ def _create_test_schema(db_path: Path):
             is_seeded INTEGER NOT NULL DEFAULT 0,
             user_verified INTEGER NOT NULL DEFAULT 0,
             savings_rate NUMERIC(5,2) DEFAULT 0,
-            is_locked INTEGER NOT NULL DEFAULT 0
+            is_locked INTEGER NOT NULL DEFAULT 0,
+            alert_threshold REAL DEFAULT NULL
         )""",
         """CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
