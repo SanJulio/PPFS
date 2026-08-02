@@ -8,8 +8,54 @@
 <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}">
 <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
 <meta name="theme-color" content="#5b4cf5">
-<meta name="description" content="Real-time forecasts that tell you exactly when bank accounts go negative and what to do about it. It's free to get started.">
-<title>Spendara · See the future of your money</title>
+<meta name="description" content="Spendara is a UK personal finance forecasting app in early access. See exactly when your accounts go negative, and what to do about it.">
+<title>Spendara UK · See the future of your money</title>
+
+<!-- Open Graph / link preview tags -->
+<meta property="og:site_name" content="Spendara">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://spendara.co.uk">
+<meta property="og:title" content="Spendara UK · See the future of your money">
+<meta property="og:description" content="Spendara is a UK personal finance forecasting app in early access. See exactly when your accounts go negative, and what to do about it.">
+<meta property="og:image" content="{{ url_for('static', filename='6000-logo.png', _external=True) }}">
+<meta property="og:image:width" content="935">
+<meta property="og:image:height" content="312">
+<meta property="og:image:alt" content="Spendara logo">
+
+<!-- Structured data: identifies this specific business (SPENDARA LTD, UK) to search
+     engines, distinct from unrelated same-named products elsewhere (e.g. spendara.ai, spendara.co) -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://spendara.co.uk/#organization",
+      "name": "Spendara",
+      "legalName": "SPENDARA LTD",
+      "url": "https://spendara.co.uk",
+      "logo": "{{ url_for('static', filename='6000-logo.png', _external=True) }}",
+      "identifier": {
+        "@type": "PropertyValue",
+        "name": "UK Company Number",
+        "value": "17328157"
+      },
+      "address": {
+        "@type": "PostalAddress",
+        "addressCountry": "GB"
+      }
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://spendara.co.uk/#website",
+      "url": "https://spendara.co.uk",
+      "name": "Spendara",
+      "publisher": { "@id": "https://spendara.co.uk/#organization" },
+      "inLanguage": "en-GB"
+    }
+  ]
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
