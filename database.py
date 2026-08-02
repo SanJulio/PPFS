@@ -1282,5 +1282,28 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: users.employment_type ---
+    # 'employed' (default) keeps the existing income/cycle flow completely
+    # unchanged. 'self_employed' routes into manual cycle mode plus an
+    # averaged-income setup (see income.rule_type='self_employed_average').
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='users' AND column_name='employment_type'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE users ADD COLUMN employment_type TEXT NOT NULL DEFAULT 'employed'")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE users ADD COLUMN employment_type TEXT NOT NULL DEFAULT 'employed'")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (users.employment_type): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

@@ -577,7 +577,26 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         ☆ Star an income source to power your automatic budget cycle.
       </p>
 
+      {% if not income %}
+      <div id="employmentTypeChoice" class="rounded-4 p-3" style="background:#f8f9fa;border:1.5px dashed #dee2e6;">
+        <div class="fw-semibold mb-2" style="font-size:14px;">Are you employed or self-employed?</div>
+        <div class="d-flex flex-column gap-2">
+          <button type="button" class="btn btn-outline-dark text-start py-2" onclick="chooseEmploymentType('employed')">
+            <div class="fw-semibold">Employed</div>
+            <div class="text-muted small">Regular salary — set up your pay day as usual</div>
+          </button>
+          <button type="button" class="btn btn-outline-dark text-start py-2" onclick="chooseEmploymentType('self_employed')">
+            <div class="d-flex align-items-center gap-2">
+              <span class="fw-semibold">Self-employed</span>
+              <span class="badge-soft" style="background:rgba(91,76,245,0.14);color:#5b4cf5;border:1px solid rgba(91,76,245,0.35);font-size:9px;font-weight:700;letter-spacing:0.02em;">New &middot; Beta</span>
+            </div>
+            <div class="text-muted small">Irregular income — we'll use an average instead of a fixed pay day</div>
+          </button>
+        </div>
+      </div>
+      {% else %}
       <button id="btn-add-income" class="btn btn-dark w-100 py-3" onclick="openAddIncomeModal()">+ Add Income Source</button>
+      {% endif %}
     </div>
   </div>
 
@@ -916,6 +935,19 @@ function setPrimaryIncome(id, btn) {
     var tip = document.getElementById('incomePrimaryTip');
     if (tip) tip.style.display = 'none';
   }).catch(function() {});
+}
+
+// ── EMPLOYMENT TYPE CHOICE (first income source only) ────────────────────────
+function chooseEmploymentType(type) {
+  if (type === 'employed') {
+    openAddIncomeModal();
+    return;
+  }
+  document.getElementById('selfEmployedModal').style.display = 'flex';
+}
+
+function closeSelfEmployedModal() {
+  document.getElementById('selfEmployedModal').style.display = 'none';
 }
 
 // ── INCOME MODAL ─────────────────────────────────────────────────────────────
@@ -1459,6 +1491,43 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
       </div>
 
       <button type="submit" class="btn btn-dark w-100 py-3" id="incomeSubmitBtn">Add Income Source</button>
+    </form>
+  </div>
+</div>
+
+<!-- Self-Employed Income Setup Modal (New — Beta) -->
+<div id="selfEmployedModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:center; justify-content:center; padding:16px;" onclick="if(event.target===this)closeSelfEmployedModal()">
+  <div class="card p-4" style="max-width:480px; width:100%; border-radius:20px; max-height:92vh; overflow-y:auto;">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h5 class="mb-0 fw-bold">Set up your income estimate</h5>
+      <button type="button" onclick="closeSelfEmployedModal()" class="btn btn-sm btn-outline-secondary rounded-3">✕</button>
+    </div>
+    <p class="text-muted small mb-3">Since your income varies, we'll use a monthly average to power your forecast and Safe to Spend — not a fixed pay day. You can switch between manual and automatic averaging anytime in Settings.</p>
+
+    <form method="POST" action="/settings/setup-self-employed" id="selfEmployedForm">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">Roughly how much do you earn per month? (£)</label>
+        <input class="form-control" name="manual_amount" inputmode="decimal" placeholder="e.g. 2000" required>
+        <div class="form-text">You can switch to an automatically-calculated average later, once you've logged some income.</div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">Which account does this income go into?</label>
+        <select class="form-select" name="account" required>
+          <option value="">Select account</option>
+          {% for a in accounts %}<option value="{{ a.name }}" {% if a.get('is_locked') %}disabled{% endif %}>{{ a.name }}{% if a.get('is_locked') %} (Locked — upgrade to Pro){% endif %}</option>{% endfor %}
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">Which day does your budgeting cycle start?</label>
+        <input class="form-control" name="cycle_start_day" inputmode="numeric" placeholder="1-28" value="1" required>
+        <div class="form-text">Not a pay day — just the day each month your budget cycle resets. You choose this since your income doesn't land on a fixed date.</div>
+      </div>
+
+      <button type="submit" class="btn btn-dark w-100 py-3">Get started</button>
     </form>
   </div>
 </div>

@@ -583,6 +583,7 @@ def run_auto_apply_backfill(user_id):
 
     cursor.close()
     release_db(db)
+    income_items = _resolve_income_rows(income_items, user_id)
 
     # Use the shared helpers so we get the correct user_id scoping and no dependency on auto_generated
     for bill in bills:
@@ -608,11 +609,12 @@ def run_auto_apply_backfill(user_id):
             logger.debug(f"Backfill bill last_applied error: {e}")
 
     for inc in income_items:
-        for d in income_engine.get_payment_dates(inc, backfill_start, yesterday):
-            try:
-                add_transaction(d.isoformat(), inc['name'], abs(float(inc['amount'])), inc['account'], user_id, type='income', category='Income')
-            except Exception as e:
-                logger.debug(f"Backfill income insert error: {e}")
+        if inc.get('_distribution') != 'spread':
+            for d in income_engine.get_payment_dates(inc, backfill_start, yesterday):
+                try:
+                    add_transaction(d.isoformat(), inc['name'], abs(float(inc['amount'])), inc['account'], user_id, type='income', category='Income')
+                except Exception as e:
+                    logger.debug(f"Backfill income insert error: {e}")
         try:
             _db = get_db()
             _c = _db.cursor()
@@ -659,6 +661,7 @@ def get_pending_auto_apply_items(user_id):
 
     cursor.close()
     release_db(db)
+    income_items = _resolve_income_rows(income_items, user_id)
 
     pending = []
 
@@ -683,6 +686,8 @@ def get_pending_auto_apply_items(user_id):
 
     for inc in income_items:
         if inc.get('account') in locked_names:
+            continue
+        if inc.get('_distribution') == 'spread':
             continue
         last_applied = _date.fromisoformat(inc['last_applied'])
         search_from = last_applied + timedelta(days=1)
@@ -758,6 +763,76 @@ def get_auto_apply_settings(user_id):
     except Exception:
         pass
     return True, True
+
+
+# --- SELF-EMPLOYED INCOME AVERAGING (New — Beta) ---
+# A self_employed_average income row's amount is never read directly from the
+# income table — it's resolved fresh every time from rule_config, so switching
+# Manual/Automatic or the averaging window in Settings takes effect immediately
+# everywhere (forecast, overview, snapshot), not just on the next manual edit.
+def _compute_automatic_income_average(user_id, window_months):
+    """Rolling monthly average from logged income transactions over the trailing
+    window. Total received in the window / number of months in the window — so
+    irregular timing (e.g. three payments one month, none the next) still nets
+    out to a sensible monthly estimate. A single logged transaction is simply
+    that transaction's value divided across the window; nothing is blocked
+    while a user builds up history, per the design."""
+    from datetime import date as _date, timedelta as _timedelta
+    cutoff = (_date.today() - _timedelta(days=30 * window_months)).isoformat()
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = %s AND type = 'income' AND date >= %s",
+            (user_id, cutoff)
+        )
+    else:
+        cursor.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = ? AND type = 'income' AND date >= ?",
+            (user_id, cutoff)
+        )
+    row = cursor.fetchone()
+    cursor.close()
+    release_db(db)
+    total = float(row[0] if USE_POSTGRES else row[0]) if row else 0.0
+    return total / window_months if window_months else 0.0
+
+
+def _self_employed_cycle_length_days(user_id):
+    """Length in days of a self-employed user's current manual cycle - used to
+    turn an averaged income amount into a flat daily accrual for spread mode."""
+    try:
+        import cycle_engine as _ce2
+        _c = _ce2.get_cycle(user_id)
+        days = (_c["display_end"] - _c["display_start"]).days + 1
+        return days if days > 0 else 30
+    except Exception:
+        return 30
+
+
+def _resolve_income_rows(income_rows, user_id):
+    """Return a copy of income_rows with any self_employed_average row's amount
+    resolved to its current effective value (manual figure from rule_config, or
+    a live rolling average) and its distribution ('lump'/'spread') attached as
+    `_distribution`. Every other income row passes through completely
+    unchanged — this is purely additive for self-employed users."""
+    resolved = []
+    for inc in income_rows:
+        inc = dict(inc)
+        if inc.get("rule_type") == "self_employed_average":
+            try:
+                cfg = json.loads(inc.get("rule_config") or "{}")
+            except (TypeError, ValueError):
+                cfg = {}
+            mode = cfg.get("mode", "manual")
+            if mode == "auto":
+                window_months = int(cfg.get("window_months", 3))
+                inc["amount"] = _compute_automatic_income_average(user_id, window_months)
+            else:
+                inc["amount"] = float(cfg.get("manual_amount", inc.get("amount") or 0))
+            inc["_distribution"] = cfg.get("distribution", "lump")
+        resolved.append(inc)
+    return resolved
 
 
 # --- FINANCIAL OVERVIEW CALCULATION ---
@@ -964,6 +1039,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
         income_rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
         cursor.close()
         release_db(db)
+        income_rows = _resolve_income_rows(income_rows, current_user.id)
 
         import calendar as _cal
         month_end = date(today.year, today.month, _cal.monthrange(today.year, today.month)[1])
@@ -972,6 +1048,18 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
 
         for inc in income_rows:
             amount = float(inc.get("amount") or 0)
+            if inc.get("_distribution") == "spread":
+                # Spread-evenly self-employed income: no discrete payment date at
+                # all - accrue a flat daily amount for every remaining day in
+                # the period instead of crediting the full average at once.
+                cycle_len = _self_employed_cycle_length_days(current_user.id)
+                daily_amount = amount / cycle_len if cycle_len else 0.0
+                num_days = max(0, (income_period_end - tomorrow).days + 1)
+                if num_days and daily_amount:
+                    spread_total = round(daily_amount * num_days, 2)
+                    future_income += spread_total
+                    future_income_list.append({"name": inc["name"], "amount": spread_total, "day": None, "date": income_period_end.isoformat()})
+                continue
             dates = income_engine.get_payment_dates(inc, tomorrow, income_period_end)
             for d in dates:
                 future_income += amount
@@ -1169,7 +1257,12 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
         income_rows = [dict(zip(cols2, row)) for row in cursor2.fetchall()]
         cursor2.close()
         release_db(db2)
+        income_rows = _resolve_income_rows(income_rows, current_user.id)
         for inc in income_rows:
+            if inc.get("_distribution") == "spread":
+                # Spread-evenly income has no discrete "received" event to list -
+                # it's a continuous accrual, not a point-in-time occurrence.
+                continue
             base_amount = float(inc.get("amount") or 0)
             dates = income_engine.get_payment_dates(inc, cycle_start_date, today_cap)
             for d in dates:
@@ -3073,6 +3166,7 @@ def api_snapshot():
         cursor.execute("SELECT * FROM income WHERE user_id = ?", (current_user.id,))
     cols = [d[0] for d in cursor.description]
     income_rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+    income_rows = _resolve_income_rows(income_rows, current_user.id)
 
     if USE_POSTGRES:
         cursor.execute(
@@ -3115,9 +3209,18 @@ def api_snapshot():
     income_arriving = []
     bills_due = []
 
-    # Pre-compute income dates for the snapshot window
+    # Pre-compute income dates for the snapshot window. Spread-evenly
+    # self-employed income has no discrete payment date - it accrues a flat
+    # daily amount instead, tracked separately from the date-keyed dict.
     snap_income_by_date: dict = {}
+    spread_rows = []
     for row in income_rows:
+        if row.get("_distribution") == "spread":
+            cycle_len = _self_employed_cycle_length_days(current_user.id)
+            daily_amount = float(row.get("amount") or 0) / cycle_len if cycle_len else 0.0
+            if daily_amount:
+                spread_rows.append({**row, "_daily_amount": daily_amount})
+            continue
         for d in income_engine.get_payment_dates(row, today + timedelta(days=1), target):
             snap_income_by_date.setdefault(d, []).append(row)
 
@@ -3131,6 +3234,14 @@ def api_snapshot():
             if acc not in simulated:
                 continue
             amt = float(row["amount"])
+            income_arriving.append({"name": row["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc, "item_id": row.get("id"), "item_type": "income"})
+            simulated[acc] += amt
+
+        for row in spread_rows:
+            acc = row.get("account", "")
+            if acc not in simulated:
+                continue
+            amt = row["_daily_amount"]
             income_arriving.append({"name": row["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc, "item_id": row.get("id"), "item_type": "income"})
             simulated[acc] += amt
 
@@ -3374,6 +3485,35 @@ def settings():
         next_cycle_start = _ce.get_next_cycle_start(current_user.id)
     except Exception:
         next_cycle_start = None
+
+    # Employment type + self-employed income averaging settings (New — Beta)
+    employment_type = "employed"
+    self_employed_income = None
+    try:
+        _db3 = get_db()
+        _cur3 = _db3.cursor()
+        if USE_POSTGRES:
+            _cur3.execute("SELECT employment_type FROM users WHERE id = %s", (current_user.id,))
+        else:
+            _cur3.execute("SELECT employment_type FROM users WHERE id = ?", (current_user.id,))
+        _row4 = _cur3.fetchone()
+        if _row4 and _row4[0]:
+            employment_type = _row4[0]
+        if employment_type == "self_employed":
+            if USE_POSTGRES:
+                _cur3.execute("SELECT * FROM income WHERE user_id = %s AND rule_type = 'self_employed_average' LIMIT 1", (current_user.id,))
+            else:
+                _cur3.execute("SELECT * FROM income WHERE user_id = ? AND rule_type = 'self_employed_average' LIMIT 1", (current_user.id,))
+            _cols4 = [d[0] for d in _cur3.description]
+            _row5 = _cur3.fetchone()
+            if _row5:
+                self_employed_income = dict(zip(_cols4, _row5))
+                self_employed_income["cfg"] = json.loads(self_employed_income.get("rule_config") or "{}")
+        _cur3.close()
+        release_db(_db3)
+    except Exception:
+        pass
+
     return render_template("settings.html",
         is_pro=is_pro,
         message=request.args.get("msg", ""),
@@ -3387,6 +3527,8 @@ def settings():
         cycle_info=cycle_info,
         next_cycle_start=next_cycle_start,
         truelayer_live=TRUELAYER_LIVE,
+        employment_type=employment_type,
+        self_employed_income=self_employed_income,
     )
 
 
@@ -3516,6 +3658,11 @@ def manage():
     release_db(db)
 
     is_pro = user_is_pro()
+
+    # Resolve self-employed averaged rows to their live amount (manual figure or
+    # rolling transaction average) — the stored income.amount column goes stale
+    # the moment a user switches averaging mode or window in Settings.
+    income = _resolve_income_rows(income, uid)
 
     # Pre-compute human-readable rule descriptions for income rows
     for inc in income:
@@ -3975,6 +4122,123 @@ def settings_add_income():
     bust_forecast_cache(current_user.id)
     return redirect(url_for("manage", msg=f"Income source '{name}' added.", tab="income"))
 
+
+# --- SELF-EMPLOYED INCOME SETUP (New — Beta) ---
+# One-time initial setup for a self-employed user's first income source: creates
+# a single averaged-income row (rule_type='self_employed_average') and routes the
+# user into manual cycle mode instead of the automatic/payday-based flow, since
+# there's no real fixed pay day to anchor an automatic cycle on. Manual/automatic
+# averaging and lump/spread distribution can be changed anytime in Settings —
+# this route only ever runs once, at initial setup.
+@app.post("/settings/setup-self-employed")
+@login_required
+def settings_setup_self_employed():
+    manual_amount = (request.form.get("manual_amount") or "").strip()
+    account = (request.form.get("account") or "").strip()
+    cycle_start_day = (request.form.get("cycle_start_day") or "1").strip()
+
+    if not manual_amount or not account:
+        return redirect(url_for("manage", msg="Missing fields.", tab="income"))
+    try:
+        manual_amount = float(manual_amount)
+        if manual_amount <= 0:
+            raise ValueError
+    except ValueError:
+        return redirect(url_for("manage", msg="Invalid amount.", tab="income"))
+    try:
+        cycle_start_day = max(1, min(28, int(cycle_start_day)))
+    except ValueError:
+        cycle_start_day = 1
+
+    rule_config = json.dumps({
+        "mode": "manual",
+        "window_months": 3,
+        "manual_amount": manual_amount,
+        "distribution": "lump",
+        "day": cycle_start_day,
+    })
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE users SET employment_type = 'self_employed', cycle_mode = 'manual', budget_cycle_start = %s WHERE id = %s", (cycle_start_day, current_user.id))
+        cursor.execute(
+            "INSERT INTO income (name, amount, frequency, account, user_id, day, rule_type, rule_config, is_primary) "
+            "VALUES (%s, %s, 'monthly', %s, %s, %s, %s, %s, 1)",
+            ("Self-employed income", manual_amount, account, current_user.id, cycle_start_day, "self_employed_average", rule_config)
+        )
+    else:
+        cursor.execute("UPDATE users SET employment_type = 'self_employed', cycle_mode = 'manual', budget_cycle_start = ? WHERE id = ?", (cycle_start_day, current_user.id))
+        cursor.execute(
+            "INSERT INTO income (name, amount, frequency, account, user_id, day, rule_type, rule_config, is_primary) "
+            "VALUES (?, ?, 'monthly', ?, ?, ?, ?, ?, 1)",
+            ("Self-employed income", manual_amount, account, current_user.id, cycle_start_day, "self_employed_average", rule_config)
+        )
+    db.commit()
+    cursor.close()
+    release_db(db)
+    bust_forecast_cache(current_user.id)
+    return redirect(url_for("manage", msg="Your income estimate is set up.", tab="income"))
+
+
+# --- SELF-EMPLOYED INCOME AVERAGING SETTINGS (New — Beta) ---
+# Updates the manual/automatic mode, averaging window, manual amount, and
+# lump-sum/spread distribution for the user's self_employed_average income row.
+# Switchable anytime, takes effect immediately (forecast cache busted below) —
+# unlike settings_setup_self_employed(), this can run any number of times.
+@app.post("/settings/save-income-averaging")
+@login_required
+def settings_save_income_averaging():
+    mode = (request.form.get("mode") or "manual").strip()
+    if mode not in ("manual", "auto"):
+        mode = "manual"
+    distribution = (request.form.get("distribution") or "lump").strip()
+    if distribution not in ("lump", "spread"):
+        distribution = "lump"
+    try:
+        window_months = int(request.form.get("window_months") or 3)
+        if window_months not in (1, 3, 6):
+            window_months = 3
+    except ValueError:
+        window_months = 3
+    try:
+        manual_amount = float(request.form.get("manual_amount") or 0)
+    except ValueError:
+        manual_amount = 0.0
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT id, rule_config FROM income WHERE user_id = %s AND rule_type = 'self_employed_average' LIMIT 1", (current_user.id,))
+    else:
+        cursor.execute("SELECT id, rule_config FROM income WHERE user_id = ? AND rule_type = 'self_employed_average' LIMIT 1", (current_user.id,))
+    row = cursor.fetchone()
+    if not row:
+        cursor.close()
+        release_db(db)
+        return redirect(url_for("settings", msg="No self-employed income source found."))
+
+    inc_id = row[0] if USE_POSTGRES else row["id"]
+    try:
+        cfg = json.loads((row[1] if USE_POSTGRES else row["rule_config"]) or "{}")
+    except (TypeError, ValueError):
+        cfg = {}
+    cfg["mode"] = mode
+    cfg["distribution"] = distribution
+    cfg["window_months"] = window_months
+    cfg["manual_amount"] = manual_amount
+
+    if USE_POSTGRES:
+        cursor.execute("UPDATE income SET rule_config = %s WHERE id = %s AND user_id = %s", (json.dumps(cfg), inc_id, current_user.id))
+    else:
+        cursor.execute("UPDATE income SET rule_config = ? WHERE id = ? AND user_id = ?", (json.dumps(cfg), inc_id, current_user.id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+    bust_forecast_cache(current_user.id)
+    return redirect(url_for("settings", msg="Income averaging settings saved."))
+
+
 @app.post("/settings/edit-income")
 @login_required
 def settings_edit_income():
@@ -4338,6 +4602,7 @@ def forecast():
         cursor.execute("SELECT * FROM income WHERE user_id = ?", (current_user.id,))
     cols = [d[0] for d in cursor.description]
     income_rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+    income_rows = _resolve_income_rows(income_rows, current_user.id)
 
     if USE_POSTGRES:
         cursor.execute("SELECT * FROM savings_rules WHERE user_id = %s", (current_user.id,))
@@ -4426,6 +4691,17 @@ def forecast():
     forecast_end = today + timedelta(days=forecast_days)
     income_by_date: dict = {}  # date -> list of (account, amount)
     for inc in income_rows:
+        if inc.get("_distribution") == "spread":
+            # Spread-evenly self-employed income has no discrete payment date -
+            # accrue a flat daily amount for every day of the forecast instead.
+            cycle_len = _self_employed_cycle_length_days(current_user.id)
+            daily_amount = float(inc.get("amount") or 0) / cycle_len if cycle_len else 0.0
+            if daily_amount:
+                d = today + timedelta(days=1)
+                while d <= forecast_end:
+                    income_by_date.setdefault(d, []).append((inc["account"], daily_amount))
+                    d += timedelta(days=1)
+            continue
         for d in income_engine.get_payment_dates(inc, today + timedelta(days=1), forecast_end):
             income_by_date.setdefault(d, []).append((inc["account"], float(inc["amount"])))
 
@@ -4532,6 +4808,10 @@ def forecast():
 
     for inc in income_rows:
         if inc.get("account") not in accounts:
+            continue
+        if inc.get("_distribution") == "spread":
+            # Spread-evenly income has no discrete "upcoming" event to list -
+            # it's a continuous accrual, already reflected in the balance chart.
             continue
         for d in income_engine.get_payment_dates(inc, today, end_date):
             upcoming_items.append({"date": d.isoformat(), "name": inc["name"], "amount": float(inc["amount"]), "account": inc["account"], "type": "income", "id": inc["id"]})

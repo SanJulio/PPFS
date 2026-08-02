@@ -257,6 +257,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
         <input type="hidden" name="cycle_mode" id="cycleModeInput" value="{{ cycle_mode }}">
 
+        {% if employment_type != 'self_employed' %}
         <!-- Mode toggle -->
         <div class="d-flex gap-2 mb-4">
           <button type="button" id="btnAutomatic" onclick="setCycleMode('automatic')"
@@ -268,9 +269,14 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             Manual
           </button>
         </div>
+        {% else %}
+        <div class="rounded-3 p-2 px-3 mb-3 small text-muted" style="background:#f8f9fa;">
+          Self-employed accounts always use manual cycle mode — there's no fixed pay day to base an automatic cycle on.
+        </div>
+        {% endif %}
 
         <!-- Automatic section -->
-        <div id="cycleAutoSection"{% if cycle_mode != 'automatic' %} style="display:none;"{% endif %}>
+        <div id="cycleAutoSection"{% if cycle_mode != 'automatic' or employment_type == 'self_employed' %} style="display:none;"{% endif %}>
           {% if has_primary %}
             <p class="small mb-1">
               Cycle powered by <strong>{{ primary_income_name }}</strong>.
@@ -318,6 +324,80 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       document.getElementById('btnManual').className = 'btn btn-sm px-3 ' + (mode === 'manual' ? 'btn-dark' : 'btn-outline-secondary');
     }
     </script>
+
+    {% if employment_type == 'self_employed' and self_employed_income %}
+    <div class="card p-4 mb-4">
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <h5 class="mb-0">Income Averaging</h5>
+        <span class="badge-soft" style="background:rgba(91,76,245,0.14);color:#5b4cf5;border:1px solid rgba(91,76,245,0.35);font-size:9px;font-weight:700;">New &middot; Beta</span>
+      </div>
+      <p class="text-muted small mb-3">Since your income varies, Spendara uses an average to power your forecast and Safe to Spend.</p>
+
+      <form method="POST" action="/settings/save-income-averaging" id="avgForm">
+        <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+        <input type="hidden" name="mode" id="avgModeInput" value="{{ self_employed_income.cfg.get('mode', 'manual') }}">
+        <input type="hidden" name="distribution" id="avgDistInput" value="{{ self_employed_income.cfg.get('distribution', 'lump') }}">
+
+        <div class="mb-2 fw-semibold small">How should we calculate your average?</div>
+        <div class="d-flex gap-2 mb-3">
+          <button type="button" id="btnAvgManual" onclick="setAvgMode('manual')"
+            class="btn btn-sm px-3 {{ 'btn-dark' if self_employed_income.cfg.get('mode', 'manual') == 'manual' else 'btn-outline-secondary' }}">
+            Manual
+          </button>
+          <button type="button" id="btnAvgAuto" onclick="setAvgMode('auto')"
+            class="btn btn-sm px-3 {{ 'btn-dark' if self_employed_income.cfg.get('mode') == 'auto' else 'btn-outline-secondary' }}">
+            Automatic
+          </button>
+        </div>
+
+        <div id="avgManualSection"{% if self_employed_income.cfg.get('mode', 'manual') != 'manual' %} style="display:none;"{% endif %}>
+          <label class="fw-semibold small">Monthly income estimate (£)</label>
+          <input type="text" name="manual_amount" class="form-control mb-3" style="max-width:180px;"
+            value="{{ '%.2f'|format(self_employed_income.cfg.get('manual_amount', 0)) }}">
+        </div>
+
+        <div id="avgAutoSection"{% if self_employed_income.cfg.get('mode') != 'auto' %} style="display:none;"{% endif %}>
+          <label class="fw-semibold small">Average over the last</label>
+          <select name="window_months" class="form-select mb-2" style="max-width:180px;">
+            {% for m in [1, 3, 6] %}
+            <option value="{{ m }}" {% if self_employed_income.cfg.get('window_months', 3) == m %}selected{% endif %}>{{ m }} month{{ 's' if m != 1 else '' }}</option>
+            {% endfor %}
+          </select>
+          <p class="text-muted small mb-3">Calculated from your logged income transactions. If you've only logged one so far, that single amount is used as your average — nothing is blocked while you build up history.</p>
+        </div>
+
+        <div class="mb-2 fw-semibold small">How should this appear in your cycle?</div>
+        <div class="d-flex gap-2 mb-2">
+          <button type="button" id="btnDistLump" onclick="setAvgDistribution('lump')"
+            class="btn btn-sm px-3 {{ 'btn-dark' if self_employed_income.cfg.get('distribution', 'lump') == 'lump' else 'btn-outline-secondary' }}">
+            Lump sum
+          </button>
+          <button type="button" id="btnDistSpread" onclick="setAvgDistribution('spread')"
+            class="btn btn-sm px-3 {{ 'btn-dark' if self_employed_income.cfg.get('distribution') == 'spread' else 'btn-outline-secondary' }}">
+            Spread evenly
+          </button>
+        </div>
+        <p class="text-muted small mb-3">"Lump sum" shows the full average as one event on the day your cycle starts. "Spread evenly" divides it across every day of your cycle instead.</p>
+
+        <button type="submit" class="btn btn-dark btn-sm">Save</button>
+      </form>
+    </div>
+
+    <script>
+    function setAvgMode(mode) {
+      document.getElementById('avgModeInput').value = mode;
+      document.getElementById('avgManualSection').style.display = mode === 'manual' ? '' : 'none';
+      document.getElementById('avgAutoSection').style.display = mode === 'auto' ? '' : 'none';
+      document.getElementById('btnAvgManual').className = 'btn btn-sm px-3 ' + (mode === 'manual' ? 'btn-dark' : 'btn-outline-secondary');
+      document.getElementById('btnAvgAuto').className = 'btn btn-sm px-3 ' + (mode === 'auto' ? 'btn-dark' : 'btn-outline-secondary');
+    }
+    function setAvgDistribution(dist) {
+      document.getElementById('avgDistInput').value = dist;
+      document.getElementById('btnDistLump').className = 'btn btn-sm px-3 ' + (dist === 'lump' ? 'btn-dark' : 'btn-outline-secondary');
+      document.getElementById('btnDistSpread').className = 'btn btn-sm px-3 ' + (dist === 'spread' ? 'btn-dark' : 'btn-outline-secondary');
+    }
+    </script>
+    {% endif %}
 
     <div class="card p-4 mb-4">
       <div class="d-flex align-items-center gap-2 mb-1">

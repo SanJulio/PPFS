@@ -110,6 +110,15 @@ def _monthly_nominal(rule_type: str, cfg: dict, year: int, month: int) -> Option
         day = int(cfg.get("day", 25))
         return date(year, month, min(day, last))
 
+    elif rule_type == "self_employed_average":
+        # Lump-sum anchor date for a self-employed user's averaged income —
+        # "day" here is their manual-cycle cycle-start day, not a real payday.
+        # (Spread-evenly distribution bypasses get_payment_dates() entirely —
+        # see app.py's forecast/overview call sites — so this branch only
+        # ever matters for the lump-sum case.)
+        day = int(cfg.get("day", 1))
+        return date(year, month, min(day, last))
+
     elif rule_type == "relative_month_end":
         offset = int(cfg.get("offset", 0))
         direction = str(cfg.get("direction", "before"))
@@ -330,6 +339,16 @@ def describe_rule(income: dict) -> str:
             nth = str(cfg.get("nth", "last")).capitalize()
             w = int(cfg.get("weekday", 4))
             return f"{nth} {DAYS[w]} of month"
+        elif rule_type == "self_employed_average":
+            mode = cfg.get("mode", "manual")
+            mode_label = "auto-calculated" if mode == "auto" else "manual"
+            if cfg.get("distribution") == "spread":
+                return f"Averaged income ({mode_label}), spread across your cycle"
+            day = int(cfg.get("day") or 1)
+            suffix = "th"
+            if day % 100 not in (11, 12, 13):
+                suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+            return f"Averaged income ({mode_label}), on the {day}{suffix} of your cycle"
 
     elif freq == "yearly":
         day = int(cfg.get("day", 1))

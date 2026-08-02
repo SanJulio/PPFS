@@ -61,7 +61,8 @@ def _create_test_schema(db_path: Path):
             google_id TEXT UNIQUE,
             onboarding_dismissed INTEGER NOT NULL DEFAULT 0,
             show_welcome_modal INTEGER NOT NULL DEFAULT 0,
-            setup_dismissed INTEGER NOT NULL DEFAULT 0
+            setup_dismissed INTEGER NOT NULL DEFAULT 0,
+            employment_type TEXT NOT NULL DEFAULT 'employed'
         )""",
         """CREATE TABLE IF NOT EXISTS accounts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
