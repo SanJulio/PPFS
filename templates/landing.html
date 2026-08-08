@@ -597,33 +597,42 @@ footer a:hover { color: var(--lp-text); }
   .close-section h2 { font-size: clamp(30px, 9vw, 48px); }
 }
 
-/* ── DARK MODE ── */
-html[data-theme="dark"] { --lp-dark: #13121F; }
+/* ── DARK MODE ──
+   Palette: page #13121F · surface #1A1928 · secondary surface #222135
+   border #2E2C45 · text #EEEDF8 · text-secondary #A09DBF · text-muted #6B6880
+   Brand purple (--lp-brand / --lp-brand-light) is unchanged in both modes. */
+
+html[data-theme="dark"] {
+  --lp-dark:  #13121F;   /* page bg: hero, stories, close, footer, nav */
+  --lp-off:   #1A1928;   /* section band bg: forecast-section, pricing-section */
+  --lp-text:  #EEEDF8;   /* primary text, inherited everywhere already using var(--lp-text) */
+  --lp-muted: #6B6880;   /* muted text, inherited everywhere already using var(--lp-muted) */
+}
 
 html[data-theme="dark"] nav {
-  background: rgba(19,18,31,0.88);
-  border-bottom-color: rgba(124,111,247,0.18);
+  background: rgba(19,18,31,0.95);
+  border-bottom-color: #2E2C45;
+}
+html[data-theme="dark"] .theme-toggle {
+  background: rgba(255,255,255,0.05);
+  border-color: #2E2C45;
 }
 
 html[data-theme="dark"] .section-label { color: var(--lp-brand-light); }
 
-html[data-theme="dark"] .forecast-section,
-html[data-theme="dark"] .pricing-section {
-  background: #13121F;
-}
-
+/* Section header text — forecast + pricing bands */
 html[data-theme="dark"] .forecast-section-header h2,
 html[data-theme="dark"] .pricing-section h2,
-html[data-theme="dark"] .preview-label,
+html[data-theme="dark"] .pricing-price-new,
 html[data-theme="dark"] .preview-input,
 html[data-theme="dark"] .bill-amount-input,
 html[data-theme="dark"] .fo-afford-input,
-html[data-theme="dark"] .pricing-price-new {
-  color: #f5f4ff;
+html[data-theme="dark"] #affordCustomDate {
+  color: #EEEDF8;
 }
-
 html[data-theme="dark"] .forecast-section-header p,
 html[data-theme="dark"] .pricing-section > .pricing-intro,
+html[data-theme="dark"] .preview-label,
 html[data-theme="dark"] .preview-prefix,
 html[data-theme="dark"] .bill-amount-prefix,
 html[data-theme="dark"] .fo-stat-label,
@@ -633,38 +642,44 @@ html[data-theme="dark"] .pricing-price-period,
 html[data-theme="dark"] .pricing-desc-new,
 html[data-theme="dark"] .pricing-note-new,
 html[data-theme="dark"] .fo-afford-prefix {
-  color: #a3a1b8;
+  color: #A09DBF;
 }
 
+/* Cards: demo container, result cards, pricing card -> secondary (lighter) surface,
+   since they sit visually on top of the forecast/pricing section band below them */
 html[data-theme="dark"] .preview-card,
 html[data-theme="dark"] .fo-stat-card,
 html[data-theme="dark"] .fo-chart-card,
 html[data-theme="dark"] .pricing-card-new {
-  background: #1A1928;
-  border-color: rgba(124,111,247,0.18);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  background: #222135;
+  border-color: #2E2C45;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.45);
 }
 html[data-theme="dark"] .pricing-card-new { border-top-color: var(--lp-brand); }
 
+/* Inputs / pills / prefixes -> recessed one tier darker than the card housing them */
 html[data-theme="dark"] .preview-input-wrap,
+html[data-theme="dark"] .preview-prefix,
 html[data-theme="dark"] .pay-pill,
 html[data-theme="dark"] .bill-chip,
 html[data-theme="dark"] .bill-amount-input,
 html[data-theme="dark"] .fo-afford-input {
   background: #1A1928;
-  border-color: rgba(124,111,247,0.25);
+  border-color: #2E2C45;
 }
+html[data-theme="dark"] .preview-prefix { border-right-color: #2E2C45; }
 html[data-theme="dark"] #affordCustomDate {
   background: #1A1928 !important;
-  border-color: rgba(124,111,247,0.25) !important;
-  color: #f5f4ff !important;
+  border-color: #2E2C45 !important;
+  color: #EEEDF8 !important;
 }
-html[data-theme="dark"] .preview-prefix { background: #221f36; border-right-color: rgba(124,111,247,0.2); }
+
 html[data-theme="dark"] .pay-pill,
-html[data-theme="dark"] .bill-chip { color: #cfceea; }
+html[data-theme="dark"] .bill-chip { color: #A09DBF; }
 html[data-theme="dark"] .pay-pill.selected { background: var(--lp-brand); border-color: var(--lp-brand); color: #fff; }
-html[data-theme="dark"] .bill-chip.selected { background: rgba(91,76,245,0.16); border-color: var(--lp-brand); color: var(--lp-brand-light); }
-html[data-theme="dark"] .preview-cta:disabled { background: #2a2840; color: #6b6a80; }
+html[data-theme="dark"] .bill-chip.selected { background: rgba(91,76,245,0.18); border-color: var(--lp-brand); color: var(--lp-brand-light); }
+html[data-theme="dark"] .bill-chip:hover:not(.selected) { border-color: var(--lp-brand-light); }
+html[data-theme="dark"] .preview-cta:disabled { background: #1A1928; color: #6B6880; }
 
 html[data-theme="dark"] .bill-amount-input:focus,
 html[data-theme="dark"] .fo-afford-input:focus,
@@ -672,13 +687,24 @@ html[data-theme="dark"] .preview-input-wrap:focus-within {
   border-color: var(--lp-brand-light);
 }
 
-html[data-theme="dark"] .feature-list-new li { color: #d8d6ea; border-bottom-color: rgba(255,255,255,0.06); }
+html[data-theme="dark"] .feature-list-new li { color: #A09DBF; border-bottom-color: #2E2C45; }
 html[data-theme="dark"] .check-icon { background: rgba(16,185,129,0.15); color: #34d399; }
 html[data-theme="dark"] .pricing-pill { background: rgba(91,76,245,0.18); color: var(--lp-brand-light); border-color: rgba(124,111,247,0.35); }
 html[data-theme="dark"] .pricing-note-new a { color: var(--lp-brand-light); }
 
 html[data-theme="dark"] .fo-afford-btn { background: var(--lp-brand); }
 html[data-theme="dark"] .fo-afford-btn:hover { background: var(--lp-brand-light); }
+
+/* Mobile stacked stat row (fo-stat-row only carries a background/border at <=640px) */
+@media (max-width: 640px) {
+  html[data-theme="dark"] .fo-stat-row {
+    background: #222135;
+    border-color: #2E2C45;
+  }
+  html[data-theme="dark"] .fo-stat-card {
+    border-bottom-color: #2E2C45;
+  }
+}
 </style>
 </head>
 <body>
