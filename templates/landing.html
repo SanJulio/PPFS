@@ -729,13 +729,18 @@ footer a:hover { color: var(--text-primary); }
   .hero-note { font-size: 14px; }
 }
 @media (max-width: 640px) {
-  nav { padding: 14px 16px; padding-top: 20px; padding-bottom: 20px; }
+  nav { padding: 10px 12px; flex-wrap: nowrap; }
   .nav-left { gap: 6px; }
-  .nav-right { gap: 8px; flex-wrap: wrap; row-gap: 8px; }
-  .beta-badge { padding: 2px 8px; font-size: 9px; }
-  .theme-toggle { margin-left: 8px; }
+  .beta-badge { display: none; }
+  .nav-right { gap: 8px; flex-wrap: nowrap; }
+  .theme-toggle { width: 40px; height: 22px; }
+  .theme-toggle-icon { width: 12px; height: 12px; }
+  .theme-toggle-icon-sun { left: 5px; }
+  .theme-toggle-icon-moon { right: 5px; }
+  .theme-toggle-thumb { width: 16px; height: 16px; top: 3px; left: 3px; }
+  html[data-theme="dark"] .theme-toggle-thumb { transform: translateX(18px); }
   .nav-login { font-size: 13px; }
-  .nav-cta { padding: 8px 16px; font-size: 13px; white-space: nowrap; }
+  .nav-cta { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
   .nav-cta-full { display: none; }
   .nav-cta-short { display: inline; }
   .hero-subgrid { grid-template-columns: 1fr; gap: 10px; margin-bottom: 32px; }
