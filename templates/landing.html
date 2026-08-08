@@ -729,10 +729,13 @@ footer a:hover { color: var(--text-primary); }
   .hero-note { font-size: 14px; }
 }
 @media (max-width: 640px) {
-  nav { padding: 14px 16px; }
+  nav { padding: 14px 16px; padding-top: 20px; padding-bottom: 20px; }
   .nav-left { gap: 6px; }
-  .nav-right { gap: 10px; }
+  .nav-right { gap: 8px; flex-wrap: wrap; row-gap: 8px; }
   .beta-badge { padding: 2px 8px; font-size: 9px; }
+  .theme-toggle { margin-left: 8px; }
+  .nav-login { font-size: 13px; }
+  .nav-cta { padding: 8px 16px; font-size: 13px; white-space: nowrap; }
   .nav-cta-full { display: none; }
   .nav-cta-short { display: inline; }
   .hero-subgrid { grid-template-columns: 1fr; gap: 10px; margin-bottom: 32px; }
