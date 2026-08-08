@@ -2,29 +2,6 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<script>
-(function () {
-  try {
-    if (localStorage.getItem('spendara-theme') === 'dark') {
-      document.documentElement.setAttribute('data-theme', 'dark');
-    }
-  } catch (e) {}
-})();
-function toggleTheme() {
-  var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', next);
-  try { localStorage.setItem('spendara-theme', next); } catch (e) {}
-  var btn = document.getElementById('themeToggle');
-  if (btn) btn.setAttribute('aria-label', next === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
-}
-document.addEventListener('DOMContentLoaded', function () {
-  var btn = document.getElementById('themeToggle');
-  if (btn) {
-    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    btn.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
-  }
-});
-</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
 <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
@@ -88,17 +65,10 @@ document.addEventListener('DOMContentLoaded', function () {
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* ══════════════════════════════════════════════════════════════
-   THEME TOKENS
-   :root = LIGHT theme (default). html[data-theme="dark"] below
-   restates every token at its current ("dark theme") value, so
-   toggling to dark reproduces exactly how the page looks today.
-   Brand-purple tokens (and the few universal semantic/neutral
-   tones used only inside the always-light forecast/pricing cards)
-   are intentionally identical in both blocks — brand colour and
-   in-card neutrals don't change between themes.
+   THEME TOKENS — permanent light theme.
    ══════════════════════════════════════════════════════════════ */
 :root {
-  /* brand (unchanged in both themes) */
+  /* brand */
   --lp-brand:       #5b4cf5;
   --lp-brand-light: #7c6ff7;
   --lp-accent:      #a78bfa;
@@ -109,7 +79,7 @@ document.addEventListener('DOMContentLoaded', function () {
   --grad:   linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #06b6d4 100%);
   --on-brand-text: #fff;
 
-  /* brand-tinted decorative accents (unchanged in both themes) */
+  /* brand-tinted decorative accents */
   --glow-brand: rgba(91,76,245,0.22);
   --glow-brand-0: rgba(91,76,245,0);
   --glow-violet: rgba(124,111,247,0.22);
@@ -138,13 +108,8 @@ document.addEventListener('DOMContentLoaded', function () {
   --status-success: #059669;
   --status-warning: #d97706;
   --status-danger: #dc2626;
-  --toggle-border: rgba(91,76,245,0.35);
-  --icon-sun-color: #f5b800;
-  --icon-moon-color: var(--lp-accent);
-  --toggle-thumb-shadow: rgba(0,0,0,0.35);
 
-  /* neutrals used only inside the always-light forecast/pricing/preview
-     cards — unchanged in both themes since that card surface never flips */
+  /* neutrals used only inside the always-light forecast/pricing/preview cards */
   --text-body-muted: #6b7280;
   --text-label: #374151;
   --text-input: #111;
@@ -160,7 +125,7 @@ document.addEventListener('DOMContentLoaded', function () {
   --afford-btn-bg: #111;
   --afford-btn-bg-hover: #333;
 
-  /* tokens that DO change between themes — LIGHT values (default) */
+  /* page-level tokens */
   --bg-page:        #FFFFFF;
   --bg-section:     #F7F7FA;
   --text-primary:   #0F0E1A;
@@ -176,87 +141,6 @@ document.addEventListener('DOMContentLoaded', function () {
   --feature-block-bg-soon: rgba(15,14,26,0.015);
   --divider-on-page: rgba(15,14,26,0.08);
   --divider-footer:  rgba(15,14,26,0.06);
-  --toggle-bg: rgba(15,14,26,0.05);
-}
-
-/* DARK theme — every value here is the site's current/original colour,
-   so switching to dark reproduces today's page exactly. */
-html[data-theme="dark"] {
-  --lp-brand:       #5b4cf5;
-  --lp-brand-light: #7c6ff7;
-  --lp-accent:      #a78bfa;
-  --lp-mid:         #13131a;
-  --brand:  #4f46e5;
-  --brand2: #7c3aed;
-  --brand3: #06b6d4;
-  --grad:   linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #06b6d4 100%);
-  --on-brand-text: #fff;
-
-  --glow-brand: rgba(91,76,245,0.22);
-  --glow-brand-0: rgba(91,76,245,0);
-  --glow-violet: rgba(124,111,247,0.22);
-  --glow-violet-0: rgba(124,111,247,0);
-  --glow-lilac: rgba(167,139,250,0.18);
-  --glow-lilac-0: rgba(167,139,250,0);
-  --glow-brand-close: rgba(91,76,245,0.2);
-  --divider-accent: rgba(167,139,250,0.35);
-  --nav-border: rgba(91,76,245,0.14);
-  --badge-bg: rgba(91,76,245,0.14);
-  --badge-border: rgba(91,76,245,0.35);
-  --badge2-bg: rgba(91,76,245,0.16);
-  --badge2-border: rgba(91,76,245,0.4);
-  --feature-block-border: rgba(91,76,245,0.2);
-  --feature-block-border-soon: rgba(123,122,142,0.35);
-  --btn-shadow: rgba(91,76,245,0.38);
-  --btn-shadow-hover: rgba(91,76,245,0.48);
-  --pricing-card-border: #ddd6fe;
-  --pricing-card-shadow: rgba(91,76,245,0.13);
-  --pricing-pill-bg: #ede9fe;
-  --pricing-pill-border: #c4b5fd;
-  --chip-selected-bg: #eef2ff;
-  --chip-hover-border: #c7d2fe;
-  --check-icon-bg: #ecfdf5;
-  --check-icon-color: #059669;
-  --status-success: #059669;
-  --status-warning: #d97706;
-  --status-danger: #dc2626;
-  --toggle-border: rgba(91,76,245,0.35);
-  --icon-sun-color: #f5b800;
-  --icon-moon-color: var(--lp-accent);
-  --toggle-thumb-shadow: rgba(0,0,0,0.35);
-
-  --text-body-muted: #6b7280;
-  --text-label: #374151;
-  --text-input: #111;
-  --text-body-muted3: #555;
-  --text-body: #333;
-  --text-body-muted2: #666;
-  --text-faint: #888;
-  --text-disabled: #9ca3af;
-  --surface-inset: #f9fafb;
-  --disabled-bg: #e5e7eb;
-  --card-shadow: rgba(0,0,0,0.08);
-  --card-shadow-sm: rgba(0,0,0,0.06);
-  --afford-btn-bg: #111;
-  --afford-btn-bg-hover: #333;
-
-  /* tokens that DO change between themes — DARK values (current/original) */
-  --bg-page:        #0a0a0f;
-  --bg-section:     #f5f4ff;
-  --text-primary:   #e8e6ff;
-  --text-secondary: #7b7a8e;
-  --text-heading:   #0a0a14;
-  --border-color:   #e5e7eb;
-  --border-subtle:  #f3f4f6;
-  --surface-card:   #fff;
-  --nav-bg:         rgba(10,10,15,0.88);
-  --chevron-color:  rgba(255,255,255,0.9);
-  --logo-filter:    brightness(0) invert(1);
-  --feature-block-bg:      rgba(255,255,255,0.03);
-  --feature-block-bg-soon: rgba(255,255,255,0.015);
-  --divider-on-page: rgba(255,255,255,0.08);
-  --divider-footer:  rgba(255,255,255,0.06);
-  --toggle-bg: rgba(255,255,255,0.06);
 }
 
 html { scroll-behavior: smooth; }
@@ -300,31 +184,6 @@ nav {
 }
 .nav-cta:hover { background: var(--lp-brand-light); transform: translateY(-1px); color: var(--on-brand-text); text-decoration: none; }
 .nav-cta-short { display: none; }
-
-/* ── THEME TOGGLE ── */
-.theme-toggle {
-  position: relative; width: 46px; height: 24px; flex-shrink: 0;
-  border-radius: 50px; border: 1px solid var(--toggle-border);
-  background: var(--toggle-bg); cursor: pointer; padding: 0;
-  display: inline-flex; align-items: center;
-  transition: background 0.3s ease, border-color 0.3s ease;
-}
-.theme-toggle-icon {
-  position: absolute; top: 50%; width: 13px; height: 13px;
-  transform: translateY(-50%);
-  transition: opacity 0.3s ease;
-}
-.theme-toggle-icon-sun { left: 6px; color: var(--icon-sun-color); opacity: 1; }
-.theme-toggle-icon-moon { right: 6px; color: var(--icon-moon-color); opacity: 0.45; }
-.theme-toggle-thumb {
-  position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
-  border-radius: 50%; background: var(--lp-brand);
-  box-shadow: 0 1px 4px var(--toggle-thumb-shadow);
-  transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
-}
-html[data-theme="dark"] .theme-toggle-thumb { transform: translateX(22px); }
-html[data-theme="dark"] .theme-toggle-icon-sun { opacity: 0.4; }
-html[data-theme="dark"] .theme-toggle-icon-moon { opacity: 1; }
 
 /* ── HERO ── */
 .hero {
@@ -731,14 +590,8 @@ footer a:hover { color: var(--text-primary); }
 @media (max-width: 640px) {
   nav { padding: 10px 12px; flex-wrap: nowrap; }
   .nav-left { gap: 6px; }
-  .beta-badge { display: none; }
+  .beta-badge { padding: 2px 8px; font-size: 9px; }
   .nav-right { gap: 8px; flex-wrap: nowrap; }
-  .theme-toggle { width: 40px; height: 22px; }
-  .theme-toggle-icon { width: 12px; height: 12px; }
-  .theme-toggle-icon-sun { left: 5px; }
-  .theme-toggle-icon-moon { right: 5px; }
-  .theme-toggle-thumb { width: 16px; height: 16px; top: 3px; left: 3px; }
-  html[data-theme="dark"] .theme-toggle-thumb { transform: translateX(18px); }
   .nav-login { font-size: 13px; }
   .nav-cta { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
   .nav-cta-full { display: none; }
@@ -775,11 +628,6 @@ footer a:hover { color: var(--text-primary); }
     <span class="beta-badge">Beta</span>
   </div>
   <div class="nav-right">
-    <button type="button" class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="Switch to dark mode" title="Switch to dark mode">
-      <svg class="theme-toggle-icon theme-toggle-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
-      <svg class="theme-toggle-icon theme-toggle-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"></path></svg>
-      <span class="theme-toggle-thumb"></span>
-    </button>
     <a href="/login" class="nav-login">Log in</a>
     <a href="/welcome" class="nav-cta"><span class="nav-cta-full">Get started free</span><span class="nav-cta-short">Get started</span></a>
   </div>
