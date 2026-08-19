@@ -4782,24 +4782,6 @@ def forecast():
     cols = [d[0] for d in cursor.description]
     savings_rules = [dict(zip(cols, row)) for row in cursor.fetchall()]
 
-    # Historical transactions for chart scrollback (up to 90 days)
-    hist_cutoff = today - timedelta(days=90)
-    if USE_POSTGRES:
-        cursor.execute("""
-            SELECT date::text, account, SUM(amount) as net
-            FROM transactions
-            WHERE user_id = %s AND date >= %s AND date <= %s
-            GROUP BY date, account
-        """, (current_user.id, hist_cutoff.isoformat(), today.isoformat()))
-    else:
-        cursor.execute("""
-            SELECT date, account, SUM(amount) as net
-            FROM transactions
-            WHERE user_id = ? AND date >= ? AND date <= ?
-            GROUP BY date, account
-        """, (current_user.id, hist_cutoff.isoformat(), today.isoformat()))
-    hist_tx_rows = cursor.fetchall()
-
     cursor.close()
     release_db(db)
 
@@ -4823,34 +4805,20 @@ def forecast():
     account_names = list(accounts.keys())
     initial_balances = {name: round(simulated[name], 2) for name in account_names}
 
-    # Build historical snapshots by walking backwards from today's current balances
-    from collections import defaultdict
-    daily_nets: dict = defaultdict(dict)
-    earliest_date_str = None
-    for row in hist_tx_rows:
-        d_str = str(row[0])
-        acc_name = row[1]
-        net_val = float(row[2])
-        daily_nets[d_str][acc_name] = daily_nets[d_str].get(acc_name, 0.0) + net_val
-        if earliest_date_str is None or d_str < earliest_date_str:
-            earliest_date_str = d_str
-
+    # Scrollback before today: a flat line at today's actual balance, not a
+    # reconstruction from transaction history. Honestly represents "this is
+    # your balance as of today" rather than implying real past movement -
+    # always spans the full 90-day window so the scroll/zoom interaction
+    # feels identical whether the account has years of transactions or none.
+    hist_cutoff = today - timedelta(days=90)
     hist_snapshots = []
-    if earliest_date_str:
-        hist_balances = {name: info["balance"] for name, info in accounts.items()}
-        earliest_date_obj = date.fromisoformat(earliest_date_str)
-        d_ptr = today - timedelta(days=1)
-        while d_ptr >= earliest_date_obj:
-            next_d_str = (d_ptr + timedelta(days=1)).isoformat()
-            for acc_name, net_val in daily_nets.get(next_d_str, {}).items():
-                if acc_name in hist_balances:
-                    hist_balances[acc_name] -= net_val
-            snap = {"date": d_ptr.isoformat(), "historical": True}
-            for acc_n in account_names:
-                snap[acc_n] = round(hist_balances.get(acc_n, 0.0), 2)
-            hist_snapshots.append(snap)
-            d_ptr -= timedelta(days=1)
-        hist_snapshots.reverse()
+    d_ptr = hist_cutoff
+    while d_ptr < today:
+        snap = {"date": d_ptr.isoformat(), "historical": True}
+        for acc_n in account_names:
+            snap[acc_n] = initial_balances[acc_n]
+        hist_snapshots.append(snap)
+        d_ptr += timedelta(days=1)
 
     # Start with today's actual balances as day 0
     today_snapshot = {"date": today.isoformat()}
