@@ -745,6 +745,8 @@ def apply_auto_items(user_id, items):
         cursor.close()
         release_db(db)
 
+    bust_forecast_cache(user_id)
+
 
 def get_auto_apply_settings(user_id):
     """Returns (auto_apply_enabled, auto_apply_confirm) booleans for the user."""
@@ -1846,6 +1848,7 @@ def mark_bill_paid():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return {"ok": True}
 
 
@@ -2159,6 +2162,7 @@ def bulk_delete():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for('transactions', msg=f"{deleted} transaction{'s' if deleted != 1 else ''} deleted."))
 
 
@@ -2955,6 +2959,7 @@ def transaction_undo():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
 
     return redirect(url_for("transactions", msg="Transaction reversed."))
 
@@ -2976,6 +2981,7 @@ def transaction_delete():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("transactions", msg="Transaction deleted."))
 
 
@@ -3028,6 +3034,7 @@ def transaction_edit():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
 
     return redirect(url_for("transactions", msg="Transaction updated."))
 
@@ -3911,6 +3918,7 @@ def settings_deactivate_account():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("manage", msg=f"Account '{name}' deactivated."))
 
 @app.post("/settings/edit-account")
@@ -3972,6 +3980,7 @@ def settings_edit_account():
         logger.debug(f"edit_account error: {e}")
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("manage", msg="Account updated."))
 
 @app.post("/settings/add-bill")
