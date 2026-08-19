@@ -4603,6 +4603,7 @@ def reset_transactions():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("settings", msg="All transactions cleared."))
 
 
@@ -4618,6 +4619,7 @@ def reset_balances():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("settings", msg="All account balances reset to £0."))
 
 
@@ -4633,6 +4635,7 @@ def reset_bills():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("settings", msg="All scheduled bills deleted."))
 
 
@@ -4648,6 +4651,7 @@ def reset_income():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("settings", msg="All income sources deleted."))
 
 
@@ -4679,6 +4683,7 @@ def reset_all():
     db.commit()
     cursor.close()
     release_db(db)
+    bust_forecast_cache(current_user.id)
     return redirect(url_for("settings", msg="Account fully reset. Fresh start! 🌱"))
 
 # --- 90-DAY FORECAST ---
