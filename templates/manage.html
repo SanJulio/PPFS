@@ -265,6 +265,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       <button class="tab-btn" onclick="showTab('bills')">💸 Bills</button>
       <button class="tab-btn" onclick="showTab('income')">💰 Income</button>
       <button class="tab-btn" onclick="showTab('rules')">📋 Rules</button>
+      <button class="tab-btn" onclick="showTab('goals')">🎯 Goals</button>
       <a class="tab-btn text-decoration-none text-dark" href="/transactions">📜 Transactions</a>
     </div>
   </div>
@@ -861,6 +862,103 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 
   </div>
 
+  <!-- TAB: GOALS -->
+  <div class="tab-section" id="tab-goals">
+    <div class="card p-3 mb-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0">Goals</h5>
+        <span class="badge-soft">{{ goals|length }} goal{{ 's' if goals|length != 1 else '' }}</span>
+      </div>
+
+      {% for g in goals %}
+      <div class="rounded-4 p-3 mb-3" style="background:#f8f9fa; border:1px solid #eee; {% if g.status == 'completed' %}opacity:0.75;{% endif %}">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div>
+            <div class="fw-bold">{{ g.name }}
+              {% if g.goal_type == 'debt' %}<span class="badge text-bg-danger ms-1">Debt</span>{% else %}<span class="badge text-bg-success ms-1">Savings</span>{% endif %}
+              {% if g.status == 'completed' %}<span class="badge text-bg-dark ms-1">✓ Achieved</span>{% endif %}
+            </div>
+            <div class="small text-muted">
+              {% if g.progress.is_linked %}
+                Linked: {{ g.progress.account_name }}{% if g.progress.account_locked %} 🔒 <span class="text-warning-emphasis">(locked — progress may be stale)</span>{% endif %}
+              {% else %}
+                Standalone — tracked by logged contributions
+              {% endif %}
+            </div>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary" onclick="openEditGoalModal({{ g.id }})">Edit</button>
+            <form method="POST" action="/settings/complete-goal" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+              <input type="hidden" name="id" value="{{ g.id }}">
+              <button class="btn btn-sm btn-outline-secondary">{{ 'Reopen' if g.status == 'completed' else 'Mark achieved' }}</button>
+            </form>
+            <form method="POST" action="/settings/delete-goal" onsubmit="return confirm('Delete goal &quot;{{ g.name }}&quot;? This only removes the goal, not any linked account or its transactions.')" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+              <input type="hidden" name="id" value="{{ g.id }}">
+              <button class="btn btn-sm btn-outline-secondary text-danger">Delete</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="progress mb-2" style="height:10px; border-radius:8px;">
+          <div class="progress-bar" role="progressbar" style="width: {{ g.progress.progress_pct }}%; background: {{ '#198754' if g.status == 'completed' else 'var(--brand)' }};"></div>
+        </div>
+        <div class="d-flex justify-content-between small mb-1">
+          <span class="money">£{{ "%.2f"|format(g.progress.progress_amount) }} of £{{ "%.2f"|format(g.progress.target_amount) }}</span>
+          <span class="fw-semibold">{{ g.progress.progress_pct }}%</span>
+        </div>
+
+        {% if g.target_date %}
+          {% if g.pace %}
+            {% if g.pace.overdue %}
+              <div class="small text-danger">Target date ({{ g.target_date }}) has passed — £{{ "%.2f"|format(g.pace.remaining_amount) }} still needed.</div>
+            {% else %}
+              <div class="small text-muted">Target: {{ g.target_date }} · Suggested pace: <strong>£{{ "%.2f"|format(g.pace.monthly_pace) }}/month</strong></div>
+              {% if safe_to_spend_for_goals is not none and g.pace.monthly_pace > safe_to_spend_for_goals %}
+                <div class="small" style="color:#b45309;">⚠️ More than your current Safe to Spend (£{{ "%.2f"|format(safe_to_spend_for_goals) }})</div>
+              {% endif %}
+            {% endif %}
+          {% endif %}
+        {% endif %}
+
+        {% if not g.progress.is_linked %}
+          <div class="mt-2 pt-2" style="border-top:1px dashed #ddd;">
+            {% if g.contributions %}
+            <div class="small mb-2">
+              {% for c in g.contributions %}
+              <div class="d-flex justify-content-between align-items-center py-1">
+                <span class="text-muted">{{ c.date }}{% if c.note %} · {{ c.note }}{% endif %}</span>
+                <span class="d-flex align-items-center gap-2">
+                  <span class="money fw-semibold">£{{ "%.2f"|format(c.amount) }}</span>
+                  <form method="POST" action="/settings/delete-goal-contribution" onsubmit="return confirm('Remove this contribution?')">
+                    <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+                    <input type="hidden" name="id" value="{{ c.id }}">
+                    <button class="btn btn-sm btn-link text-danger p-0">✕</button>
+                  </form>
+                </span>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+            <button class="btn btn-sm btn-outline-dark w-100" onclick="openLogContributionModal({{ g.id }}, '{{ g.name|replace("'", "\\'") }}')">+ Log contribution</button>
+          </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+
+      {% if not goals %}
+      <div class="text-center py-4 text-muted">
+        <div style="font-size:28px;">🎯</div>
+        <div class="fw-semibold mt-1">No goals yet</div>
+        <div class="small">Set a savings or debt repayment goal to track your progress</div>
+      </div>
+      {% endif %}
+    </div>
+
+    <button class="btn btn-dark w-100 py-3" onclick="openAddGoalModal()">+ Add Goal</button>
+  </div>
+
 </div>
 
 </div>
@@ -1246,6 +1344,127 @@ function setAddSavingsType(type) {
   });
 }
 
+// ── GOALS ────────────────────────────────────────────────────────────────
+var _goalsData = {};
+{% for g in goals %}
+_goalsData[{{ g.id }}] = {
+  name: {{ g.name|tojson }},
+  goal_type: {{ g.goal_type|tojson }},
+  target_amount: {{ g.target_amount }},
+  target_date: {{ (g.target_date or '')|tojson }},
+  linked_account_id: {{ g.linked_account_id or 'null' }},
+  progress_amount: {{ g.progress.progress_amount }}
+};
+{% endfor %}
+var _accountBalances = {};
+{% for a in accounts %}_accountBalances[{{ a.id }}] = {{ a.balance }};{% endfor %}
+
+function setGoalType(type) {
+  document.getElementById('goalType').value = type;
+  document.getElementById('goalTypeBtnSavings').classList.toggle('active', type === 'savings');
+  document.getElementById('goalTypeBtnDebt').classList.toggle('active', type === 'debt');
+}
+
+function openAddGoalModal() {
+  document.getElementById('goalModalTitle').textContent = 'Add Goal';
+  document.getElementById('goalForm').action = '/settings/add-goal';
+  document.getElementById('goalId').value = '';
+  document.getElementById('goalName').value = '';
+  document.getElementById('goalTargetAmount').value = '';
+  document.getElementById('goalTargetDate').value = '';
+  document.getElementById('goalLinkedAccount').value = '';
+  setGoalType('savings');
+  document.getElementById('goalPacePreview').style.display = 'none';
+  document.getElementById('goalModal').style.display = 'flex';
+}
+
+function openEditGoalModal(id) {
+  var g = _goalsData[id];
+  if (!g) return;
+  document.getElementById('goalModalTitle').textContent = 'Edit Goal';
+  document.getElementById('goalForm').action = '/settings/edit-goal';
+  document.getElementById('goalId').value = id;
+  document.getElementById('goalName').value = g.name;
+  document.getElementById('goalTargetAmount').value = g.target_amount;
+  document.getElementById('goalTargetDate').value = g.target_date;
+  document.getElementById('goalLinkedAccount').value = g.linked_account_id || '';
+  setGoalType(g.goal_type);
+  document.getElementById('goalModal').style.display = 'flex';
+  updateGoalPacePreview();
+}
+
+var _goalPaceTimer = null;
+function updateGoalPacePreview() {
+  clearTimeout(_goalPaceTimer);
+  _goalPaceTimer = setTimeout(_doUpdateGoalPacePreview, 300);
+}
+
+function _doUpdateGoalPacePreview() {
+  var previewEl = document.getElementById('goalPacePreview');
+  var targetDate = document.getElementById('goalTargetDate').value;
+  if (!targetDate) { previewEl.style.display = 'none'; return; }
+
+  var targetAmount = parseFloat(document.getElementById('goalTargetAmount').value) || 0;
+  if (targetAmount <= 0) { previewEl.style.display = 'none'; return; }
+
+  var goalId = document.getElementById('goalId').value;
+  var existing = goalId ? _goalsData[goalId] : null;
+  var progressAmount = 0;
+  if (existing) {
+    progressAmount = existing.progress_amount;
+  } else {
+    var linkedId = document.getElementById('goalLinkedAccount').value;
+    var goalType = document.getElementById('goalType').value;
+    if (linkedId && goalType === 'savings' && _accountBalances[linkedId] !== undefined) {
+      progressAmount = _accountBalances[linkedId];
+    }
+    // A new debt goal always starts at 0 progress (nothing paid down yet
+    // relative to its own starting point), and a new standalone goal has
+    // no contributions logged yet either — both correctly default to 0.
+  }
+
+  previewEl.style.display = 'block';
+  previewEl.textContent = 'Calculating…';
+
+  var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+  fetch('/api/goal-pace-preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      csrf_token: csrf,
+      target_amount: targetAmount,
+      target_date: targetDate,
+      progress_amount: progressAmount
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    var pace = data.pace;
+    if (!pace) { previewEl.style.display = 'none'; return; }
+    if (pace.overdue) {
+      previewEl.innerHTML = '<span class="text-danger">Target date has passed — £' + pace.remaining_amount.toFixed(2) + ' still needed.</span>';
+      return;
+    }
+    var html = 'Suggested pace: <strong>£' + pace.monthly_pace.toFixed(2) + '/month</strong> to hit this by ' + targetDate + '.';
+    if (pace.warning) {
+      html += '<div style="color:#b45309;margin-top:4px;">⚠️ ' + pace.warning + '</div>';
+    }
+    previewEl.innerHTML = html;
+  })
+  .catch(function() { previewEl.textContent = 'Could not calculate a suggested pace.'; });
+}
+
+function openLogContributionModal(goalId, goalName) {
+  document.getElementById('goalContributionTitle').textContent = 'Log contribution — ' + goalName;
+  document.getElementById('contributionGoalId').value = goalId;
+  var dateInput = document.getElementById('contributionDate');
+  if (dateInput && !dateInput.value) {
+    var today = new Date();
+    dateInput.value = today.toISOString().slice(0, 10);
+  }
+  document.getElementById('goalContributionModal').style.display = 'flex';
+}
+
 if (window.location.search.includes('msg=')) {
   const url = new URL(window.location);
   url.searchParams.delete('msg');
@@ -1590,6 +1809,62 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
         </select>
       </div>
       <button class="btn btn-dark w-100 py-3">Add Event</button>
+    </form>
+  </div>
+</div>
+
+<!-- Add / Edit Goal Modal -->
+<div id="goalModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:20px;">
+  <div class="card p-4" style="max-width:480px; width:100%; max-height:90vh; overflow-y:auto; border-radius:24px 24px 24px 24px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0 fw-bold" id="goalModalTitle">Add Goal</h5>
+      <button type="button" onclick="document.getElementById('goalModal').style.display='none'" class="btn btn-sm btn-outline-secondary rounded-3">✕</button>
+    </div>
+    <form method="POST" action="/settings/add-goal" id="goalForm">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+      <input type="hidden" name="id" id="goalId" value="">
+      <input type="hidden" name="goal_type" id="goalType" value="savings">
+
+      <div class="mb-2 d-flex gap-2">
+        <button type="button" class="tab-btn active" id="goalTypeBtnSavings" style="flex:1;" onclick="setGoalType('savings')">💰 Savings</button>
+        <button type="button" class="tab-btn" id="goalTypeBtnDebt" style="flex:1;" onclick="setGoalType('debt')">💳 Debt repayment</button>
+      </div>
+
+      <div class="mb-2"><input class="form-control" name="name" id="goalName" placeholder="Goal name (e.g. House deposit)" required></div>
+      <div class="mb-2"><input class="form-control" name="target_amount" id="goalTargetAmount" inputmode="decimal" placeholder="Target amount (£)" required oninput="updateGoalPacePreview()"></div>
+      <div class="mb-2">
+        <label class="form-label small mb-1">Target date (optional)</label>
+        <input class="form-control" type="date" name="target_date" id="goalTargetDate" oninput="updateGoalPacePreview()">
+      </div>
+      <div class="mb-2">
+        <label class="form-label small mb-1">Linked account (optional)</label>
+        <select class="form-select" name="linked_account_id" id="goalLinkedAccount" onchange="updateGoalPacePreview()">
+          <option value="">Standalone — I'll log contributions manually</option>
+          {% for a in accounts %}<option value="{{ a.id }}" {% if a.get('is_locked') %}data-locked="1"{% endif %}>{{ a.name }}{% if a.get('is_locked') %} (Locked — progress may be stale){% endif %}</option>{% endfor %}
+        </select>
+      </div>
+
+      <div id="goalPacePreview" class="rounded-3 p-2 mb-3 small" style="background:#f8f9fa; display:none;"></div>
+
+      <button class="btn btn-dark w-100 py-3">Save Goal</button>
+    </form>
+  </div>
+</div>
+
+<!-- Log Goal Contribution Modal -->
+<div id="goalContributionModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99999; align-items:flex-end; justify-content:center; padding:20px;">
+  <div class="card p-4" style="max-width:480px; width:100%; border-radius:24px 24px 24px 24px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0 fw-bold" id="goalContributionTitle">Log contribution</h5>
+      <button type="button" onclick="document.getElementById('goalContributionModal').style.display='none'" class="btn btn-sm btn-outline-secondary rounded-3">✕</button>
+    </div>
+    <form method="POST" action="/settings/add-goal-contribution">
+      <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+      <input type="hidden" name="goal_id" id="contributionGoalId" value="">
+      <div class="mb-2"><input class="form-control" name="amount" inputmode="decimal" placeholder="Amount (£)" required></div>
+      <div class="mb-2"><input class="form-control" type="date" name="date" id="contributionDate"></div>
+      <div class="mb-3"><input class="form-control" name="note" placeholder="Note (optional)"></div>
+      <button class="btn btn-dark w-100 py-3">Log contribution</button>
     </form>
   </div>
 </div>

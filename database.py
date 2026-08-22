@@ -1373,5 +1373,111 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: goals + goal_contributions tables ---
+    # Savings & debt repayment goal tracking. Deliberately reuses the existing
+    # per-user-table pattern (like savings_rules/future_events) rather than
+    # bolting onto accounts.
+    #
+    # linked_account_id references accounts.id (not name) so a goal survives
+    # an account rename — the same reasoning as accounts.alert_threshold
+    # being per-account-by-id rather than per-name.
+    #
+    # starting_balance is a snapshot of the linked account's balance taken
+    # when the goal is created (or re-linked to a different account). It is
+    # NOT used for a linked savings goal's progress (progress there is simply
+    # "current balance toward target", per spec) but it IS required for a
+    # linked debt goal: debt progress is framed as "how much of the balance
+    # has been paid down since this goal started tracking it"
+    # (starting_balance vs current balance, both taken as absolute values so
+    # the calculation works whether debt is stored as a negative balance or
+    # a positive "amount owed" figure) — not "balance relative to target",
+    # since a debt account's current balance alone doesn't tell you how much
+    # of it this goal has actually paid off.
+    #
+    # status is 'active' or 'completed'. completed_at is set either when a
+    # user manually marks a goal achieved, or automatically the next time
+    # progress is computed and found to have reached 100%.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS goals (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    goal_type TEXT NOT NULL DEFAULT 'savings',
+                    target_amount NUMERIC(12,2) NOT NULL,
+                    target_date TEXT,
+                    linked_account_id INTEGER,
+                    starting_balance NUMERIC(12,2),
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    completed_at TIMESTAMP
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS goals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    goal_type TEXT NOT NULL DEFAULT 'savings',
+                    target_amount REAL NOT NULL,
+                    target_date TEXT,
+                    linked_account_id INTEGER,
+                    starting_balance REAL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    completed_at TEXT
+                )
+            """)
+        db.commit()
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_goals_user_id ON goals(user_id)")
+        db.commit()
+    except Exception as e:
+        logger.error(f"Table creation error (goals): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: goal_contributions table ---
+    # Manual contribution entries for a standalone (not account-linked) goal.
+    # Progress for a standalone goal = SUM(amount) toward target_amount,
+    # regardless of goal_type — the user is self-reporting progress either
+    # way ("I saved £50" / "I paid off £50"), so no sign handling is needed
+    # here the way it is for a linked debt goal.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS goal_contributions (
+                    id SERIAL PRIMARY KEY,
+                    goal_id INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+                    user_id INTEGER NOT NULL,
+                    amount NUMERIC(12,2) NOT NULL,
+                    date TEXT NOT NULL,
+                    note TEXT
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS goal_contributions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    goal_id INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+                    user_id INTEGER NOT NULL,
+                    amount REAL NOT NULL,
+                    date TEXT NOT NULL,
+                    note TEXT
+                )
+            """)
+        db.commit()
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_goal_contributions_goal_id ON goal_contributions(goal_id)")
+        db.commit()
+    except Exception as e:
+        logger.error(f"Table creation error (goal_contributions): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

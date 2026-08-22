@@ -193,6 +193,27 @@ def _create_test_schema(db_path: Path):
             token_expiry TEXT,
             created_at TEXT DEFAULT (datetime('now'))
         )""",
+        """CREATE TABLE IF NOT EXISTS goals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            goal_type TEXT NOT NULL DEFAULT 'savings',
+            target_amount REAL NOT NULL,
+            target_date TEXT,
+            linked_account_id INTEGER,
+            starting_balance REAL,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            completed_at TEXT
+        )""",
+        """CREATE TABLE IF NOT EXISTS goal_contributions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            goal_id INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL,
+            amount REAL NOT NULL,
+            date TEXT NOT NULL,
+            note TEXT
+        )""",
     ]
 
     for sql in tables:
@@ -285,7 +306,7 @@ def test_user(db_conn):
 
     cur = db_conn.cursor()
     for table in ("transactions", "accounts", "scheduled_expenses", "income",
-                  "savings_rules", "future_events"):
+                  "savings_rules", "future_events", "goal_contributions", "goals"):
         try:
             cur.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
         except Exception:

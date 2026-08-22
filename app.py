@@ -36,6 +36,7 @@ from models import (
     add_transaction,
     update_account_balance,
     get_active_accounts,
+    get_all_accounts,
     get_recent_transactions
 )
 
@@ -169,7 +170,7 @@ def set_csrf_token():
 @app.before_request
 def check_csrf():
     if request.method == 'POST':
-        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid', '/dismiss-auto-apply', '/api/income-preview', '/api/edit-pending-item', '/api/edit-cycle-item', '/api/set-primary-income', '/my-money/setup/dismiss']
+        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid', '/dismiss-auto-apply', '/api/income-preview', '/api/edit-pending-item', '/api/edit-cycle-item', '/api/set-primary-income', '/my-money/setup/dismiss', '/api/goal-pace-preview']
         if request.path not in exempt:
             token = request.form.get('csrf_token')
             if not token or token != session.get('csrf_token'):
@@ -1708,9 +1709,32 @@ def home():
         logger.debug(f"Spending alert threshold check error: {e}")
         spending_alerts = []
 
+    # Goals entry point on Home — active goals only (a completed goal has
+    # nothing left to invite action on), most recent first. Reuses the same
+    # _compute_goal_progress() helper the My Money > Goals tab uses, so the
+    # percentage shown here can never drift out of sync with the full view.
+    try:
+        _gdb = get_db()
+        _gcur = _gdb.cursor()
+        if USE_POSTGRES:
+            _gcur.execute("SELECT * FROM goals WHERE user_id = %s AND status = 'active' ORDER BY created_at DESC", (current_user.id,))
+        else:
+            _gcur.execute("SELECT * FROM goals WHERE user_id = ? AND status = 'active' ORDER BY created_at DESC", (current_user.id,))
+        _gcols = [d[0] for d in _gcur.description]
+        goals_home = [dict(zip(_gcols, row)) for row in _gcur.fetchall()] if USE_POSTGRES else [dict(row) for row in _gcur.fetchall()]
+        _gcur.close()
+        release_db(_gdb)
+        for _g in goals_home:
+            _g["target_amount"] = float(_g["target_amount"] or 0)
+            _g["progress"] = _compute_goal_progress(_g, current_user.id)
+    except Exception as e:
+        logger.debug(f"Home goals summary error: {e}")
+        goals_home = []
+
     return render_template(
         "index.html",
         message=request.args.get("msg", ""),
+        goals_home=goals_home,
         accounts=active_accounts,
         locked_accounts=locked_accounts,
         overview=overview,
@@ -3794,6 +3818,160 @@ def normalised_totals(income_rows, bill_rows):
     return inc_m, inc_m * 12, bil_m, bil_m * 12
 
 
+# --- GOALS (savings & debt repayment tracking) ---
+
+def _goal_contributions_sum(goal_id, user_id):
+    """Total logged contributions for a standalone goal."""
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM goal_contributions WHERE goal_id = %s AND user_id = %s", (goal_id, user_id))
+    else:
+        cursor.execute("SELECT COALESCE(SUM(amount), 0) FROM goal_contributions WHERE goal_id = ? AND user_id = ?", (goal_id, user_id))
+    row = cursor.fetchone()
+    cursor.close()
+    release_db(db)
+    val = row[0] if row is not None else 0
+    return float(val or 0)
+
+
+def _compute_goal_progress(goal, user_id, accounts_by_id=None):
+    """Returns progress info for a single goal.
+
+    - Linked savings goal: progress = the linked account's current balance,
+      taken at face value against the target (per spec — this is
+      deliberately NOT relative to a starting balance).
+    - Linked debt goal: progress = how much of the balance has been paid
+      down since the goal started tracking it (starting_balance vs current
+      balance, both compared as magnitudes so it works whether debt is
+      stored as a negative balance or a positive "amount owed" figure) —
+      current balance alone doesn't say how much *this goal* has achieved.
+    - Standalone goal (either type): progress = sum of logged contributions.
+      No sign handling needed there since the user self-reports "amount
+      achieved" either way.
+
+    A locked linked account is not excluded — its balance is already frozen
+    at the DB level by the existing account-locking design, so reading it
+    naturally returns the frozen figure. account_locked is surfaced so the
+    UI can flag it as stale, consistent with how locked accounts are noted
+    everywhere else in the app, rather than hiding or erroring on the goal.
+    """
+    target_amount = float(goal["target_amount"] or 0)
+    account_name = None
+    account_locked = False
+    linked_account_id = goal.get("linked_account_id")
+
+    if linked_account_id:
+        if accounts_by_id is None:
+            accounts_by_id = {a["id"]: a for a in get_all_accounts(user_id)}
+        acc = accounts_by_id.get(linked_account_id)
+        if acc is None:
+            # Accounts are only ever soft-deactivated in this app, never hard
+            # deleted, so this shouldn't normally happen — fall back to
+            # contributions rather than erroring if it ever does.
+            progress_amount = _goal_contributions_sum(goal["id"], user_id)
+        else:
+            account_name = acc["name"]
+            account_locked = bool(acc.get("is_locked"))
+            current_balance = float(acc["balance"] or 0)
+            if goal["goal_type"] == "debt":
+                starting_raw = goal.get("starting_balance")
+                starting = float(starting_raw) if starting_raw is not None else current_balance
+                progress_amount = max(0.0, abs(starting) - abs(current_balance))
+            else:
+                progress_amount = current_balance
+    else:
+        progress_amount = _goal_contributions_sum(goal["id"], user_id)
+
+    progress_amount = round(progress_amount, 2)
+    raw_ratio = (progress_amount / target_amount) if target_amount > 0 else 0.0
+    return {
+        "progress_amount": progress_amount,
+        "target_amount": target_amount,
+        "progress_pct": round(min(1.0, max(0.0, raw_ratio)) * 100, 1),
+        "raw_ratio": raw_ratio,
+        "is_linked": bool(linked_account_id),
+        "account_name": account_name,
+        "account_locked": account_locked,
+    }
+
+
+def _suggest_goal_pace(target_amount, progress_amount, target_date_str):
+    """Deterministic pace suggestion — computed fresh every time, never
+    stored. Returns None when there's no target date (the feature is only
+    meant to trigger once one is set, per spec)."""
+    if not target_date_str:
+        return None
+    try:
+        target_date = date.fromisoformat(str(target_date_str))
+    except (ValueError, TypeError):
+        return None
+
+    today = date.today()
+    remaining_amount = round(max(0.0, float(target_amount) - float(progress_amount)), 2)
+    days_remaining = (target_date - today).days
+
+    if days_remaining <= 0:
+        return {
+            "remaining_amount": remaining_amount,
+            "days_remaining": days_remaining,
+            "monthly_pace": None,
+            "overdue": True,
+        }
+
+    months_remaining = max(days_remaining / 30.44, 1 / 30.44)
+    monthly_pace = round(remaining_amount / months_remaining, 2)
+    return {
+        "remaining_amount": remaining_amount,
+        "days_remaining": days_remaining,
+        "monthly_pace": monthly_pace,
+        "overdue": False,
+    }
+
+
+def _get_safe_to_spend(user_id):
+    """Reuses the same Safe to Spend figure shown on Home, so a goal's
+    suggested pace can be gently flagged if it looks unrealistic against
+    the user's actual finances."""
+    try:
+        accounts_rows = get_active_accounts(user_id)
+        accounts = {}
+        for r in accounts_rows:
+            accounts[r["name"]] = {
+                "balance": r["balance"],
+                "type": r["type"],
+                "active": bool(r["active"]),
+                "include_in_overview": bool(r.get("include_in_overview", 1)),
+                "savings_type": r.get("savings_type"),
+                "is_locked": bool(r.get("is_locked")),
+            }
+        import cycle_engine as _ce
+        cyc = _ce.get_cycle(user_id)
+        overview = calculate_financial_overview(accounts, period_end=cyc["display_end"], safe_boundary=cyc["safe_boundary"])
+        return float(overview.get("safe_spending", 0.0))
+    except Exception as e:
+        logger.debug(f"_get_safe_to_spend error: {e}")
+        return None
+
+
+def _mark_goal_completed_if_reached(goal_id, user_id):
+    """Auto-completion: called opportunistically whenever a goal's progress
+    is computed. If it's just reached 100% and is still 'active', flips it
+    to 'completed' — the automatic counterpart to the manual mark-complete
+    action, per spec."""
+    db = get_db()
+    cursor = db.cursor()
+    now_str = datetime.utcnow().isoformat()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE goals SET status='completed', completed_at=%s WHERE id=%s AND user_id=%s AND status='active'", (now_str, goal_id, user_id))
+    else:
+        cursor.execute("UPDATE goals SET status='completed', completed_at=? WHERE id=? AND user_id=? AND status='active'", (now_str, goal_id, user_id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+    return now_str
+
+
 @app.get("/manage")
 @login_required
 def manage():
@@ -3817,6 +3995,8 @@ def manage():
     future_events = fetch_filtered("SELECT * FROM future_events WHERE user_id = %s ORDER BY date" if USE_POSTGRES else "SELECT * FROM future_events WHERE user_id = ? ORDER BY date", (uid,))
     income = fetch_filtered("SELECT * FROM income WHERE user_id = %s" if USE_POSTGRES else "SELECT * FROM income WHERE user_id = ?", (uid,))
     investments = fetch_filtered("SELECT * FROM investments WHERE user_id = %s ORDER BY date DESC" if USE_POSTGRES else "SELECT * FROM investments WHERE user_id = ? ORDER BY date DESC", (uid,))
+    goals = fetch_filtered("SELECT * FROM goals WHERE user_id = %s ORDER BY status, created_at DESC" if USE_POSTGRES else "SELECT * FROM goals WHERE user_id = ? ORDER BY status, created_at DESC", (uid,))
+    goal_contributions_rows = fetch_filtered("SELECT * FROM goal_contributions WHERE user_id = %s ORDER BY date DESC" if USE_POSTGRES else "SELECT * FROM goal_contributions WHERE user_id = ? ORDER BY date DESC", (uid,))
 
     cursor.close()
     release_db(db)
@@ -3850,6 +4030,35 @@ def manage():
     income_monthly_total, income_annual_total, bills_monthly_total, bills_annual_total = \
         normalised_totals(income, bills)
 
+    # Goals: compute progress (and, opportunistically, auto-completion) for
+    # each, attach a pace suggestion where a target date is set, and group
+    # logged contributions by goal for standalone goals' mini-lists.
+    # NUMERIC columns come back from psycopg2 as Decimal, not float — cast
+    # explicitly (same defensive pattern used for savings_rate elsewhere)
+    # so these values are safe wherever the template needs to serialise them.
+    for g in goals:
+        g["target_amount"] = float(g["target_amount"] or 0)
+        if g.get("starting_balance") is not None:
+            g["starting_balance"] = float(g["starting_balance"])
+    for c in goal_contributions_rows:
+        c["amount"] = float(c["amount"] or 0)
+
+    accounts_by_id = {a["id"]: a for a in get_all_accounts(uid)}
+    contributions_by_goal = {}
+    for c in goal_contributions_rows:
+        contributions_by_goal.setdefault(c["goal_id"], []).append(c)
+
+    for g in goals:
+        progress = _compute_goal_progress(g, uid, accounts_by_id=accounts_by_id)
+        if g["status"] == "active" and progress["raw_ratio"] >= 1.0:
+            g["completed_at"] = _mark_goal_completed_if_reached(g["id"], uid)
+            g["status"] = "completed"
+        g["progress"] = progress
+        g["pace"] = _suggest_goal_pace(progress["target_amount"], progress["progress_amount"], g.get("target_date"))
+        g["contributions"] = contributions_by_goal.get(g["id"], [])
+
+    safe_to_spend_for_goals = _get_safe_to_spend(uid) if goals else None
+
     return render_template("manage.html",
         accounts=accounts,
         bills=bills,
@@ -3857,6 +4066,8 @@ def manage():
         future_events=future_events,
         income=income,
         investments=investments,
+        goals=goals,
+        safe_to_spend_for_goals=safe_to_spend_for_goals,
         is_pro=is_pro,
         has_primary=has_primary,
         message=request.args.get("msg", ""),
@@ -3867,6 +4078,304 @@ def manage():
         bills_monthly_total=bills_monthly_total,
         bills_annual_total=bills_annual_total,
     )
+
+
+@app.post("/settings/add-goal")
+@login_required
+def settings_add_goal():
+    name = (request.form.get("name") or "").strip()
+    goal_type = (request.form.get("goal_type") or "savings").strip()
+    if goal_type not in ("savings", "debt"):
+        goal_type = "savings"
+    target_amount_raw = (request.form.get("target_amount") or "").strip()
+    target_date = (request.form.get("target_date") or "").strip() or None
+    linked_account_id_raw = (request.form.get("linked_account_id") or "").strip()
+
+    if not name:
+        return redirect(url_for("manage", tab="goals", msg="Goal name is required."))
+    try:
+        target_amount = float(target_amount_raw)
+        if target_amount <= 0:
+            raise ValueError
+    except ValueError:
+        return redirect(url_for("manage", tab="goals", msg="Enter a valid target amount."))
+
+    if target_date:
+        try:
+            date.fromisoformat(target_date)
+        except ValueError:
+            return redirect(url_for("manage", tab="goals", msg="Invalid target date."))
+
+    linked_account_id = None
+    starting_balance = None
+    if linked_account_id_raw:
+        try:
+            linked_account_id = int(linked_account_id_raw)
+        except ValueError:
+            linked_account_id = None
+        if linked_account_id is not None:
+            acc = next((a for a in get_all_accounts(current_user.id) if a["id"] == linked_account_id), None)
+            if acc is None:
+                return redirect(url_for("manage", tab="goals", msg="Account not found."))
+            starting_balance = float(acc["balance"] or 0)
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute(
+            "INSERT INTO goals (user_id, name, goal_type, target_amount, target_date, linked_account_id, starting_balance) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+            (current_user.id, name, goal_type, target_amount, target_date, linked_account_id, starting_balance),
+        )
+    else:
+        cursor.execute(
+            "INSERT INTO goals (user_id, name, goal_type, target_amount, target_date, linked_account_id, starting_balance) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (current_user.id, name, goal_type, target_amount, target_date, linked_account_id, starting_balance),
+        )
+    db.commit()
+    cursor.close()
+    release_db(db)
+    return redirect(url_for("manage", tab="goals", msg=f"Goal '{name}' created."))
+
+
+@app.post("/settings/edit-goal")
+@login_required
+def settings_edit_goal():
+    goal_id = request.form.get("id")
+    name = (request.form.get("name") or "").strip()
+    goal_type = (request.form.get("goal_type") or "savings").strip()
+    if goal_type not in ("savings", "debt"):
+        goal_type = "savings"
+    target_amount_raw = (request.form.get("target_amount") or "").strip()
+    target_date = (request.form.get("target_date") or "").strip() or None
+    linked_account_id_raw = (request.form.get("linked_account_id") or "").strip()
+
+    if not name or not goal_id:
+        return redirect(url_for("manage", tab="goals", msg="Missing fields."))
+    try:
+        target_amount = float(target_amount_raw)
+        if target_amount <= 0:
+            raise ValueError
+    except ValueError:
+        return redirect(url_for("manage", tab="goals", msg="Enter a valid target amount."))
+    if target_date:
+        try:
+            date.fromisoformat(target_date)
+        except ValueError:
+            return redirect(url_for("manage", tab="goals", msg="Invalid target date."))
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT linked_account_id, starting_balance FROM goals WHERE id=%s AND user_id=%s", (goal_id, current_user.id))
+    else:
+        cursor.execute("SELECT linked_account_id, starting_balance FROM goals WHERE id=? AND user_id=?", (goal_id, current_user.id))
+    row = cursor.fetchone()
+    if not row:
+        cursor.close()
+        release_db(db)
+        return redirect(url_for("manage", tab="goals", msg="Goal not found."))
+    existing_linked_id = row[0] if USE_POSTGRES else row["linked_account_id"]
+
+    new_linked_id = None
+    if linked_account_id_raw:
+        try:
+            new_linked_id = int(linked_account_id_raw)
+        except ValueError:
+            new_linked_id = None
+
+    # Re-linking to a different account (or unlinking entirely) resets the
+    # starting point — progress-so-far no longer means anything against a
+    # different (or no) account.
+    if new_linked_id != existing_linked_id:
+        if new_linked_id is not None:
+            acc = next((a for a in get_all_accounts(current_user.id) if a["id"] == new_linked_id), None)
+            if acc is None:
+                cursor.close()
+                release_db(db)
+                return redirect(url_for("manage", tab="goals", msg="Account not found."))
+            starting_balance = float(acc["balance"] or 0)
+        else:
+            starting_balance = None
+    else:
+        existing_starting = row[1] if USE_POSTGRES else row["starting_balance"]
+        starting_balance = float(existing_starting) if existing_starting is not None else None
+
+    if USE_POSTGRES:
+        cursor.execute(
+            "UPDATE goals SET name=%s, goal_type=%s, target_amount=%s, target_date=%s, "
+            "linked_account_id=%s, starting_balance=%s WHERE id=%s AND user_id=%s",
+            (name, goal_type, target_amount, target_date, new_linked_id, starting_balance, goal_id, current_user.id),
+        )
+    else:
+        cursor.execute(
+            "UPDATE goals SET name=?, goal_type=?, target_amount=?, target_date=?, "
+            "linked_account_id=?, starting_balance=? WHERE id=? AND user_id=?",
+            (name, goal_type, target_amount, target_date, new_linked_id, starting_balance, goal_id, current_user.id),
+        )
+    db.commit()
+    cursor.close()
+    release_db(db)
+    return redirect(url_for("manage", tab="goals", msg="Goal updated."))
+
+
+@app.post("/settings/delete-goal")
+@login_required
+def settings_delete_goal():
+    """Removes goal tracking only — never touches the linked account or its
+    transactions, which is exactly why goals are their own table rather than
+    a column bolted onto accounts."""
+    goal_id = request.form.get("id")
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("DELETE FROM goal_contributions WHERE goal_id=%s AND user_id=%s", (goal_id, current_user.id))
+        cursor.execute("DELETE FROM goals WHERE id=%s AND user_id=%s", (goal_id, current_user.id))
+    else:
+        cursor.execute("DELETE FROM goal_contributions WHERE goal_id=? AND user_id=?", (goal_id, current_user.id))
+        cursor.execute("DELETE FROM goals WHERE id=? AND user_id=?", (goal_id, current_user.id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+    return redirect(url_for("manage", tab="goals", msg="Goal deleted."))
+
+
+@app.post("/settings/complete-goal")
+@login_required
+def settings_complete_goal():
+    """Toggles a goal between 'active' and 'completed' — lets a user mark a
+    goal achieved early (separate from the automatic completion that fires
+    when progress reaches 100%, see _mark_goal_completed_if_reached), and
+    just as easily undo that if it was marked by mistake."""
+    goal_id = request.form.get("id")
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT status FROM goals WHERE id=%s AND user_id=%s", (goal_id, current_user.id))
+    else:
+        cursor.execute("SELECT status FROM goals WHERE id=? AND user_id=?", (goal_id, current_user.id))
+    row = cursor.fetchone()
+    if not row:
+        cursor.close()
+        release_db(db)
+        return redirect(url_for("manage", tab="goals", msg="Goal not found."))
+    current_status = row[0] if USE_POSTGRES else row["status"]
+    new_status = "active" if current_status == "completed" else "completed"
+    completed_at = datetime.utcnow().isoformat() if new_status == "completed" else None
+    if USE_POSTGRES:
+        cursor.execute("UPDATE goals SET status=%s, completed_at=%s WHERE id=%s AND user_id=%s", (new_status, completed_at, goal_id, current_user.id))
+    else:
+        cursor.execute("UPDATE goals SET status=?, completed_at=? WHERE id=? AND user_id=?", (new_status, completed_at, goal_id, current_user.id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+    msg = "Goal marked as achieved! \U0001f389" if new_status == "completed" else "Goal reopened."
+    return redirect(url_for("manage", tab="goals", msg=msg))
+
+
+@app.post("/settings/add-goal-contribution")
+@login_required
+def settings_add_goal_contribution():
+    """Manual contribution entries only apply to standalone (non-linked)
+    goals — a linked goal's progress already comes straight from the real
+    account balance, so a logged contribution there would double-count."""
+    goal_id = request.form.get("goal_id")
+    amount_raw = (request.form.get("amount") or "").strip()
+    date_raw = (request.form.get("date") or "").strip() or date.today().isoformat()
+    note = (request.form.get("note") or "").strip() or None
+    try:
+        amount = float(amount_raw)
+        if amount <= 0:
+            raise ValueError
+    except ValueError:
+        return redirect(url_for("manage", tab="goals", msg="Enter a valid contribution amount."))
+    try:
+        date.fromisoformat(date_raw)
+    except ValueError:
+        return redirect(url_for("manage", tab="goals", msg="Invalid date."))
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT linked_account_id FROM goals WHERE id=%s AND user_id=%s", (goal_id, current_user.id))
+    else:
+        cursor.execute("SELECT linked_account_id FROM goals WHERE id=? AND user_id=?", (goal_id, current_user.id))
+    row = cursor.fetchone()
+    if not row:
+        cursor.close()
+        release_db(db)
+        return redirect(url_for("manage", tab="goals", msg="Goal not found."))
+    linked = row[0] if USE_POSTGRES else row["linked_account_id"]
+    if linked is not None:
+        cursor.close()
+        release_db(db)
+        return redirect(url_for("manage", tab="goals", msg="This goal tracks progress automatically from its linked account."))
+
+    if USE_POSTGRES:
+        cursor.execute("INSERT INTO goal_contributions (goal_id, user_id, amount, date, note) VALUES (%s,%s,%s,%s,%s)", (goal_id, current_user.id, amount, date_raw, note))
+    else:
+        cursor.execute("INSERT INTO goal_contributions (goal_id, user_id, amount, date, note) VALUES (?,?,?,?,?)", (goal_id, current_user.id, amount, date_raw, note))
+    db.commit()
+    cursor.close()
+    release_db(db)
+    return redirect(url_for("manage", tab="goals", msg="Contribution logged."))
+
+
+@app.post("/settings/delete-goal-contribution")
+@login_required
+def settings_delete_goal_contribution():
+    contribution_id = request.form.get("id")
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("DELETE FROM goal_contributions WHERE id=%s AND user_id=%s", (contribution_id, current_user.id))
+    else:
+        cursor.execute("DELETE FROM goal_contributions WHERE id=? AND user_id=?", (contribution_id, current_user.id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+    return redirect(url_for("manage", tab="goals", msg="Contribution removed."))
+
+
+@app.post("/api/goal-pace-preview")
+@login_required
+def api_goal_pace_preview():
+    """Live pace-suggestion preview for the Add/Edit Goal modal, mirroring
+    the existing /api/income-preview pattern. Only ever a suggestion — never
+    saved server-side, never applied to the goal automatically."""
+    data = request.get_json(silent=True) or {}
+    if data.get("csrf_token") != session.get("csrf_token"):
+        return jsonify({"error": "CSRF"}), 403
+    try:
+        target_amount = float(data.get("target_amount") or 0)
+    except (TypeError, ValueError):
+        target_amount = 0.0
+    target_date_val = (data.get("target_date") or "").strip() or None
+    try:
+        progress_amount = float(data.get("progress_amount") or 0)
+    except (TypeError, ValueError):
+        progress_amount = 0.0
+
+    if target_amount <= 0 or not target_date_val:
+        return jsonify({"pace": None})
+
+    pace = _suggest_goal_pace(target_amount, progress_amount, target_date_val)
+    if pace is None:
+        return jsonify({"pace": None})
+
+    safe_to_spend = _get_safe_to_spend(current_user.id)
+    warning = None
+    if pace.get("monthly_pace") is not None and safe_to_spend is not None and pace["monthly_pace"] > safe_to_spend:
+        warning = (
+            f"This pace (£{pace['monthly_pace']:.2f}/month) is more than your current "
+            f"Safe to Spend (£{safe_to_spend:.2f}) — you may need to adjust your budget "
+            f"or extend the target date."
+        )
+    pace["warning"] = warning
+    pace["safe_to_spend"] = safe_to_spend
+    return jsonify({"pace": pace})
+
 
 @app.post("/settings/add-account")
 @login_required
