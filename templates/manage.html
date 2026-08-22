@@ -909,15 +909,30 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <span class="fw-semibold">{{ g.progress.progress_pct }}%</span>
         </div>
 
-        {% if g.target_date %}
-          {% if g.pace %}
-            {% if g.pace.overdue %}
-              <div class="small text-danger">Target date ({{ g.target_date }}) has passed — £{{ "%.2f"|format(g.pace.remaining_amount) }} still needed.</div>
-            {% else %}
-              <div class="small text-muted">Target: {{ g.target_date }} · Suggested pace: <strong>£{{ "%.2f"|format(g.pace.monthly_pace) }}/month</strong></div>
-              {% if safe_to_spend_for_goals is not none and g.pace.monthly_pace > safe_to_spend_for_goals %}
-                <div class="small" style="color:#b45309;">⚠️ More than your current Safe to Spend (£{{ "%.2f"|format(safe_to_spend_for_goals) }})</div>
-              {% endif %}
+        {% set proj = g.projection %}
+        {% set proj_color = {'green': '#198754', 'amber': '#b45309', 'red': '#dc3545'}.get(proj.status_color) if proj else None %}
+        <div class="small mb-1" style="color:{{ proj_color or '#6c757d' }};">
+          {% if g.target_date %}Target: {{ g.target_date }}{% endif %}
+          {% if proj and proj.state == 'projected' %}
+            {% if g.target_date %} · {% endif %}At current pace: <strong>{{ proj.projected_date }}</strong>{% if proj.on_track is not none %}{{ ' ✓ on track' if proj.on_track else ' ⚠ behind target' }}{% endif %}
+          {% elif proj and proj.state == 'years_away' %}
+            {% if g.target_date %} · {% endif %}At current pace: <strong>{{ proj.years_away }}+ years away</strong>
+          {% elif proj and proj.state == 'no_progress' %}
+            {% if g.target_date %} · {% endif %}⚠ No recent progress — at this pace you won't reach this goal
+          {% elif proj and proj.state == 'reached' %}
+            {% if g.target_date %} · {% endif %}✅ Target reached
+          {% elif proj and proj.state == 'insufficient_data' %}
+            {% if g.target_date %} · {% endif %}<span style="color:#9ca3af;">not enough recent activity yet to estimate a pace</span>
+          {% endif %}
+        </div>
+
+        {% if g.target_date and g.pace %}
+          {% if g.pace.overdue %}
+            <div class="small text-danger">Target date has passed — £{{ "%.2f"|format(g.pace.remaining_amount) }} still needed.</div>
+          {% else %}
+            <div class="small text-muted">Suggested pace: <strong>£{{ "%.2f"|format(g.pace.monthly_pace) }}/month</strong></div>
+            {% if safe_to_spend_for_goals is not none and g.pace.monthly_pace > safe_to_spend_for_goals %}
+              <div class="small" style="color:#b45309;">⚠️ More than your current Safe to Spend (£{{ "%.2f"|format(safe_to_spend_for_goals) }})</div>
             {% endif %}
           {% endif %}
         {% endif %}

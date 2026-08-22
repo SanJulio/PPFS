@@ -1724,9 +1724,20 @@ def home():
         goals_home = [dict(zip(_gcols, row)) for row in _gcur.fetchall()] if USE_POSTGRES else [dict(row) for row in _gcur.fetchall()]
         _gcur.close()
         release_db(_gdb)
+        _accounts_by_id_home = {a["id"]: a for a in get_all_accounts(current_user.id)}
         for _g in goals_home:
             _g["target_amount"] = float(_g["target_amount"] or 0)
-            _g["progress"] = _compute_goal_progress(_g, current_user.id)
+            _g["progress"] = _compute_goal_progress(_g, current_user.id, accounts_by_id=_accounts_by_id_home)
+            # Only worth computing a pace/on-track projection when there's a
+            # target date to compare against — Home's card is compact and
+            # only ever surfaces a small colour cue, not the full projected
+            # date text (see templates/index.html), so there's nothing to
+            # show here for a goal with no target date anyway.
+            if _g.get("target_date"):
+                _recent_pace = _compute_goal_recent_pace(_g, current_user.id, accounts_by_id=_accounts_by_id_home)
+                _g["projection"] = _project_goal_completion(_g["progress"], _recent_pace, _g.get("target_date"))
+            else:
+                _g["projection"] = None
     except Exception as e:
         logger.debug(f"Home goals summary error: {e}")
         goals_home = []
@@ -3929,6 +3940,180 @@ def _suggest_goal_pace(target_amount, progress_amount, target_date_str):
     }
 
 
+def _compute_goal_recent_pace(goal, user_id, accounts_by_id=None):
+    """Real recent £/day pace of progress toward a goal — the inverse of
+    _suggest_goal_pace(): that one asks "given a target date, what pace is
+    needed"; this asks "given actual recent behaviour, what pace is really
+    happening". Returns None when there isn't enough real data to
+    responsibly measure a rate, rather than a falsely precise number.
+
+    - Standalone: uses logged goal_contributions. Prefers contributions
+      from the last 90 days (genuinely recent); a sparse logger with fewer
+      than 2 in that window falls back to their last 5 contributions
+      regardless of age, so an infrequent-but-real logger still gets a
+      rate instead of nothing. Needs at least 2 total contributions ever —
+      a single data point has no time span to measure a rate over.
+    - Linked: reconstructs the account's balance at the start of the
+      observed window from its real transaction history (the same
+      balance-at-a-past-date technique the Forecast chart's historical
+      scrollback used to use — but here that's exactly the point: this
+      calculation genuinely needs to measure real recent account activity,
+      not imply generic chart history), then measures the change using the
+      same abs()-based magnitude approach as _compute_goal_progress so it
+      works whether the balance is growing (savings) or shrinking (debt).
+      A shrinking savings balance or a growing debt balance correctly
+      yields a negative pace — a real "things are moving the wrong way"
+      signal, not clamped away.
+
+    The span used for the day-rate denominator is the actual span covered
+    by the observed activity (today minus the earliest data point used),
+    not a fixed 90 days — a lump sum that happened 10 days ago should read
+    as a fast recent pace, not be diluted across an artificial 90-day
+    window it didn't actually occur across.
+    """
+    linked_account_id = goal.get("linked_account_id")
+    today = date.today()
+
+    if linked_account_id:
+        if accounts_by_id is None:
+            accounts_by_id = {a["id"]: a for a in get_all_accounts(user_id)}
+        acc = accounts_by_id.get(linked_account_id)
+        if acc is None:
+            return None
+        current_balance = float(acc["balance"] or 0)
+        account_name = acc["name"]
+
+        db = get_db()
+        cursor = db.cursor()
+        cutoff = (today - timedelta(days=90)).isoformat()
+        if USE_POSTGRES:
+            cursor.execute(
+                "SELECT amount, date FROM transactions WHERE account=%s AND user_id=%s AND date >= %s ORDER BY date ASC",
+                (account_name, user_id, cutoff),
+            )
+        else:
+            cursor.execute(
+                "SELECT amount, date FROM transactions WHERE account=? AND user_id=? AND date >= ? ORDER BY date ASC",
+                (account_name, user_id, cutoff),
+            )
+        rows = cursor.fetchall()
+        cursor.close()
+        release_db(db)
+        if not rows:
+            return None
+
+        net_in_window = sum(float(r[0] if USE_POSTGRES else r["amount"]) for r in rows)
+        earliest_date = date.fromisoformat(str(rows[0][1] if USE_POSTGRES else rows[0]["date"]))
+        span_days = max(1, (today - earliest_date).days)
+        balance_then = current_balance - net_in_window
+
+        if goal.get("goal_type") == "debt":
+            delta = abs(balance_then) - abs(current_balance)
+        else:
+            delta = current_balance - balance_then
+        return delta / span_days
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT amount, date FROM goal_contributions WHERE goal_id=%s AND user_id=%s ORDER BY date DESC", (goal["id"], user_id))
+    else:
+        cursor.execute("SELECT amount, date FROM goal_contributions WHERE goal_id=? AND user_id=? ORDER BY date DESC", (goal["id"], user_id))
+    rows = cursor.fetchall()
+    cursor.close()
+    release_db(db)
+
+    contributions = [
+        (float(r[0] if USE_POSTGRES else r["amount"]), str(r[1] if USE_POSTGRES else r["date"]))
+        for r in rows
+    ]
+    if len(contributions) < 2:
+        return None
+
+    cutoff = (today - timedelta(days=90)).isoformat()
+    window = [c for c in contributions if c[1] >= cutoff]
+    if len(window) < 2:
+        window = contributions[:5]
+
+    earliest_date = min(date.fromisoformat(c[1]) for c in window)
+    span_days = max(1, (today - earliest_date).days)
+    total = sum(c[0] for c in window)
+    return total / span_days
+
+
+def _project_goal_completion(progress, pace_per_day, target_date_str=None):
+    """Projects a completion date from real recent pace — independent of
+    whether a target date exists, since that's often the most useful thing
+    to know about a goal with no fixed deadline. If a target date IS set,
+    compares the projection against it: on/before target is "on track"
+    (green); up to 30 days after is "amber" (slipping but close); more than
+    30 days after — or no realistic path to completion at all — is "red".
+    Recalculated fresh from current data every call, never stored.
+
+    A genuinely tiny recent pace (e.g. one small contribution logged months
+    apart) produces a technically-correct but absurd result if extrapolated
+    literally — a specific calendar date decades or centuries out. Past a
+    10-year horizon this switches to a "years_away" state (an honest rough
+    figure, e.g. "12+ years") instead of a fabricated-looking precise date —
+    still real information ("this is going nowhere at the current rate"),
+    just not presented with false precision.
+    """
+    remaining = progress["target_amount"] - progress["progress_amount"]
+    today = date.today()
+    FAR_FUTURE_DAYS = 3650  # 10 years
+
+    years_away = None
+    if pace_per_day is None:
+        state = "insufficient_data"
+        projected_date = None
+    elif remaining <= 0:
+        state = "reached"
+        projected_date = today.isoformat()
+    elif pace_per_day <= 0:
+        state = "no_progress"
+        projected_date = None
+    else:
+        days_needed = remaining / pace_per_day
+        if days_needed > FAR_FUTURE_DAYS:
+            state = "years_away"
+            projected_date = None
+            years_away = int(days_needed // 365)
+        else:
+            projected_date = (today + timedelta(days=round(days_needed))).isoformat()
+            state = "projected"
+
+    on_track = None
+    status_color = None
+    if target_date_str:
+        try:
+            target_date_obj = date.fromisoformat(str(target_date_str))
+        except (ValueError, TypeError):
+            target_date_obj = None
+        if target_date_obj is not None:
+            if state == "reached":
+                on_track, status_color = True, "green"
+            elif state in ("no_progress", "years_away"):
+                on_track, status_color = False, "red"
+            elif state == "projected":
+                days_over = (date.fromisoformat(projected_date) - target_date_obj).days
+                if days_over <= 0:
+                    on_track, status_color = True, "green"
+                elif days_over <= 30:
+                    on_track, status_color = False, "amber"
+                else:
+                    on_track, status_color = False, "red"
+            # state == "insufficient_data" -> on_track stays None, can't judge yet
+
+    return {
+        "state": state,
+        "projected_date": projected_date,
+        "years_away": years_away,
+        "pace_per_day": round(pace_per_day, 2) if pace_per_day is not None else None,
+        "on_track": on_track,
+        "status_color": status_color,
+    }
+
+
 def _get_safe_to_spend(user_id):
     """Reuses the same Safe to Spend figure shown on Home, so a goal's
     suggested pace can be gently flagged if it looks unrealistic against
@@ -4055,6 +4240,8 @@ def manage():
             g["status"] = "completed"
         g["progress"] = progress
         g["pace"] = _suggest_goal_pace(progress["target_amount"], progress["progress_amount"], g.get("target_date"))
+        recent_pace = _compute_goal_recent_pace(g, uid, accounts_by_id=accounts_by_id)
+        g["projection"] = _project_goal_completion(progress, recent_pace, g.get("target_date"))
         g["contributions"] = contributions_by_goal.get(g["id"], [])
 
     safe_to_spend_for_goals = _get_safe_to_spend(uid) if goals else None

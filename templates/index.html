@@ -744,13 +744,14 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
         <span class="small fw-semibold" style="color:var(--brand);white-space:nowrap;">View all →</span>
       </div>
       {% for g in goals_home[:3] %}
+      {% set _dot = {'green': '🟢', 'amber': '🟡', 'red': '🔴'}.get(g.projection.status_color) if g.projection else None %}
       <div class="{% if not loop.last %}mb-2{% endif %}">
         <div class="d-flex justify-content-between align-items-center mb-1 gap-2" style="font-size:12px;">
           <span class="fw-semibold text-truncate" style="color:#111;min-width:0;">{{ g.name }}</span>
           {% if goals_home|length == 1 %}
-          <span class="text-muted flex-shrink-0">£{{ "%.0f"|format(g.progress.progress_amount) }} / £{{ "%.0f"|format(g.progress.target_amount) }} · {{ g.progress.progress_pct }}%</span>
+          <span class="text-muted flex-shrink-0">£{{ "%.0f"|format(g.progress.progress_amount) }} / £{{ "%.0f"|format(g.progress.target_amount) }} · {% if _dot %}{{ _dot }} {% endif %}{{ g.progress.progress_pct }}%</span>
           {% else %}
-          <span class="text-muted flex-shrink-0">{{ g.progress.progress_pct }}%</span>
+          <span class="text-muted flex-shrink-0">{% if _dot %}{{ _dot }} {% endif %}{{ g.progress.progress_pct }}%</span>
           {% endif %}
         </div>
         <div class="progress rounded-pill" style="height:6px;background:#e9ecef;">
