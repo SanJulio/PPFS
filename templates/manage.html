@@ -911,12 +911,13 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 
         {% set proj = g.projection %}
         {% set proj_color = {'green': '#198754', 'amber': '#b45309', 'red': '#dc3545'}.get(proj.status_color) if proj else None %}
-        <div class="small mb-1" style="color:{{ proj_color or '#6c757d' }};">
+        {% set pace_label = ('🔮 Estimated (based on your typical spending)' if (proj and proj.is_estimate) else 'At current pace') %}
+        <div class="small mb-1" style="color:{{ proj_color or '#6c757d' }};{% if proj and proj.is_estimate %} font-style:italic;{% endif %}">
           {% if g.target_date %}Target: {{ g.target_date }}{% endif %}
           {% if proj and proj.state == 'projected' %}
-            {% if g.target_date %} · {% endif %}At current pace: <strong>{{ proj.projected_date }}</strong>{% if proj.on_track is not none %}{{ ' ✓ on track' if proj.on_track else ' ⚠ behind target' }}{% endif %}
+            {% if g.target_date %} · {% endif %}{{ pace_label }}: <strong>{{ proj.projected_date }}</strong>{% if proj.on_track is not none %}{{ ' ✓ on track' if proj.on_track else ' ⚠ behind target' }}{% endif %}
           {% elif proj and proj.state == 'years_away' %}
-            {% if g.target_date %} · {% endif %}At current pace: <strong>{{ proj.years_away }}+ years away</strong>
+            {% if g.target_date %} · {% endif %}{{ pace_label }}: <strong>{{ proj.years_away }}+ years away</strong>
           {% elif proj and proj.state == 'no_progress' %}
             {% if g.target_date %} · {% endif %}⚠ No recent progress — at this pace you won't reach this goal
           {% elif proj and proj.state == 'reached' %}
@@ -925,6 +926,11 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             {% if g.target_date %} · {% endif %}<span style="color:#9ca3af;">not enough recent activity yet to estimate a pace</span>
           {% endif %}
         </div>
+        {% if proj and proj.is_estimate and proj.pace_per_day %}
+          <div class="small mb-1" style="color:#9ca3af;">
+            Based on your typical Safe to Spend — around £{{ "%.2f"|format(proj.pace_per_day * 30.44) }}/month{% if proj.fallback_goal_count and proj.fallback_goal_count > 1 %}, split evenly across {{ proj.fallback_goal_count }} goals that don't have tracked history yet{% endif %}. This will switch to a real tracked pace once you {{ 'log a couple of contributions' if not g.progress.is_linked else "have a bit more of this account's balance history" }}.
+          </div>
+        {% endif %}
 
         {% if g.target_date and g.pace %}
           {% if g.pace.overdue %}

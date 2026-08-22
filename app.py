@@ -1728,14 +1728,19 @@ def home():
         for _g in goals_home:
             _g["target_amount"] = float(_g["target_amount"] or 0)
             _g["progress"] = _compute_goal_progress(_g, current_user.id, accounts_by_id=_accounts_by_id_home)
-            # Only worth computing a pace/on-track projection when there's a
+        # Batched over every active goal (not just the ones with a target
+        # date) so the fallback-estimate split — see manage()'s Goals tab —
+        # divides across the same denominator here as it does there.
+        _pace_map, _ = _compute_goal_pace_map(goals_home, current_user.id, accounts_by_id=_accounts_by_id_home)
+        for _g in goals_home:
+            # Only worth attaching a pace/on-track projection when there's a
             # target date to compare against — Home's card is compact and
             # only ever surfaces a small colour cue, not the full projected
             # date text (see templates/index.html), so there's nothing to
             # show here for a goal with no target date anyway.
             if _g.get("target_date"):
-                _recent_pace = _compute_goal_recent_pace(_g, current_user.id, accounts_by_id=_accounts_by_id_home)
-                _g["projection"] = _project_goal_completion(_g["progress"], _recent_pace, _g.get("target_date"))
+                _pace_per_day, _is_estimate = _pace_map[_g["id"]]
+                _g["projection"] = _project_goal_completion(_g["progress"], _pace_per_day, _g.get("target_date"), is_estimate=_is_estimate)
             else:
                 _g["projection"] = None
     except Exception as e:
@@ -4041,7 +4046,7 @@ def _compute_goal_recent_pace(goal, user_id, accounts_by_id=None):
     return total / span_days
 
 
-def _project_goal_completion(progress, pace_per_day, target_date_str=None):
+def _project_goal_completion(progress, pace_per_day, target_date_str=None, is_estimate=False):
     """Projects a completion date from real recent pace — independent of
     whether a target date exists, since that's often the most useful thing
     to know about a goal with no fixed deadline. If a target date IS set,
@@ -4057,6 +4062,13 @@ def _project_goal_completion(progress, pace_per_day, target_date_str=None):
     figure, e.g. "12+ years") instead of a fabricated-looking precise date —
     still real information ("this is going nowhere at the current rate"),
     just not presented with false precision.
+
+    is_estimate is a pass-through flag, not something this function decides —
+    the caller sets it when pace_per_day came from the Safe-to-Spend fallback
+    (see _compute_goal_pace_map) rather than real contribution/balance
+    history, so the UI can label an estimate as an estimate. It never
+    changes the maths here, only what gets attached to the result for
+    display.
     """
     remaining = progress["target_amount"] - progress["progress_amount"]
     today = date.today()
@@ -4111,6 +4123,7 @@ def _project_goal_completion(progress, pace_per_day, target_date_str=None):
         "pace_per_day": round(pace_per_day, 2) if pace_per_day is not None else None,
         "on_track": on_track,
         "status_color": status_color,
+        "is_estimate": is_estimate,
     }
 
 
@@ -4137,6 +4150,73 @@ def _get_safe_to_spend(user_id):
     except Exception as e:
         logger.debug(f"_get_safe_to_spend error: {e}")
         return None
+
+
+def _safe_to_spend_daily_rate(user_id):
+    """Converts the cycle-scoped Safe to Spend figure into a £/day rate —
+    used only as an early pace ESTIMATE (see _compute_goal_pace_map) for a
+    goal with not enough real contribution/balance history yet to calculate
+    a genuine pace from. Returns None if Safe to Spend can't be computed;
+    the caller is responsible for treating a non-positive result as "no
+    realistic estimate" rather than suggesting a pace that doesn't exist."""
+    try:
+        import cycle_engine as _ce
+        cyc = _ce.get_cycle(user_id)
+        safe_boundary = cyc.get("safe_boundary")
+        safe_spending = _get_safe_to_spend(user_id)
+        if safe_spending is None or safe_boundary is None:
+            return None
+        days = max(1, (safe_boundary - date.today()).days + 1)
+        return safe_spending / days
+    except Exception as e:
+        logger.debug(f"_safe_to_spend_daily_rate error: {e}")
+        return None
+
+
+def _compute_goal_pace_map(goals, user_id, accounts_by_id=None):
+    """For a batch of a user's goals, decides which pace each one should
+    project from: real recent pace where there's enough real data, or —
+    only for an *active* goal that genuinely has none yet — a share of the
+    user's Safe-to-Spend-derived daily rate as an early estimate.
+
+    This has to run as a batch (not goal-by-goal) because the fallback
+    estimate is split evenly across however many active goals currently
+    need it, so no single goal's estimate implies the user's entire typical
+    leftover is available to it alone (see point 4 of the brief). A
+    completed goal never participates — it doesn't need an estimate, and
+    including it would just shrink everyone else's share for no reason.
+    A non-positive Safe to Spend produces no fallback at all — never
+    suggest a positive pace that doesn't exist.
+
+    Returns (pace_map, fallback_goal_count) where pace_map is
+    {goal_id: (pace_per_day_or_None, is_estimate_bool)}.
+    """
+    if accounts_by_id is None:
+        accounts_by_id = {a["id"]: a for a in get_all_accounts(user_id)}
+
+    real_paces = {g["id"]: _compute_goal_recent_pace(g, user_id, accounts_by_id=accounts_by_id) for g in goals}
+    active_needing_fallback = [
+        g["id"] for g in goals
+        if g.get("status", "active") == "active" and real_paces[g["id"]] is None
+    ]
+
+    fallback_rate = None
+    if active_needing_fallback:
+        safe_daily = _safe_to_spend_daily_rate(user_id)
+        if safe_daily is not None and safe_daily > 0:
+            fallback_rate = safe_daily / len(active_needing_fallback)
+
+    pace_map = {}
+    for g in goals:
+        real_pace = real_paces[g["id"]]
+        if real_pace is not None:
+            pace_map[g["id"]] = (real_pace, False)
+        elif g.get("status", "active") == "active" and fallback_rate is not None:
+            pace_map[g["id"]] = (fallback_rate, True)
+        else:
+            pace_map[g["id"]] = (None, False)
+
+    return pace_map, len(active_needing_fallback)
 
 
 def _mark_goal_completed_if_reached(goal_id, user_id):
@@ -4240,9 +4320,18 @@ def manage():
             g["status"] = "completed"
         g["progress"] = progress
         g["pace"] = _suggest_goal_pace(progress["target_amount"], progress["progress_amount"], g.get("target_date"))
-        recent_pace = _compute_goal_recent_pace(g, uid, accounts_by_id=accounts_by_id)
-        g["projection"] = _project_goal_completion(progress, recent_pace, g.get("target_date"))
         g["contributions"] = contributions_by_goal.get(g["id"], [])
+
+    # Batched (not per-goal in isolation) so the Safe-to-Spend fallback
+    # estimate — used only for a goal without enough real data yet — can be
+    # split across however many active goals actually need it right now,
+    # rather than each one implying the full amount is available to it alone.
+    pace_map, fallback_goal_count = _compute_goal_pace_map(goals, uid, accounts_by_id=accounts_by_id)
+    for g in goals:
+        pace_per_day, is_estimate = pace_map[g["id"]]
+        g["projection"] = _project_goal_completion(g["progress"], pace_per_day, g.get("target_date"), is_estimate=is_estimate)
+        if is_estimate:
+            g["projection"]["fallback_goal_count"] = fallback_goal_count
 
     safe_to_spend_for_goals = _get_safe_to_spend(uid) if goals else None
 

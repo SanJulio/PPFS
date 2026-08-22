@@ -367,8 +367,12 @@ class TestGoalsTabProjectionDisplay:
         resp1 = auth_client.get("/manage?tab=goals")
         body1 = resp1.get_data(as_text=True)
         section1 = body1[body1.find("Live goal"):body1.find("Live goal") + 2600]
-        # No transactions yet -> insufficient data
-        assert "not enough recent activity" in section1
+        # No real transaction history yet -> falls back to the Safe-to-Spend
+        # estimate (see tests/test_goal_fallback_pace.py) rather than real
+        # tracked pace - this account has a positive balance so Safe to
+        # Spend is positive too, meaning a fallback estimate is available.
+        assert "Estimated" in section1
+        assert "At current pace" not in section1
 
         _add_tx(db_conn, test_user["id"], "Savings", 2000.0, 10)
         db_conn.execute("UPDATE accounts SET balance = balance + 2000 WHERE id=?", (acc_id,))
@@ -377,7 +381,9 @@ class TestGoalsTabProjectionDisplay:
         resp2 = auth_client.get("/manage?tab=goals")
         body2 = resp2.get_data(as_text=True)
         section2 = body2[body2.find("Live goal"):body2.find("Live goal") + 2600]
+        # Now has real transaction history -> switches to genuine tracked pace
         assert "At current pace" in section2
+        assert "Estimated" not in section2
         assert section1 != section2
 
 
