@@ -153,8 +153,18 @@ class TestMultipleGoalsSplitTheEstimate:
         resolve correctly, same as the route itself always has in practice."""
         import re
 
+        # Target amounts are deliberately large here (see
+        # TestFallbackNeverImpliesUnrealisticSpeed below) - the fallback
+        # estimate is now capped so it can never imply finishing a goal in
+        # under ~1 month (see _cap_fallback_rate_for_goal). A £1,000 goal
+        # against this account's real surplus would hit that cap in BOTH
+        # the single- and two-goal cases and mask the even-split arithmetic
+        # this test exists to verify, since both would clamp to the same
+        # capped figure regardless of how many goals shared the estimate.
+        # A large target keeps this specific test isolated to just the
+        # splitting behaviour.
         _add_income(db_conn, test_user["id"], amount=3000.0)
-        _add_goal(db_conn, test_user["id"], "GoalOne", 1000.0)
+        _add_goal(db_conn, test_user["id"], "GoalOne", 100000.0)
 
         resp1 = auth_client.get("/manage?tab=goals")
         section1 = resp1.get_data(as_text=True)
@@ -163,7 +173,7 @@ class TestMultipleGoalsSplitTheEstimate:
         assert match1, "expected a £X/month estimate with a single goal"
         single_rate = float(match1.group(1))
 
-        _add_goal(db_conn, test_user["id"], "GoalTwo", 1000.0)
+        _add_goal(db_conn, test_user["id"], "GoalTwo", 100000.0)
         resp2 = auth_client.get("/manage?tab=goals")
         section2 = resp2.get_data(as_text=True)
         section2 = section2[section2.find("GoalOne"):section2.find("GoalOne") + 4200]
@@ -316,3 +326,134 @@ class TestHomeDotDistinguishesEstimate:
         body = resp.get_data(as_text=True)
         section = body[body.find("Home real goal"):body.find("Home real goal") + 300]
         assert "~" not in section
+
+
+# ── 7. FALLBACK NEVER IMPLIES UNREALISTIC SPEED ──────────────────────────────
+class TestFallbackNeverImpliesUnrealisticSpeed:
+    """Regression coverage for a real bug report: the fallback estimate
+    (shown as "Based on your typical Safe to Spend — around £X/month") could
+    show implausibly large figures - e.g. £8,764.28/month against a modest
+    goal. Two compounding causes, both fixed here:
+
+    1. _safe_to_spend_daily_rate() divided the live Safe-to-Spend snapshot
+       by days-remaining-until-the-cycle-boundary rather than the cycle's
+       full length. Safe to Spend already includes the full current balance
+       (not just "typical" recurring income), so dividing that lump by a
+       small number of days-left-in-cycle (e.g. checking near a manual
+       cycle's month-end) inflated the implied daily/monthly rate by
+       several times over, purely depending on which day of the cycle the
+       page happened to be viewed on - not a reflection of anything that
+       actually changed about the user's finances.
+    2. Nothing capped the resulting £/month figure against the goal itself,
+       so a real (if large) balance/surplus could imply completing a small
+       goal in days rather than months - technically consistent with the
+       numbers on screen, but not a meaningful "typical monthly pace".
+    """
+
+    def test_repro_scenario_no_longer_produces_an_inflated_figure(self, auth_client, db_conn, test_user):
+        """The exact scenario that produced the original bug report's
+        absurd figure: a modest account (£1,000 balance) with a normal
+        £3,000/month income, viewed partway through a manual cycle. Before
+        the fix this rendered a monthly figure many times larger than even
+        the account's own balance+income; after the fix it's capped to a
+        figure proportionate to what the £1,000 goal itself needs."""
+        import re
+        _add_account(db_conn, test_user["id"], "Current", balance=1000.0)
+        _add_income(db_conn, test_user["id"], amount=3000.0)
+        _add_goal(db_conn, test_user["id"], "Repro goal", 1000.0)
+
+        resp = auth_client.get("/manage?tab=goals")
+        body = resp.get_data(as_text=True)
+        section = body[body.find("Repro goal"):body.find("Repro goal") + 4200]
+        match = re.search(r"around £([\d,\.]+)/month", section)
+        assert match, "expected a £X/month estimate"
+        monthly_figure = float(match.group(1).replace(",", ""))
+        # Never more than the goal's own target - the whole point of the cap.
+        # (The original bug produced £13,528.75 against this exact account.)
+        assert monthly_figure <= 1000.0 + 0.5
+
+    def test_cap_never_implies_completion_faster_than_about_a_month(self, auth_client, db_conn, test_user):
+        """Direct check of the safeguard's core invariant: whatever the raw
+        Safe-to-Spend-derived rate would have been, the capped pace can
+        never imply finishing the goal's remaining amount in under
+        ~30 days, however large the underlying balance/income is. Goes
+        through the real route (see the Flask-Login current_user note on
+        the "split evenly" test above) so Safe to Spend resolves correctly."""
+        import re
+        import app as app_module
+        _add_account(db_conn, test_user["id"], "Current", balance=50000.0)
+        _add_income(db_conn, test_user["id"], amount=10000.0)
+        _add_goal(db_conn, test_user["id"], "Tiny goal, huge surplus", 200.0)
+
+        resp = auth_client.get("/manage?tab=goals")
+        body = resp.get_data(as_text=True)
+        section = body[body.find("Tiny goal, huge surplus"):body.find("Tiny goal, huge surplus") + 4200]
+        match = re.search(r"around £([\d,\.]+)/month", section)
+        assert match, "expected a £X/month estimate"
+        monthly_figure = float(match.group(1).replace(",", ""))
+        implied_daily_pace = monthly_figure / 30.44
+        days_to_complete = 200.0 / implied_daily_pace
+        assert days_to_complete >= app_module._FALLBACK_MIN_DAYS_TO_COMPLETE - 0.5
+
+    def test_cap_does_not_suppress_genuine_large_surplus_for_a_large_goal(self, auth_client, db_conn, test_user):
+        """The safeguard must only catch implausibly FAST estimates, not
+        arbitrarily shrink a large-but-real figure for a goal that's large
+        enough to genuinely warrant it - catching misleading numbers isn't
+        the same as suppressing every large number."""
+        import re
+        _add_account(db_conn, test_user["id"], "Current", balance=200000.0)
+        _add_income(db_conn, test_user["id"], amount=5000.0)
+        _add_goal(db_conn, test_user["id"], "Big real goal", 500000.0)
+
+        resp = auth_client.get("/manage?tab=goals")
+        body = resp.get_data(as_text=True)
+        section = body[body.find("Big real goal"):body.find("Big real goal") + 4200]
+        match = re.search(r"around £([\d,\.]+)/month", section)
+        assert match, "expected a £X/month estimate"
+        monthly_figure = float(match.group(1).replace(",", ""))
+        # A genuinely large surplus against a genuinely large goal should
+        # NOT be clamped down - the cap only bites when the implied pace
+        # would finish the goal in under a month, and this is nowhere near
+        # completing a £500,000 goal that fast.
+        assert monthly_figure < 500000.0
+        assert monthly_figure > 50000.0  # still a substantial, real figure - not suppressed
+
+    def test_daily_rate_no_longer_scales_with_days_remaining_in_cycle(self):
+        """The old formula divided by days-until-safe_boundary, so the same
+        underlying Safe to Spend figure produced a different (and
+        increasingly inflated, the closer to the boundary) daily rate
+        purely depending on how many days happened to be left in the cycle
+        on whatever day this was checked. The fixed formula divides by the
+        cycle's fixed length instead, so the result no longer depends on
+        "today" at all - confirmed by holding safe_spending and the cycle's
+        start/boundary fixed and checking the rate is exactly
+        safe_spending / cycle_length."""
+        import datetime as _dt
+        import unittest.mock as mock
+        import app as app_module
+
+        fixed_cycle = {
+            "display_start": _dt.date(2026, 8, 1),
+            "display_end": _dt.date(2026, 8, 31),
+            "safe_boundary": _dt.date(2026, 8, 31),
+            "mode_used": "manual",
+            "primary_source_name": None,
+        }
+        with mock.patch("cycle_engine.get_cycle", return_value=fixed_cycle), \
+             mock.patch.object(app_module, "_get_safe_to_spend", return_value=4000.0):
+            rate = app_module._safe_to_spend_daily_rate(999999)
+        # Cycle length = 31 days (Aug 1 - Aug 31 inclusive) - NOT dependent
+        # on what "today" is, unlike the old days-until-boundary formula.
+        assert rate == pytest.approx(4000.0 / 31, rel=1e-9)
+
+    def test_non_positive_remaining_returns_fallback_rate_unchanged(self, app):
+        """A goal with target_amount 0 (remaining <= 0) is a degenerate
+        case the cap doesn't need to touch - _project_goal_completion
+        already short-circuits to 'reached' before pace_per_day matters, so
+        this just confirms the helper doesn't error and passes the rate
+        through untouched rather than dividing by zero."""
+        import app as app_module
+        goal = {"id": 999999, "target_amount": 0.0, "linked_account_id": None,
+                "goal_type": "savings", "status": "active"}
+        capped = app_module._cap_fallback_rate_for_goal(goal, 500.0, 999999, {})
+        assert capped == 500.0

@@ -4261,19 +4261,62 @@ def _safe_to_spend_daily_rate(user_id):
     goal with not enough real contribution/balance history yet to calculate
     a genuine pace from. Returns None if Safe to Spend can't be computed;
     the caller is responsible for treating a non-positive result as "no
-    realistic estimate" rather than suggesting a pace that doesn't exist."""
+    realistic estimate" rather than suggesting a pace that doesn't exist.
+
+    The denominator is deliberately the cycle's FULL length (display_start
+    to safe_boundary), not "days remaining from today". Safe to Spend is a
+    live, point-in-time figure — current balance + income still to arrive
+    minus bills still to come, through to the next payday — so it naturally
+    shrinks as bills/spending happen and grows again right after payday.
+    Dividing that live snapshot by the shrinking days-left-in-cycle instead
+    of a stable cycle length means the exact same underlying finances can
+    imply a wildly different "monthly pace" purely depending on which day
+    of the cycle someone happens to check (e.g. 9 days left in a 31-day
+    cycle already inflates the rate ~3.4x; 1-2 days left inflates it by an
+    order of magnitude) — not a reflection of anything that actually
+    changed. Prorating over the full cycle keeps the estimate stable
+    regardless of when it's viewed."""
     try:
         import cycle_engine as _ce
         cyc = _ce.get_cycle(user_id)
         safe_boundary = cyc.get("safe_boundary")
+        display_start = cyc.get("display_start")
         safe_spending = _get_safe_to_spend(user_id)
-        if safe_spending is None or safe_boundary is None:
+        if safe_spending is None or safe_boundary is None or display_start is None:
             return None
-        days = max(1, (safe_boundary - date.today()).days + 1)
-        return safe_spending / days
+        cycle_len = max(1, (safe_boundary - display_start).days + 1)
+        return safe_spending / cycle_len
     except Exception as e:
         logger.debug(f"_safe_to_spend_daily_rate error: {e}")
         return None
+
+
+# A fallback pace estimate implying the WHOLE remaining goal would be
+# finished in under this many days isn't a meaningful "typical monthly
+# pace" - there's no real tracked history backing a claim that fast, only
+# a live Safe-to-Spend snapshot. Matches the 30.44-day/month constant used
+# everywhere else in this feature for £/day <-> £/month conversions.
+_FALLBACK_MIN_DAYS_TO_COMPLETE = 30.44
+
+
+def _cap_fallback_rate_for_goal(goal, fallback_rate, user_id, accounts_by_id):
+    """Caps a goal's share of the Safe-to-Spend fallback rate so it never
+    implies completing the goal's entire remaining amount in under
+    _FALLBACK_MIN_DAYS_TO_COMPLETE days - regardless of what's driving the
+    uncapped figure (a genuinely large balance, a modest goal splitting a
+    real surplus among few goals, or anything else). Only ever pulls the
+    rate DOWN; a fallback_rate that's already realistic for this goal is
+    returned unchanged."""
+    try:
+        progress = _compute_goal_progress(goal, user_id, accounts_by_id=accounts_by_id)
+        remaining = progress["target_amount"] - progress["progress_amount"]
+    except Exception as e:
+        logger.debug(f"_cap_fallback_rate_for_goal error: {e}")
+        return fallback_rate
+    if remaining <= 0:
+        return fallback_rate
+    max_plausible_rate = remaining / _FALLBACK_MIN_DAYS_TO_COMPLETE
+    return min(fallback_rate, max_plausible_rate)
 
 
 def _compute_goal_pace_map(goals, user_id, accounts_by_id=None):
@@ -4290,6 +4333,17 @@ def _compute_goal_pace_map(goals, user_id, accounts_by_id=None):
     including it would just shrink everyone else's share for no reason.
     A non-positive Safe to Spend produces no fallback at all — never
     suggest a positive pace that doesn't exist.
+
+    Each goal's share is additionally capped so it never implies finishing
+    the ENTIRE remaining goal in under about a month (see
+    _cap_fallback_rate_for_goal below) — a live Safe-to-Spend-derived
+    estimate can be technically consistent with the numbers on screen (a
+    genuinely large balance, or simply few goals splitting a real surplus)
+    while still being a misleading thing to present as a "typical monthly
+    pace": there's no real tracked history yet backing a claim that fast.
+    This only ever pulls the number DOWN toward something plausible for
+    this specific goal — it never invents a faster pace than what the raw
+    fallback share would have given.
 
     Returns (pace_map, fallback_goal_count) where pace_map is
     {goal_id: (pace_per_day_or_None, is_estimate_bool)}.
@@ -4315,7 +4369,8 @@ def _compute_goal_pace_map(goals, user_id, accounts_by_id=None):
         if real_pace is not None:
             pace_map[g["id"]] = (real_pace, False)
         elif g.get("status", "active") == "active" and fallback_rate is not None:
-            pace_map[g["id"]] = (fallback_rate, True)
+            capped_rate = _cap_fallback_rate_for_goal(g, fallback_rate, user_id, accounts_by_id)
+            pace_map[g["id"]] = (capped_rate, True)
         else:
             pace_map[g["id"]] = (None, False)
 
