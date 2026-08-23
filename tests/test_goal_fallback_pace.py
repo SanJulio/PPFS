@@ -59,6 +59,14 @@ def _add_contribution(db_conn, goal_id, user_id, amount, days_ago):
     db_conn.commit()
 
 
+def _add_bill(db_conn, user_id, name, amount, day, account="Current", frequency="monthly"):
+    db_conn.execute(
+        "INSERT INTO scheduled_expenses (name, amount, day, account, user_id, frequency) VALUES (?,?,?,?,?,?)",
+        (name, amount, day, account, user_id, frequency),
+    )
+    db_conn.commit()
+
+
 # ── 1. FALLBACK APPEARS FOR A BRAND NEW GOAL ─────────────────────────────────
 class TestFallbackReplacesInsufficientData:
     def test_new_goal_shows_estimate_instead_of_blank_message(self, auth_client, db_conn, test_user, test_account):
@@ -399,11 +407,21 @@ class TestFallbackNeverImpliesUnrealisticSpeed:
         """The safeguard must only catch implausibly FAST estimates, not
         arbitrarily shrink a large-but-real figure for a goal that's large
         enough to genuinely warrant it - catching misleading numbers isn't
-        the same as suppressing every large number."""
+        the same as suppressing every large number.
+
+        Deliberately uses a genuinely large RECURRING INCOME (£100,000/month,
+        a high earner) rather than just a large balance - since the August
+        2026 fix, the fallback is also capped at real recurring income minus
+        bills (see TestRecurringIncomeMinusBillsCeiling below), so a large
+        balance alone with only a modest income would now correctly be
+        capped down to that modest income figure. The goal target is large
+        enough that the separate 1-month-completion cap doesn't bind either,
+        isolating this test to just the "large real surplus isn't
+        suppressed" behaviour it's meant to verify."""
         import re
         _add_account(db_conn, test_user["id"], "Current", balance=200000.0)
-        _add_income(db_conn, test_user["id"], amount=5000.0)
-        _add_goal(db_conn, test_user["id"], "Big real goal", 500000.0)
+        _add_income(db_conn, test_user["id"], amount=100000.0)
+        _add_goal(db_conn, test_user["id"], "Big real goal", 5000000.0)
 
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
@@ -411,11 +429,9 @@ class TestFallbackNeverImpliesUnrealisticSpeed:
         match = re.search(r"around £([\d,\.]+)/month", section)
         assert match, "expected a £X/month estimate"
         monthly_figure = float(match.group(1).replace(",", ""))
-        # A genuinely large surplus against a genuinely large goal should
-        # NOT be clamped down - the cap only bites when the implied pace
-        # would finish the goal in under a month, and this is nowhere near
-        # completing a £500,000 goal that fast.
-        assert monthly_figure < 500000.0
+        # A genuinely large recurring income against a genuinely large goal
+        # should NOT be clamped down - neither cap should bite here.
+        assert monthly_figure < 5000000.0
         assert monthly_figure > 50000.0  # still a substantial, real figure - not suppressed
 
     def test_daily_rate_no_longer_scales_with_days_remaining_in_cycle(self):
@@ -457,3 +473,185 @@ class TestFallbackNeverImpliesUnrealisticSpeed:
                 "goal_type": "savings", "status": "active"}
         capped = app_module._cap_fallback_rate_for_goal(goal, 500.0, 999999, {})
         assert capped == 500.0
+
+
+# ── 8. HARD CEILING AT REAL RECURRING INCOME MINUS BILLS ─────────────────────
+class TestRecurringIncomeMinusBillsCeiling:
+    """A follow-up fix to the fallback estimate: even with a stable cycle-
+    length denominator and the 1-month-completion cap (both above), a real
+    user reported the fallback STILL exceeding their actual salary minus
+    bills - because Safe to Spend is a live snapshot that includes the
+    current account balance and drops bills once their due-date has passed
+    within the cycle (both correct for ITS purpose), neither of which is a
+    stable recurring monthly flow. _recurring_income_bills_daily_rate() now
+    provides a hard ceiling - the user's real recurring monthly income
+    minus real recurring monthly bills via normalised_totals(), the same
+    helper manage.html's own Income/Bills totals use - that the fallback
+    can never exceed, regardless of balance or where in the cycle it's
+    checked."""
+
+    def test_estimate_matches_regardless_of_whether_bills_have_already_passed_in_the_cycle(self, auth_client, db_conn, test_user):
+        """The exact instability from the investigation: identical income
+        and bills, only the bills' due-dates moved from before today to
+        after today. Before this fix, Safe to Spend swung by the full bill
+        total depending on which had already "fallen off" the future-bills
+        list. The ceiling should make both scenarios converge on the same
+        capped £/month figure now."""
+        import re
+
+        # All bills fall due on the 1st-20th - already passed by today (23rd)
+        _add_account(db_conn, test_user["id"], "Current", balance=650.0)
+        _add_income(db_conn, test_user["id"], amount=2200.0, day=28)
+        _add_bill(db_conn, test_user["id"], "Rent", 900.0, 1)
+        _add_bill(db_conn, test_user["id"], "Utilities", 150.0, 5)
+        _add_bill(db_conn, test_user["id"], "Phone", 30.0, 10)
+        _add_bill(db_conn, test_user["id"], "Subscriptions", 60.0, 15)
+        _add_bill(db_conn, test_user["id"], "Groceries budget", 260.0, 20)
+        _add_goal(db_conn, test_user["id"], "Bills passed goal", 5000.0)
+
+        resp = auth_client.get("/manage?tab=goals")
+        body = resp.get_data(as_text=True)
+        section = body[body.find("Bills passed goal"):body.find("Bills passed goal") + 4200]
+        match = re.search(r"around £([\d,\.]+)/month", section)
+        assert match
+        estimate = float(match.group(1).replace(",", ""))
+
+        # See test_estimate_matches_when_bills_have_not_yet_passed_in_the_cycle
+        # below for the complementary bills-still-ahead scenario - both
+        # converge on this same figure.
+        real_income_minus_bills = 2200.0 - (900.0 + 150.0 + 30.0 + 60.0 + 260.0)
+        assert estimate == pytest.approx(real_income_minus_bills, abs=1.0)
+
+    def test_estimate_matches_when_bills_have_not_yet_passed_in_the_cycle(self, auth_client, db_conn, test_user):
+        """Same income/bills totals as the test above, but with every bill's
+        due-date still ahead of today (24th-29th) - confirms this scenario
+        converges on the SAME capped figure as the bills-already-passed
+        scenario, rather than a different, bill-timing-dependent number."""
+        import re
+        _add_account(db_conn, test_user["id"], "Current", balance=650.0)
+        _add_income(db_conn, test_user["id"], amount=2200.0, day=28)
+        _add_bill(db_conn, test_user["id"], "Rent", 900.0, 24)
+        _add_bill(db_conn, test_user["id"], "Utilities", 150.0, 25)
+        _add_bill(db_conn, test_user["id"], "Phone", 30.0, 26)
+        _add_bill(db_conn, test_user["id"], "Subscriptions", 60.0, 27)
+        _add_bill(db_conn, test_user["id"], "Groceries budget", 260.0, 29)
+        _add_goal(db_conn, test_user["id"], "Bills ahead goal", 5000.0)
+
+        resp = auth_client.get("/manage?tab=goals")
+        body = resp.get_data(as_text=True)
+        section = body[body.find("Bills ahead goal"):body.find("Bills ahead goal") + 4200]
+        match = re.search(r"around £([\d,\.]+)/month", section)
+        assert match
+        estimate = float(match.group(1).replace(",", ""))
+
+        real_income_minus_bills = 2200.0 - (900.0 + 150.0 + 30.0 + 60.0 + 260.0)
+        assert estimate == pytest.approx(real_income_minus_bills, abs=1.0)
+
+    def test_large_balance_no_longer_inflates_estimate_beyond_recurring_surplus(self, auth_client, db_conn, test_user):
+        """A large leftover balance is legitimate (accumulated savings) but
+        must not be treated as if it recurs every month - the estimate
+        should track real recurring income minus bills, not the balance."""
+        import re
+        _add_account(db_conn, test_user["id"], "Current", balance=50000.0)
+        _add_income(db_conn, test_user["id"], amount=2000.0, day=25)
+        _add_bill(db_conn, test_user["id"], "Rent", 1200.0, 1)
+        _add_goal(db_conn, test_user["id"], "Large balance goal", 5000.0)
+
+        resp = auth_client.get("/manage?tab=goals")
+        body = resp.get_data(as_text=True)
+        section = body[body.find("Large balance goal"):body.find("Large balance goal") + 4200]
+        match = re.search(r"around £([\d,\.]+)/month", section)
+        assert match
+        estimate = float(match.group(1).replace(",", ""))
+        assert estimate == pytest.approx(800.0, abs=1.0)  # 2000 - 1200, not balance-inflated
+
+    def test_negative_recurring_surplus_shows_honest_message_not_fabricated_figure(self, auth_client, db_conn, test_user):
+        """Bills exceeding income means there's no real recurring surplus at
+        all - even with a large balance sitting in the account, the
+        fallback must not invent a positive £/month figure."""
+        _add_account(db_conn, test_user["id"], "Current", balance=5000.0)
+        _add_income(db_conn, test_user["id"], amount=1000.0, day=25)
+        _add_bill(db_conn, test_user["id"], "Rent", 1500.0, 1)
+        _add_goal(db_conn, test_user["id"], "Negative surplus goal", 5000.0)
+
+        resp = auth_client.get("/manage?tab=goals")
+        body = resp.get_data(as_text=True)
+        section = body[body.find("Negative surplus goal"):body.find("Negative surplus goal") + 4200]
+        assert "around £" not in section
+        assert "not enough recent activity yet to estimate a pace" in section
+
+    def test_zero_income_and_bills_shows_honest_message(self, auth_client, db_conn, test_user):
+        """No tracked income at all (only a balance) means there's nothing
+        to verify a recurring surplus against - correctly suppressed rather
+        than inferring one from the balance alone."""
+        _add_account(db_conn, test_user["id"], "Current", balance=1000.0)
+        _add_goal(db_conn, test_user["id"], "No income goal", 5000.0)
+
+        resp = auth_client.get("/manage?tab=goals")
+        body = resp.get_data(as_text=True)
+        section = body[body.find("No income goal"):body.find("No income goal") + 4200]
+        assert "around £" not in section
+        assert "not enough recent activity yet to estimate a pace" in section
+
+    def test_ceiling_and_completion_speed_cap_stack_whichever_is_lower_wins(self, auth_client, db_conn, test_user):
+        """The two caps address different things (a per-user recurring
+        surplus ceiling vs a per-goal completion-speed ceiling) and must
+        stack correctly - a SMALL goal against a healthy recurring surplus
+        should be bound by the completion-speed cap, not the (much higher)
+        income ceiling."""
+        import re
+        _add_account(db_conn, test_user["id"], "Current", balance=2000.0)
+        _add_income(db_conn, test_user["id"], amount=4000.0, day=25)
+        _add_bill(db_conn, test_user["id"], "Rent", 1000.0, 1)
+        # Real recurring surplus = 4000 - 1000 = 3000/month - but this goal
+        # only needs £300 total, so completing it in 3000/month would be
+        # ~3 days - the completion-speed cap (not the income ceiling) must
+        # be what actually binds here.
+        _add_goal(db_conn, test_user["id"], "Tiny goal", 300.0)
+
+        resp = auth_client.get("/manage?tab=goals")
+        body = resp.get_data(as_text=True)
+        section = body[body.find("Tiny goal"):body.find("Tiny goal") + 4200]
+        match = re.search(r"around £([\d,\.]+)/month", section)
+        assert match
+        estimate = float(match.group(1).replace(",", ""))
+        # Bound by remaining(300)/30.44 days, not by the 3000/month ceiling
+        assert estimate == pytest.approx(300.0, abs=1.0)
+        assert estimate < 3000.0
+
+    def test_real_tracked_pace_is_not_affected_by_the_ceiling(self, auth_client, db_conn, test_user):
+        """The ceiling only applies to the fallback ESTIMATE path - a goal
+        with genuine tracked history (standalone contributions here) must
+        show its real pace even if that real pace happens to exceed what a
+        modest recurring income/bills setup would imply."""
+        _add_income(db_conn, test_user["id"], amount=500.0, day=25)  # modest recurring income
+        _add_bill(db_conn, test_user["id"], "Rent", 400.0, 1)  # ceiling would be ~100/month
+        gid = _add_goal(db_conn, test_user["id"], "Real pace goal", 10000.0)
+        # Real contributions imply a MUCH faster pace than the modest
+        # income/bills ceiling above (£50/day, not the ~£3.28/day ceiling)
+        for days_ago in (20, 10):
+            _add_contribution(db_conn, gid, test_user["id"], 500.0, days_ago)
+
+        resp = auth_client.get("/manage?tab=goals")
+        body = resp.get_data(as_text=True)
+        section = body[body.find("Real pace goal"):body.find("Real pace goal") + 4200]
+        # Real pace produces a projected DATE (not a £/month estimate at
+        # all) - confirm the real-pace path rendered, unaffected by the
+        # ceiling that only gates the fallback path.
+        assert "Estimated" not in section
+        assert "At current pace" in section
+
+    def test_direct_daily_rate_arithmetic(self, app, db_conn, test_user):
+        """Direct check of _recurring_income_bills_daily_rate()'s
+        arithmetic: (monthly income - monthly bills) / 30.44. Uses a
+        weekly-frequency bill to also confirm normalised_totals()'s
+        frequency conversion is applied, not just raw monthly amounts."""
+        import app as app_module
+        _add_income(db_conn, test_user["id"], amount=2000.0, day=25)
+        _add_bill(db_conn, test_user["id"], "Weekly shop", 50.0, 3, frequency="weekly")
+
+        rate = app_module._recurring_income_bills_daily_rate(test_user["id"])
+        assert rate is not None
+        weekly_bill_monthly_eq = 50.0 * (52.0 / 12)
+        expected = (2000.0 - weekly_bill_monthly_eq) / 30.44
+        assert rate == pytest.approx(expected, rel=1e-6)

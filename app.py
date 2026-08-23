@@ -4291,6 +4291,53 @@ def _safe_to_spend_daily_rate(user_id):
         return None
 
 
+def _recurring_income_bills_daily_rate(user_id):
+    """Converts the user's REAL recurring monthly income minus real
+    recurring monthly bills — via normalised_totals(), the same helper
+    manage.html's Income/Bills cards already use for their £/month · £/year
+    totals — into a £/day rate. Used as a hard ceiling on the
+    Safe-to-Spend-derived fallback estimate (see _compute_goal_pace_map):
+    that estimate must never claim a "typical monthly pace" bigger than
+    what the user actually, recurringly, brings in minus what they
+    actually, recurringly, owe.
+
+    Unlike Safe to Spend (a live point-in-time snapshot that includes the
+    current account balance and drops bills once their due-date has passed
+    within the cycle — both correct for its own live-spending-buffer
+    purpose, see _safe_to_spend_daily_rate), this is a genuine stable
+    monthly flow: no balance, no cycle-position sensitivity, no swings
+    based on which bills happen to have already fallen due this month.
+
+    Returns None if it can't be computed; the caller is responsible for
+    treating a non-positive result as "no realistic estimate", same as
+    _safe_to_spend_daily_rate."""
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        if USE_POSTGRES:
+            cursor.execute("SELECT * FROM income WHERE user_id = %s", (user_id,))
+        else:
+            cursor.execute("SELECT * FROM income WHERE user_id = ?", (user_id,))
+        income_cols = [d[0] for d in cursor.description]
+        income_rows = [dict(zip(income_cols, row)) for row in cursor.fetchall()]
+
+        if USE_POSTGRES:
+            cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = %s", (user_id,))
+        else:
+            cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = ?", (user_id,))
+        bill_cols = [d[0] for d in cursor.description]
+        bill_rows = [dict(zip(bill_cols, row)) for row in cursor.fetchall()]
+        cursor.close()
+        release_db(db)
+
+        income_rows = _resolve_income_rows(income_rows, user_id)
+        income_monthly, _, bills_monthly, _ = normalised_totals(income_rows, bill_rows)
+        return (income_monthly - bills_monthly) / 30.44
+    except Exception as e:
+        logger.debug(f"_recurring_income_bills_daily_rate error: {e}")
+        return None
+
+
 # A fallback pace estimate implying the WHOLE remaining goal would be
 # finished in under this many days isn't a meaningful "typical monthly
 # pace" - there's no real tracked history backing a claim that fast, only
@@ -4334,6 +4381,21 @@ def _compute_goal_pace_map(goals, user_id, accounts_by_id=None):
     A non-positive Safe to Spend produces no fallback at all — never
     suggest a positive pace that doesn't exist.
 
+    The shared pool itself is first hard-capped at the user's REAL
+    recurring monthly income minus real recurring monthly bills (see
+    _recurring_income_bills_daily_rate) — Safe to Spend is a live,
+    balance-inclusive, cycle-position-sensitive snapshot (see
+    _safe_to_spend_daily_rate's own docstring), so on its own it can imply
+    a "typical monthly pace" several times larger than what the user
+    actually, recurringly, has left over once income and bills are
+    genuinely accounted for. This ceiling is computed once for the whole
+    batch (a user-level fact, not a per-goal one) and split evenly across
+    the same active_needing_fallback denominator as the Safe-to-Spend pool,
+    for the same "no single goal implies the whole surplus" reasoning. If
+    the real recurring surplus is zero or negative, there's no realistic
+    estimate at all — this suppresses the fallback entirely (None) rather
+    than showing a capped-to-zero or otherwise fabricated figure.
+
     Each goal's share is additionally capped so it never implies finishing
     the ENTIRE remaining goal in under about a month (see
     _cap_fallback_rate_for_goal below) — a live Safe-to-Spend-derived
@@ -4359,9 +4421,11 @@ def _compute_goal_pace_map(goals, user_id, accounts_by_id=None):
 
     fallback_rate = None
     if active_needing_fallback:
+        n = len(active_needing_fallback)
         safe_daily = _safe_to_spend_daily_rate(user_id)
-        if safe_daily is not None and safe_daily > 0:
-            fallback_rate = safe_daily / len(active_needing_fallback)
+        ceiling_daily = _recurring_income_bills_daily_rate(user_id)
+        if safe_daily is not None and safe_daily > 0 and ceiling_daily is not None and ceiling_daily > 0:
+            fallback_rate = min(safe_daily / n, ceiling_daily / n)
 
     pace_map = {}
     for g in goals:

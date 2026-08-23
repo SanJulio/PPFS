@@ -53,6 +53,14 @@ def _add_contribution(db_conn, goal_id, user_id, amount, days_ago):
     db_conn.commit()
 
 
+def _add_income(db_conn, user_id, amount=3000.0, day=25):
+    db_conn.execute(
+        "INSERT INTO income (name, amount, frequency, account, user_id, day, is_primary) VALUES (?,?,?,?,?,?,1)",
+        ("Salary", amount, "monthly", "", user_id, day),
+    )
+    db_conn.commit()
+
+
 def _add_tx(db_conn, user_id, account, amount, days_ago):
     db_conn.execute(
         "INSERT INTO transactions (date, description, amount, account, user_id, type, category) VALUES (?,?,?,?,?,?,?)",
@@ -362,6 +370,13 @@ class TestGoalsTabProjectionDisplay:
 
     def test_recalculates_as_linked_balance_changes(self, auth_client, db_conn, test_user):
         acc_id = _add_account(db_conn, test_user["id"], "Savings", balance=1000.0)
+        # A real income source is required here since the August 2026 fix:
+        # the fallback estimate is now also hard-capped at real recurring
+        # monthly income minus bills (see test_goal_fallback_pace.py), and
+        # suppressed entirely when that can't be verified as positive - an
+        # account balance alone (no tracked income) is exactly that
+        # unverifiable case, so it wouldn't produce an estimate without this.
+        _add_income(db_conn, test_user["id"], amount=3000.0)
         _add_goal(db_conn, test_user["id"], "Live goal", 10000.0, linked_account_id=acc_id, starting_balance=1000.0)
 
         resp1 = auth_client.get("/manage?tab=goals")
