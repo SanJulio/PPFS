@@ -67,7 +67,7 @@ class TestFallbackReplacesInsufficientData:
 
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
-        section = body[body.find("Brand new goal"):body.find("Brand new goal") + 2200]
+        section = body[body.find("Brand new goal"):body.find("Brand new goal") + 4200]
         assert "Estimated" in section
         assert "not enough recent activity yet to estimate a pace" not in section
 
@@ -77,9 +77,9 @@ class TestFallbackReplacesInsufficientData:
 
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
-        section = body[body.find("Fresh goal"):body.find("Fresh goal") + 2200]
-        assert "Estimated (based on your typical spending)" in section
-        assert "At current pace:" not in section
+        section = body[body.find("Fresh goal"):body.find("Fresh goal") + 4200]
+        assert "Estimated" in section
+        assert "At current pace" not in section
         assert "font-style:italic" in section
         assert "Based on your typical Safe to Spend" in section
 
@@ -89,7 +89,7 @@ class TestFallbackReplacesInsufficientData:
 
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
-        section = body[body.find("Numeric goal"):body.find("Numeric goal") + 2200]
+        section = body[body.find("Numeric goal"):body.find("Numeric goal") + 4200]
         assert "/month" in section
         # Some projected date must appear (either a real ISO date or years-away text)
         assert "<strong>" in section
@@ -105,8 +105,8 @@ class TestSwitchesToRealPaceOnceDataExists:
 
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
-        section = body[body.find("Switching goal"):body.find("Switching goal") + 2200]
-        assert "At current pace:" in section
+        section = body[body.find("Switching goal"):body.find("Switching goal") + 4200]
+        assert "At current pace" in section
         assert "Estimated" not in section
         assert "font-style:italic" not in section
 
@@ -122,8 +122,8 @@ class TestSwitchesToRealPaceOnceDataExists:
 
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
-        section = body[body.find("Linked switching goal"):body.find("Linked switching goal") + 2200]
-        assert "At current pace:" in section
+        section = body[body.find("Linked switching goal"):body.find("Linked switching goal") + 4200]
+        assert "At current pace" in section
         assert "Estimated" not in section
 
     def test_direct_pace_map_prefers_real_pace_when_available(self, auth_client, db_conn, test_user):
@@ -158,7 +158,7 @@ class TestMultipleGoalsSplitTheEstimate:
 
         resp1 = auth_client.get("/manage?tab=goals")
         section1 = resp1.get_data(as_text=True)
-        section1 = section1[section1.find("GoalOne"):section1.find("GoalOne") + 2200]
+        section1 = section1[section1.find("GoalOne"):section1.find("GoalOne") + 4200]
         match1 = re.search(r"around £([\d.]+)/month", section1)
         assert match1, "expected a £X/month estimate with a single goal"
         single_rate = float(match1.group(1))
@@ -166,7 +166,7 @@ class TestMultipleGoalsSplitTheEstimate:
         _add_goal(db_conn, test_user["id"], "GoalTwo", 1000.0)
         resp2 = auth_client.get("/manage?tab=goals")
         section2 = resp2.get_data(as_text=True)
-        section2 = section2[section2.find("GoalOne"):section2.find("GoalOne") + 2200]
+        section2 = section2[section2.find("GoalOne"):section2.find("GoalOne") + 4200]
         match2 = re.search(r"around £([\d.]+)/month", section2)
         assert match2, "expected a £X/month estimate once a second goal exists"
         split_rate = float(match2.group(1))
@@ -180,7 +180,7 @@ class TestMultipleGoalsSplitTheEstimate:
 
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
-        section = body[body.find("GoalOne"):body.find("GoalOne") + 2200]
+        section = body[body.find("GoalOne"):body.find("GoalOne") + 4200]
         assert "split evenly across 2 goals" in section
 
     def test_single_goal_estimate_has_no_split_note(self, auth_client, db_conn, test_user, test_account):
@@ -189,7 +189,7 @@ class TestMultipleGoalsSplitTheEstimate:
 
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
-        section = body[body.find("Only goal"):body.find("Only goal") + 2200]
+        section = body[body.find("Only goal"):body.find("Only goal") + 4200]
         assert "split evenly across" not in section
 
     def test_goal_with_real_data_does_not_count_toward_fallback_denominator(self, auth_client, db_conn, test_user):
@@ -206,11 +206,11 @@ class TestMultipleGoalsSplitTheEstimate:
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
 
-        real_section = body[body.find("Has real data"):body.find("Has real data") + 2200]
-        assert "At current pace:" in real_section
+        real_section = body[body.find("Has real data"):body.find("Has real data") + 4200]
+        assert "At current pace" in real_section
         assert "Estimated" not in real_section
 
-        new_section = body[body.find("Brand new"):body.find("Brand new") + 2200]
+        new_section = body[body.find("Brand new"):body.find("Brand new") + 4200]
         assert "Estimated" in new_section
         assert "split evenly across" not in new_section
 
@@ -240,7 +240,7 @@ class TestNoRealisticEstimateAvailable:
 
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
-        section = body[body.find("Hopeless goal"):body.find("Hopeless goal") + 2200]
+        section = body[body.find("Hopeless goal"):body.find("Hopeless goal") + 4200]
         assert "not enough recent activity yet to estimate a pace" in section
         assert "Estimated" not in section
         assert "/month" not in section

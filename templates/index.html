@@ -744,19 +744,23 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
         <span class="small fw-semibold" style="color:var(--brand);white-space:nowrap;">View all →</span>
       </div>
       {% for g in goals_home[:3] %}
+      {% set d = g.display %}
       {% set _dot = {'green': '🟢', 'amber': '🟡', 'red': '🔴'}.get(g.projection.status_color) if g.projection else None %}
       {% set _dot_title = 'Estimated from your typical Safe to Spend, not tracked history yet' if (_dot and g.projection.is_estimate) else None %}
-      <div class="{% if not loop.last %}mb-2{% endif %}">
-        <div class="d-flex justify-content-between align-items-center mb-1 gap-2" style="font-size:12px;">
-          <span class="fw-semibold text-truncate" style="color:#111;min-width:0;">{{ g.name }}</span>
-          {% if goals_home|length == 1 %}
-          <span class="text-muted flex-shrink-0">£{{ "%.0f"|format(g.progress.progress_amount) }} / £{{ "%.0f"|format(g.progress.target_amount) }} · {% if _dot %}<span{% if _dot_title %} title="{{ _dot_title }}"{% endif %}>{% if g.projection.is_estimate %}~{% endif %}{{ _dot }}</span> {% endif %}{{ g.progress.progress_pct }}%</span>
-          {% else %}
-          <span class="text-muted flex-shrink-0">{% if _dot %}<span{% if _dot_title %} title="{{ _dot_title }}"{% endif %}>{% if g.projection.is_estimate %}~{% endif %}{{ _dot }}</span> {% endif %}{{ g.progress.progress_pct }}%</span>
-          {% endif %}
-        </div>
-        <div class="progress rounded-pill" style="height:6px;background:#e9ecef;">
-          <div class="progress-bar rounded-pill goal-progress-bar" data-pct="{{ g.progress.progress_pct }}"></div>
+      <div class="d-flex align-items-center gap-2 {% if not loop.last %}mb-2{% endif %}">
+        <div style="width:26px;height:26px;border-radius:8px;background:{{ d.icon_bg if d else '#f3f4f6' }};display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">{{ d.icon_emoji if d else '🎯' }}</div>
+        <div style="min-width:0;flex:1 1 auto;">
+          <div class="d-flex justify-content-between align-items-center mb-1 gap-2" style="font-size:12px;">
+            <span class="fw-semibold text-truncate" style="color:#111;min-width:0;">{{ g.name }}</span>
+            {% if goals_home|length == 1 %}
+            <span class="text-muted flex-shrink-0">£{{ "%.0f"|format(g.progress.progress_amount) }} / £{{ "%.0f"|format(g.progress.target_amount) }} · {% if _dot %}<span{% if _dot_title %} title="{{ _dot_title }}"{% endif %}>{% if g.projection.is_estimate %}~{% endif %}{{ _dot }}</span> {% endif %}{{ g.progress.progress_pct }}%</span>
+            {% else %}
+            <span class="text-muted flex-shrink-0">{% if _dot %}<span{% if _dot_title %} title="{{ _dot_title }}"{% endif %}>{% if g.projection.is_estimate %}~{% endif %}{{ _dot }}</span> {% endif %}{{ g.progress.progress_pct }}%</span>
+            {% endif %}
+          </div>
+          <div class="progress rounded-pill" style="height:7px;background:#e9ecef;">
+            <div class="progress-bar rounded-pill goal-progress-bar" data-pct="{{ g.progress.progress_pct }}" data-color="{{ d.bar_color if d else '' }}"></div>
+          </div>
         </div>
       </div>
       {% endfor %}
@@ -2137,7 +2141,7 @@ document.addEventListener('click', function() {
   if (bar) { bar.style.width = bar.dataset.pct + '%'; bar.style.background = bar.dataset.color; }
   document.querySelectorAll('.goal-progress-bar').forEach(function(gb) {
     gb.style.width = gb.dataset.pct + '%';
-    gb.style.background = 'var(--brand)';
+    gb.style.background = gb.dataset.color || 'var(--brand)';
   });
 })();
 </script>

@@ -1743,6 +1743,7 @@ def home():
                 _g["projection"] = _project_goal_completion(_g["progress"], _pace_per_day, _g.get("target_date"), is_estimate=_is_estimate)
             else:
                 _g["projection"] = None
+            _g["display"] = _build_goal_display(_g)
     except Exception as e:
         logger.debug(f"Home goals summary error: {e}")
         goals_home = []
@@ -4096,6 +4097,7 @@ def _project_goal_completion(progress, pace_per_day, target_date_str=None, is_es
 
     on_track = None
     status_color = None
+    days_over_target = None
     if target_date_str:
         try:
             target_date_obj = date.fromisoformat(str(target_date_str))
@@ -4108,6 +4110,7 @@ def _project_goal_completion(progress, pace_per_day, target_date_str=None, is_es
                 on_track, status_color = False, "red"
             elif state == "projected":
                 days_over = (date.fromisoformat(projected_date) - target_date_obj).days
+                days_over_target = days_over
                 if days_over <= 0:
                     on_track, status_color = True, "green"
                 elif days_over <= 30:
@@ -4124,6 +4127,106 @@ def _project_goal_completion(progress, pace_per_day, target_date_str=None, is_es
         "on_track": on_track,
         "status_color": status_color,
         "is_estimate": is_estimate,
+        # Already computed above to decide on_track/status_color for the
+        # "projected" state - exposed as its own field (rather than left
+        # discarded) purely so the UI can show "N months behind target"
+        # without re-deriving the same date subtraction itself. Only ever
+        # set (and only positive) for state == "projected"; None otherwise.
+        "days_over_target": days_over_target if (days_over_target is not None and days_over_target > 0) else None,
+    }
+
+
+# Keyword -> emoji, checked in order against the goal's (lower-cased) name.
+# First match wins. Deliberately plain emoji rather than an icon font/SVG
+# library — the app already uses emoji as its icon language everywhere
+# (🎯 for the Goals section itself, 💰/💸/🏦 for Income/Bills/Accounts, the
+# nav's own icons, etc.), so this reuses that existing visual convention
+# instead of introducing a brand-new dependency for one card.
+_GOAL_ICON_RULES = [
+    (("trip", "holiday", "vacation", "travel"), "✈️"),
+    (("house", "home", "deposit", "property", "flat", "mortgage"), "🏠"),
+    (("car", "vehicle", "auto"), "🚗"),
+    (("emergency", "rainy day", "safety net", "buffer"), "🛡️"),
+    (("wedding", "marriage"), "💍"),
+    (("education", "university", "college", "course", "tuition", "school", "degree"), "🎓"),
+    (("laptop", "computer", "phone", "gadget", "tech"), "💻"),
+    (("gift", "present"), "🎁"),
+    (("baby", "nursery", "child"), "🍼"),
+    (("gym", "fitness", "health"), "💪"),
+]
+
+
+def _pick_goal_icon(name, goal_type):
+    """Returns an emoji for the goal's icon tile - a keyword match against
+    the goal's name where one reasonably applies, falling back to a generic
+    savings (piggy bank) or debt (trending down) icon otherwise."""
+    lowered = (name or "").lower()
+    for keywords, emoji in _GOAL_ICON_RULES:
+        if any(k in lowered for k in keywords):
+            return emoji
+    return "🐷" if goal_type != "debt" else "📉"
+
+
+def _build_goal_display(g):
+    """Presentation-only derivation from a goal's already-computed progress/
+    pace/projection - resolves nothing new about progress or pace itself,
+    just display-ready labels, colours, and the "extra £/month needed to
+    close the gap" figure for the redesigned Goals card. That figure is
+    simply g.pace.monthly_pace (the already-computed REQUIRED pace to hit
+    the target) minus the real/estimated current pace already on
+    g.projection - no new calculation logic, just arithmetic on two
+    existing numbers, kept here rather than in the template so it's
+    unit-testable and the template only has to print already-resolved
+    values."""
+    progress = g["progress"]
+    proj = g.get("projection")
+    pace = g.get("pace")
+    is_debt = g.get("goal_type") == "debt"
+
+    icon_emoji = _pick_goal_icon(g.get("name"), g.get("goal_type"))
+    if is_debt:
+        icon_bg, icon_fg = "#fee2e2", "#991b1b"
+        type_bg, type_fg, type_label = "#fee2e2", "#991b1b", "Debt repayment"
+    else:
+        icon_bg, icon_fg = "#dcfce7", "#166534"
+        type_bg, type_fg, type_label = "#dcfce7", "#166534", "Savings"
+
+    if g.get("status") == "completed":
+        bar_color = "#198754"
+    elif proj and proj.get("status_color") == "green":
+        bar_color = "#198754"
+    elif proj and proj.get("status_color") == "red":
+        bar_color = "#dc3545"
+    elif proj and proj.get("status_color") == "amber":
+        bar_color = "#f59e0b"
+    else:
+        bar_color = "var(--brand)"
+
+    pace_label = "Estimated" if (proj and proj.get("is_estimate")) else "At current pace"
+
+    months_behind = None
+    extra_monthly_needed = None
+    if proj and g.get("target_date") and proj.get("state") == "projected":
+        days_over = proj.get("days_over_target")
+        if days_over:
+            months_behind = round(days_over / 30.44, 1)
+            if pace and proj.get("pace_per_day") is not None:
+                current_monthly = proj["pace_per_day"] * 30.44
+                gap = pace["monthly_pace"] - current_monthly
+                if gap > 0:
+                    extra_monthly_needed = round(gap, 2)
+
+    return {
+        "icon_emoji": icon_emoji,
+        "icon_bg": icon_bg,
+        "icon_fg": icon_fg,
+        "type_bg": type_bg,
+        "type_fg": type_fg,
+        "type_label": type_label,
+        "bar_color": bar_color,
+        "pace_label": pace_label,
+        "months_behind": months_behind,
+        "extra_monthly_needed": extra_monthly_needed,
     }
 
 
@@ -4332,6 +4435,7 @@ def manage():
         g["projection"] = _project_goal_completion(g["progress"], pace_per_day, g.get("target_date"), is_estimate=is_estimate)
         if is_estimate:
             g["projection"]["fallback_goal_count"] = fallback_goal_count
+        g["display"] = _build_goal_display(g)
 
     safe_to_spend_for_goals = _get_safe_to_spend(uid) if goals else None
 

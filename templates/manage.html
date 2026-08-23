@@ -41,6 +41,49 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   font-weight: 600;
   font-size: 12px;
 }
+.goal-icon-tile {
+  width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 19px;
+}
+.goal-type-pill {
+  display: inline-block; border-radius: 999px; padding: 2px 9px;
+  font-weight: 700; font-size: 10.5px; letter-spacing: 0.01em; margin-top: 2px;
+}
+.goal-menu-btn {
+  width: 40px; height: 40px; padding: 0; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 18px; line-height: 1;
+}
+.goal-menu-dropdown {
+  display: none; position: absolute; right: 0; top: 42px; z-index: 30;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.14); min-width: 168px; overflow: hidden;
+}
+.goal-menu-dropdown.open { display: block; }
+.goal-menu-dropdown form { margin: 0; }
+.goal-menu-item {
+  display: block; width: 100%; text-align: left; background: none; border: none;
+  padding: 11px 14px; font-size: 14px; color: #111;
+}
+.goal-menu-item:hover, .goal-menu-item:focus { background: #f8f9fa; }
+.goal-menu-item + .goal-menu-item, .goal-menu-dropdown form + form, .goal-menu-dropdown form + button, .goal-menu-dropdown button + form {
+  border-top: 1px solid #f0f0f0;
+}
+.goal-menu-item.text-danger:hover { background: #fef2f2; }
+.goal-progress-track {
+  height: 14px; border-radius: 999px; background: #e9ecef; overflow: hidden;
+}
+.goal-progress-fill {
+  height: 100%; border-radius: 999px; transition: width 0.3s ease;
+}
+.goal-stat-box {
+  flex: 1 1 0; min-width: 0; border-radius: 12px; padding: 9px 11px; background: #fff;
+}
+.goal-stat-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em; color: #9ca3af; font-weight: 700;
+}
+.goal-stat-value {
+  font-size: 14px; font-weight: 700; margin-top: 1px;
+}
 .settings-tabs-wrap {
   position: relative;
 }
@@ -871,76 +914,97 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       </div>
 
       {% for g in goals %}
+      {% set d = g.display %}
       <div class="rounded-4 p-3 mb-3" style="background:#f8f9fa; border:1px solid #eee; {% if g.status == 'completed' %}opacity:0.75;{% endif %}">
-        <div class="d-flex justify-content-between align-items-start mb-2">
-          <div>
-            <div class="fw-bold">{{ g.name }}
-              {% if g.goal_type == 'debt' %}<span class="badge text-bg-danger ms-1">Debt</span>{% else %}<span class="badge text-bg-success ms-1">Savings</span>{% endif %}
-              {% if g.status == 'completed' %}<span class="badge text-bg-dark ms-1">✓ Achieved</span>{% endif %}
-            </div>
-            <div class="small text-muted">
-              {% if g.progress.is_linked %}
-                Linked: {{ g.progress.account_name }}{% if g.progress.account_locked %} 🔒 <span class="text-warning-emphasis">(locked — progress may be stale)</span>{% endif %}
-              {% else %}
-                Standalone — tracked by logged contributions
-              {% endif %}
+        <div class="d-flex justify-content-between align-items-start mb-3">
+          <div class="d-flex align-items-start gap-2" style="min-width:0;">
+            <div class="goal-icon-tile" style="background:{{ d.icon_bg }};">{{ d.icon_emoji }}</div>
+            <div style="min-width:0;">
+              <div class="fw-bold text-truncate">{{ g.name }}{% if g.status == 'completed' %} <span class="badge text-bg-dark ms-1">✓ Achieved</span>{% endif %}</div>
+              <span class="goal-type-pill" style="background:{{ d.type_bg }};color:{{ d.type_fg }};">{{ d.type_label }}</span>
+              <div class="small text-muted mt-1">
+                {% if g.progress.is_linked %}
+                  Linked: {{ g.progress.account_name }}{% if g.progress.account_locked %} 🔒 <span class="text-warning-emphasis">(locked — progress may be stale)</span>{% endif %}
+                {% else %}
+                  Standalone — tracked by logged contributions
+                {% endif %}
+              </div>
             </div>
           </div>
-          <div class="d-flex gap-2">
-            <button class="btn btn-sm btn-outline-secondary" onclick="openEditGoalModal({{ g.id }})">Edit</button>
-            <form method="POST" action="/settings/complete-goal" class="d-inline">
-              <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
-              <input type="hidden" name="id" value="{{ g.id }}">
-              <button class="btn btn-sm btn-outline-secondary">{{ 'Reopen' if g.status == 'completed' else 'Mark achieved' }}</button>
-            </form>
-            <form method="POST" action="/settings/delete-goal" onsubmit="return confirm('Delete goal &quot;{{ g.name }}&quot;? This only removes the goal, not any linked account or its transactions.')" class="d-inline">
-              <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
-              <input type="hidden" name="id" value="{{ g.id }}">
-              <button class="btn btn-sm btn-outline-secondary text-danger">Delete</button>
-            </form>
+          <div class="position-relative" style="flex-shrink:0;">
+            <button type="button" class="btn btn-outline-secondary goal-menu-btn" aria-label="Goal actions" onclick="toggleGoalMenu(event, {{ g.id }})">&#8226;&#8226;&#8226;</button>
+            <div class="goal-menu-dropdown" id="goalMenu{{ g.id }}">
+              <button type="button" class="goal-menu-item" onclick="closeGoalMenus(); openEditGoalModal({{ g.id }})">Edit</button>
+              <form method="POST" action="/settings/complete-goal">
+                <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+                <input type="hidden" name="id" value="{{ g.id }}">
+                <button type="submit" class="goal-menu-item">{{ 'Reopen' if g.status == 'completed' else 'Mark achieved' }}</button>
+              </form>
+              <form method="POST" action="/settings/delete-goal" onsubmit="return confirm('Delete goal &quot;{{ g.name }}&quot;? This only removes the goal, not any linked account or its transactions.')">
+                <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+                <input type="hidden" name="id" value="{{ g.id }}">
+                <button type="submit" class="goal-menu-item text-danger">Delete</button>
+              </form>
+            </div>
           </div>
         </div>
 
-        <div class="progress mb-2" style="height:10px; border-radius:8px;">
-          <div class="progress-bar" role="progressbar" style="width: {{ g.progress.progress_pct }}%; background: {{ '#198754' if g.status == 'completed' else 'var(--brand)' }};"></div>
+        <div class="d-flex align-items-baseline justify-content-between mb-2">
+          <div style="min-width:0;">
+            <span class="money fw-bold" style="font-size:22px;">£{{ "%.2f"|format(g.progress.progress_amount) }}</span>
+            <span class="text-muted small">of £{{ "%.2f"|format(g.progress.target_amount) }}</span>
+          </div>
+          <span class="fw-bold" style="color:{{ d.bar_color }}; font-size:16px;">{{ g.progress.progress_pct }}%</span>
         </div>
-        <div class="d-flex justify-content-between small mb-1">
-          <span class="money">£{{ "%.2f"|format(g.progress.progress_amount) }} of £{{ "%.2f"|format(g.progress.target_amount) }}</span>
-          <span class="fw-semibold">{{ g.progress.progress_pct }}%</span>
+        <div class="goal-progress-track mb-3">
+          <div class="goal-progress-fill" style="width: {{ g.progress.progress_pct }}%; background: {{ d.bar_color }};"></div>
         </div>
 
         {% set proj = g.projection %}
-        {% set proj_color = {'green': '#198754', 'amber': '#b45309', 'red': '#dc3545'}.get(proj.status_color) if proj else None %}
-        {% set pace_label = ('🔮 Estimated (based on your typical spending)' if (proj and proj.is_estimate) else 'At current pace') %}
-        <div class="small mb-1" style="color:{{ proj_color or '#6c757d' }};{% if proj and proj.is_estimate %} font-style:italic;{% endif %}">
-          {% if g.target_date %}Target: {{ g.target_date }}{% endif %}
-          {% if proj and proj.state == 'projected' %}
-            {% if g.target_date %} · {% endif %}{{ pace_label }}: <strong>{{ proj.projected_date }}</strong>{% if proj.on_track is not none %}{{ ' ✓ on track' if proj.on_track else ' ⚠ behind target' }}{% endif %}
-          {% elif proj and proj.state == 'years_away' %}
-            {% if g.target_date %} · {% endif %}{{ pace_label }}: <strong>{{ proj.years_away }}+ years away</strong>
-          {% elif proj and proj.state == 'no_progress' %}
-            {% if g.target_date %} · {% endif %}⚠ No recent progress — at this pace you won't reach this goal
-          {% elif proj and proj.state == 'reached' %}
-            {% if g.target_date %} · {% endif %}✅ Target reached
-          {% elif proj and proj.state == 'insufficient_data' %}
-            {% if g.target_date %} · {% endif %}<span style="color:#9ca3af;">not enough recent activity yet to estimate a pace</span>
+        {% if proj and proj.state in ('projected', 'years_away') %}
+          {% if g.target_date %}
+          <div class="d-flex gap-2 mb-2">
+            <div class="goal-stat-box">
+              <div class="goal-stat-label">Target date</div>
+              <div class="goal-stat-value">{{ g.target_date }}</div>
+            </div>
+            <div class="goal-stat-box" style="background:{{ '#ecfdf5' if proj.status_color == 'green' else '#fffbeb' if proj.status_color == 'amber' else '#fef2f2' }};">
+              <div class="goal-stat-label">{{ d.pace_label }}</div>
+              <div class="goal-stat-value" style="color:{{ '#166534' if proj.status_color == 'green' else '#b45309' if proj.status_color == 'amber' else '#dc3545' }};{% if proj.is_estimate %} font-style:italic;{% endif %}"><strong>{% if proj.state == 'projected' %}{{ proj.projected_date }}{% else %}{{ proj.years_away }}+ years{% endif %}</strong></div>
+            </div>
+          </div>
+          {% if proj.on_track %}
+            <div class="small mb-2" style="color:#166534;">✓ You're on track to hit your target</div>
+          {% elif proj.state == 'projected' and d.months_behind %}
+            <div class="small mb-2" style="color:#b45309;">
+              ⚠ {{ d.months_behind }} month{{ 's' if d.months_behind != 1 else '' }} behind target{% if d.extra_monthly_needed %} — try £{{ "%.2f"|format(d.extra_monthly_needed) }}/month more{% endif %}
+            </div>
+          {% else %}
+            <div class="small mb-2" style="color:#dc3545;">⚠ Behind target</div>
           {% endif %}
-        </div>
+          {% else %}
+          <div class="goal-stat-box mb-2" style="background:#f8f9fa; max-width:100%;">
+            <div class="goal-stat-label">{{ d.pace_label }}</div>
+            <div class="goal-stat-value"{% if proj.is_estimate %} style="font-style:italic;"{% endif %}><strong>{% if proj.state == 'projected' %}{{ proj.projected_date }}{% else %}{{ proj.years_away }}+ years away{% endif %}</strong></div>
+          </div>
+          {% endif %}
+        {% elif proj and proj.state == 'no_progress' %}
+          <div class="small mb-2" style="color:#dc3545;">⚠ No recent progress — at this pace you won't reach this goal</div>
+        {% elif proj and proj.state == 'reached' %}
+          <div class="small mb-2" style="color:#166534;">✅ Target reached</div>
+        {% elif proj and proj.state == 'insufficient_data' %}
+          <div class="small mb-2" style="color:#9ca3af;">not enough recent activity yet to estimate a pace{% if g.target_date %} — target: {{ g.target_date }}{% endif %}</div>
+        {% endif %}
         {% if proj and proj.is_estimate and proj.pace_per_day %}
-          <div class="small mb-1" style="color:#9ca3af;">
+          <div class="small mb-2" style="color:#9ca3af;">
             Based on your typical Safe to Spend — around £{{ "%.2f"|format(proj.pace_per_day * 30.44) }}/month{% if proj.fallback_goal_count and proj.fallback_goal_count > 1 %}, split evenly across {{ proj.fallback_goal_count }} goals that don't have tracked history yet{% endif %}. This will switch to a real tracked pace once you {{ 'log a couple of contributions' if not g.progress.is_linked else "have a bit more of this account's balance history" }}.
           </div>
         {% endif %}
 
-        {% if g.target_date and g.pace %}
-          {% if g.pace.overdue %}
-            <div class="small text-danger">Target date has passed — £{{ "%.2f"|format(g.pace.remaining_amount) }} still needed.</div>
-          {% else %}
-            <div class="small text-muted">Suggested pace: <strong>£{{ "%.2f"|format(g.pace.monthly_pace) }}/month</strong></div>
-            {% if safe_to_spend_for_goals is not none and g.pace.monthly_pace > safe_to_spend_for_goals %}
-              <div class="small" style="color:#b45309;">⚠️ More than your current Safe to Spend (£{{ "%.2f"|format(safe_to_spend_for_goals) }})</div>
-            {% endif %}
-          {% endif %}
+        {% if g.target_date and g.pace and g.pace.overdue %}
+          <div class="small text-danger mb-2">Target date has passed — £{{ "%.2f"|format(g.pace.remaining_amount) }} still needed.</div>
+        {% elif g.target_date and g.pace and safe_to_spend_for_goals is not none and g.pace.monthly_pace > safe_to_spend_for_goals %}
+          <div class="small mb-2" style="color:#b45309;">⚠️ Suggested pace (£{{ "%.2f"|format(g.pace.monthly_pace) }}/month) is more than your current Safe to Spend (£{{ "%.2f"|format(safe_to_spend_for_goals) }})</div>
         {% endif %}
 
         {% if not g.progress.is_linked %}
@@ -1379,6 +1443,22 @@ _goalsData[{{ g.id }}] = {
 {% endfor %}
 var _accountBalances = {};
 {% for a in accounts %}_accountBalances[{{ a.id }}] = {{ a.balance }};{% endfor %}
+
+function closeGoalMenus(except_id) {
+  document.querySelectorAll('.goal-menu-dropdown.open').forEach(function(el) {
+    if (!except_id || el.id !== 'goalMenu' + except_id) el.classList.remove('open');
+  });
+}
+
+function toggleGoalMenu(event, id) {
+  event.stopPropagation();
+  var menu = document.getElementById('goalMenu' + id);
+  var isOpen = menu.classList.contains('open');
+  closeGoalMenus();
+  if (!isOpen) menu.classList.add('open');
+}
+
+document.addEventListener('click', function() { closeGoalMenus(); });
 
 function setGoalType(type) {
   document.getElementById('goalType').value = type;

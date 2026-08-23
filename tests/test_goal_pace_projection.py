@@ -276,7 +276,7 @@ class TestGoalsTabProjectionDisplay:
 
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
-        section = body[body.find("House deposit"):body.find("House deposit") + 2600]
+        section = body[body.find("House deposit"):body.find("House deposit") + 4200]
         assert "on track" in section
         assert "#198754" in section  # green
 
@@ -295,7 +295,7 @@ class TestGoalsTabProjectionDisplay:
 
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
-        section = body[body.find("Pay off loan"):body.find("Pay off loan") + 2600]
+        section = body[body.find("Pay off loan"):body.find("Pay off loan") + 4200]
         assert "behind target" in section
         assert "#dc3545" in section  # red
 
@@ -303,7 +303,7 @@ class TestGoalsTabProjectionDisplay:
         _add_goal(db_conn, test_user["id"], "Brand new goal", 1000.0)
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
-        section = body[body.find("Brand new goal"):body.find("Brand new goal") + 2600]
+        section = body[body.find("Brand new goal"):body.find("Brand new goal") + 4200]
         assert "not enough recent activity yet to estimate a pace" in section
 
     def test_no_progress_state_shown_for_worsening_debt(self, auth_client, db_conn, test_user):
@@ -316,7 +316,7 @@ class TestGoalsTabProjectionDisplay:
 
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
-        section = body[body.find("Static loan"):body.find("Static loan") + 2600]
+        section = body[body.find("Static loan"):body.find("Static loan") + 4200]
         assert "No recent progress" in section
 
     def test_extremely_slow_pace_shows_years_away_not_absurd_date(self, auth_client, db_conn, test_user):
@@ -329,7 +329,7 @@ class TestGoalsTabProjectionDisplay:
 
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
-        section = body[body.find("Slow loan"):body.find("Slow loan") + 2600]
+        section = body[body.find("Slow loan"):body.find("Slow loan") + 4200]
         assert "years away" in section
         assert "2157" not in body and "21" not in section.split("years away")[0][-6:]
 
@@ -345,7 +345,7 @@ class TestGoalsTabProjectionDisplay:
             follow_redirects=False,
         ) if False else auth_client.get("/manage?tab=goals")
         body1 = resp1.get_data(as_text=True)
-        section1 = body1[body1.find("Dynamic goal"):body1.find("Dynamic goal") + 2600]
+        section1 = body1[body1.find("Dynamic goal"):body1.find("Dynamic goal") + 4200]
         assert "At current pace" in section1
 
         # A big new contribution should visibly change the projected date
@@ -357,7 +357,7 @@ class TestGoalsTabProjectionDisplay:
 
         resp2 = auth_client.get("/manage?tab=goals")
         body2 = resp2.get_data(as_text=True)
-        section2 = body2[body2.find("Dynamic goal"):body2.find("Dynamic goal") + 2600]
+        section2 = body2[body2.find("Dynamic goal"):body2.find("Dynamic goal") + 4200]
         assert section1 != section2
 
     def test_recalculates_as_linked_balance_changes(self, auth_client, db_conn, test_user):
@@ -366,7 +366,7 @@ class TestGoalsTabProjectionDisplay:
 
         resp1 = auth_client.get("/manage?tab=goals")
         body1 = resp1.get_data(as_text=True)
-        section1 = body1[body1.find("Live goal"):body1.find("Live goal") + 2600]
+        section1 = body1[body1.find("Live goal"):body1.find("Live goal") + 4200]
         # No real transaction history yet -> falls back to the Safe-to-Spend
         # estimate (see tests/test_goal_fallback_pace.py) rather than real
         # tracked pace - this account has a positive balance so Safe to
@@ -380,7 +380,7 @@ class TestGoalsTabProjectionDisplay:
 
         resp2 = auth_client.get("/manage?tab=goals")
         body2 = resp2.get_data(as_text=True)
-        section2 = body2[body2.find("Live goal"):body2.find("Live goal") + 2600]
+        section2 = body2[body2.find("Live goal"):body2.find("Live goal") + 4200]
         # Now has real transaction history -> switches to genuine tracked pace
         assert "At current pace" in section2
         assert "Estimated" not in section2
