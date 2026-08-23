@@ -532,6 +532,12 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
       </div>
       <div id="tile-bills" class="d-none mt-2 px-1">
         {% for b in overview.future_bills_list %}
+        {% if b.type == 'event' %}
+        <a href="/forecast?date={{ b.due_date }}" class="d-flex justify-content-between small py-1 border-bottom text-decoration-none" style="color:inherit;" title="See this event's impact on your forecast">
+          <span>📅 {{ b.name }} <span class="text-muted">({{ b.due_date }})</span></span>
+          <span class="fw-semibold text-danger amount-private">£{{ "%.2f"|format(b.amount) }}</span>
+        </a>
+        {% else %}
         <div class="d-flex justify-content-between small py-1 border-bottom bill-pay-row"
              style="cursor:pointer;"
              data-bill-id="{{ b.id }}"
@@ -542,6 +548,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
           <span>{{ b.name }} <span class="text-muted">(day {{ b.day }})</span></span>
           <span class="fw-semibold text-danger amount-private">£{{ "%.2f"|format(b.amount) }}</span>
         </div>
+        {% endif %}
         {% endfor %}
         {% if not overview.future_bills_list %}
         <div class="small text-muted py-1">No bills remaining this month 🎉</div>
@@ -2044,6 +2051,14 @@ function _applyOverviewData(d, start, end) {
           var dateLabel = b.due_date
             ? (function() { var dt = new Date(b.due_date + 'T00:00:00'); return dt.getDate() + ' ' + _months[dt.getMonth()]; })()
             : 'day ' + b.day;
+          if (b.type === 'event') {
+            // A one-off future event isn't a payable bill - link through to
+            // the forecast instead of the bill-pay-row's mark-paid behaviour.
+            return '<a href="/forecast?date=' + b.due_date + '" class="d-flex justify-content-between small py-1 border-bottom text-decoration-none" style="color:inherit;" title="See this event\'s impact on your forecast">'
+              + '<span>📅 ' + _drpEsc(b.name) + ' <span class="text-muted">(' + dateLabel + ')</span></span>'
+              + '<span class="fw-semibold text-danger amount-private">£' + parseFloat(b.amount).toFixed(2) + '</span>'
+              + '</a>';
+          }
           return '<div class="d-flex justify-content-between small py-1 border-bottom bill-pay-row"'
             + ' style="cursor:pointer;"'
             + ' data-bill-id="' + b.id + '"'
@@ -2369,10 +2384,15 @@ function openBillBreakdown() {
   } else {
     list.innerHTML = items.map(function(b) {
       var dl = b.due_date ? _fmtDs(b.due_date) : 'day ' + b.day;
-      return '<div class="d-flex justify-content-between align-items-start" style="padding:12px 0;border-bottom:1px solid #f3f4f6;">'
-        + '<div><div style="font-size:14px;font-weight:600;color:#111827;">' + _drpEsc(b.name) + '</div>'
-        + '<div style="font-size:12px;color:#9ca3af;margin-top:2px;">' + dl + '</div></div>'
-        + '<span style="font-size:14px;color:#ef4444;font-weight:600;">−£' + parseFloat(b.amount).toFixed(2) + '</span></div>';
+      var isEvent = b.type === 'event';
+      var namePrefix = isEvent ? '📅 ' : '';
+      var row = '<div><div style="font-size:14px;font-weight:600;color:#111827;">' + namePrefix + _drpEsc(b.name) + '</div>'
+        + '<div style="font-size:12px;color:#9ca3af;margin-top:2px;">' + dl + (isEvent ? ' · view in forecast' : '') + '</div></div>'
+        + '<span style="font-size:14px;color:#ef4444;font-weight:600;">−£' + parseFloat(b.amount).toFixed(2) + '</span>';
+      if (isEvent && b.due_date) {
+        return '<a href="/forecast?date=' + b.due_date + '" class="d-flex justify-content-between align-items-start text-decoration-none" style="padding:12px 0;border-bottom:1px solid #f3f4f6;color:inherit;">' + row + '</a>';
+      }
+      return '<div class="d-flex justify-content-between align-items-start" style="padding:12px 0;border-bottom:1px solid #f3f4f6;">' + row + '</div>';
     }).join('');
     var tot = items.reduce(function(s, b) { return s + parseFloat(b.amount); }, 0);
     document.getElementById('breakdownTotal').innerHTML = '<div class="d-flex justify-content-between align-items-center" style="padding:16px 0;border-top:2px solid #fca5a5;background:#fff5f5;margin:0 -20px;padding-left:20px;padding-right:20px;">'

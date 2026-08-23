@@ -1016,9 +1016,62 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
                 "day": expense["day"],
                 "account": acc,
                 "due_date": due.isoformat(),
+                "type": "bill",
             })
             if accounts[acc]["type"] in spending_types:
                 spending_future_bills += expense["amount"]
+
+    # --- Future events — one-off costs on a specific account, folded into
+    # the same "bills left" / Safe to Spend deduction as scheduled bills.
+    # Unlike a bill, an event has no recurrence pattern (no day/frequency) -
+    # just a single real date - so there's no "next occurrence" search or
+    # last_applied tracking needed: it's simply in range or it isn't, and
+    # once its date has passed it naturally falls out of the window on its
+    # own, the same way a one-off transaction would.
+    try:
+        _fe_db = get_db()
+        _fe_cur = _fe_db.cursor()
+        if USE_POSTGRES:
+            _fe_cur.execute("SELECT * FROM future_events WHERE user_id = %s", (current_user.id,))
+        else:
+            _fe_cur.execute("SELECT * FROM future_events WHERE user_id = ?", (current_user.id,))
+        _fe_cols = [d[0] for d in _fe_cur.description]
+        _future_events_raw = [dict(zip(_fe_cols, r)) for r in _fe_cur.fetchall()]
+        _fe_cur.close()
+        release_db(_fe_db)
+    except Exception as _fe_err:
+        logger.debug(f"Could not load future events for overview: {_fe_err}")
+        _future_events_raw = []
+
+    for event in _future_events_raw:
+        try:
+            due = date.fromisoformat(str(event["date"]))
+        except (ValueError, TypeError, KeyError):
+            continue
+        if period_end is not None:
+            if not (today_date < due <= period_end):
+                continue
+        else:
+            # No period_end: legacy path — event due later this calendar month,
+            # mirroring the bill legacy path immediately above.
+            if not (today_date < due and due.year == today_date.year and due.month == today_date.month):
+                continue
+        acc = event.get("account")
+        if acc not in accounts or accounts[acc].get("is_locked"):
+            continue
+        amt = float(event["amount"])
+        all_future_bills += amt
+        future_bills_list.append({
+            "id": event["id"],
+            "name": event["name"],
+            "amount": amt,
+            "day": due.day,
+            "account": acc,
+            "due_date": due.isoformat(),
+            "type": "event",
+        })
+        if accounts[acc]["type"] in spending_types:
+            spending_future_bills += amt
 
     # --- Savings rules — treated like bills leaving spending accounts ---
     try:
@@ -5182,7 +5235,7 @@ def settings_add_future_event():
     cursor.close()
     release_db(db)
     bust_forecast_cache(current_user.id)
-    return redirect(url_for("manage", msg=f"Future event '{name}' added."))
+    return redirect(url_for("manage", msg=f"Future event '{name}' added.", tab="rules"))
 
 @app.post("/settings/edit-future-event")
 @login_required
@@ -5210,7 +5263,23 @@ def settings_edit_future_event():
     cursor.close()
     release_db(db)
     bust_forecast_cache(current_user.id)
-    return redirect(url_for("manage", msg="Future event updated."))
+    return redirect(url_for("manage", msg="Future event updated.", tab="rules"))
+
+@app.post("/settings/delete-future-event")
+@login_required
+def settings_delete_future_event():
+    event_id = request.form.get("id")
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("DELETE FROM future_events WHERE id = %s AND user_id = %s", (event_id, current_user.id))
+    else:
+        cursor.execute("DELETE FROM future_events WHERE id = ? AND user_id = ?", (event_id, current_user.id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+    bust_forecast_cache(current_user.id)
+    return redirect(url_for("manage", msg="Future event deleted.", tab="rules"))
 
 @app.post("/settings/add-income")
 @login_required
@@ -5797,6 +5866,7 @@ def forecast():
     for e in future_events_raw:
         try:
             future_events.append({
+                "id": e["id"],
                 "date": date.fromisoformat(str(e["date"])),
                 "name": e["name"],
                 "amount": e["amount"],
@@ -5962,6 +6032,12 @@ def forecast():
             continue
         for d in income_engine.get_payment_dates(inc, today, end_date):
             upcoming_items.append({"date": d.isoformat(), "name": inc["name"], "amount": float(inc["amount"]), "account": inc["account"], "type": "income", "id": inc["id"]})
+
+    for event in future_events:
+        if event["account"] not in accounts:
+            continue
+        if today <= event["date"] <= end_date:
+            upcoming_items.append({"date": event["date"].isoformat(), "name": event["name"], "amount": float(event["amount"]), "account": event["account"], "type": "event", "id": event["id"]})
 
     upcoming_items.sort(key=lambda x: x["date"])
     upcoming_json = json.dumps(upcoming_items)

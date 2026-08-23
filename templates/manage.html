@@ -778,7 +778,15 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
               <td>{{ e.date }}</td>
               <td class="text-end money">£{{ "%.2f"|format(e.amount) }}</td>
               <td class="text-end">
-                <button class="btn btn-sm btn-outline-secondary" onclick="toggleEdit('event-{{ e.id }}')">Edit</button>
+                <div class="d-flex gap-2 justify-content-end flex-wrap">
+                  <a href="/forecast?date={{ e.date }}" class="btn btn-sm btn-outline-secondary" title="See this event's impact on your forecast">📈 View</a>
+                  <button class="btn btn-sm btn-outline-secondary" onclick="toggleEdit('event-{{ e.id }}')">Edit</button>
+                  <form method="POST" action="/settings/delete-future-event" onsubmit="return confirm('Delete {{ e.name }}?')">
+                    <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+                    <input type="hidden" name="id" value="{{ e.id }}">
+                    <button class="btn btn-sm btn-outline-secondary text-danger">Delete</button>
+                  </form>
+                </div>
               </td>
             </tr>
             <tr id="event-{{ e.id }}" style="display:none; background:#f8f9fa;">

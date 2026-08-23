@@ -246,6 +246,10 @@ var chart = null;
 var currentFilter = 'current';
 var allSnapshots = [];
 var adjMarkers = [];
+// Which date the chart's visible window is centred on - defaults to today,
+// but jumpToDate() (used by ?date= links from Rules/bills-remaining lists)
+// re-centres it on a specific future event's date instead.
+var centerDate = TODAY_ISO;
 
 // Index upcoming items by date for fast lookup
 var upcomingByDate = {};
@@ -295,23 +299,37 @@ function buildAnnotations() {
     }
   };
 
-  // Bill/income event lines
+  // Bill/income/future-event lines
   var seen = {};
   upcomingItems.forEach(function(item) {
     if (seen[item.date + item.type]) return;
     seen[item.date + item.type] = true;
     var isBill = item.type === 'bill';
+    var isEvent = item.type === 'event';
     var idx = allSnapshots.findIndex(function(s) { return s.date === item.date; });
     if (idx === -1) return;
     var label = formatLabel(item.date);
+    var lineColor = isEvent ? 'rgba(245,158,11,0.55)' : (isBill ? 'rgba(239,68,68,0.35)' : 'rgba(16,185,129,0.35)');
     annotations['evt_' + item.date + '_' + item.type] = {
       type: 'line',
       xMin: label,
       xMax: label,
-      borderColor: isBill ? 'rgba(239,68,68,0.35)' : 'rgba(16,185,129,0.35)',
-      borderWidth: 2,
-      borderDash: [4, 3],
-      label: { display: false }
+      borderColor: lineColor,
+      borderWidth: isEvent ? 2.5 : 2,
+      borderDash: isEvent ? [2, 2] : [4, 3],
+      // Future events get a small always-on label (📅) so they stand out
+      // from the more numerous, less individually-notable recurring bill/
+      // income lines, which stay unlabeled and rely on a click for detail.
+      label: isEvent ? {
+        display: true,
+        content: '📅',
+        position: 'end',
+        color: '#fff',
+        font: { size: 10 },
+        backgroundColor: '#f59e0b',
+        padding: { top: 2, bottom: 2, left: 5, right: 5 },
+        borderRadius: 6
+      } : { display: false }
     };
   });
 
@@ -386,11 +404,13 @@ function renderChart() {
   var annotations = buildAnnotations();
   var ctx = document.getElementById('forecastChart').getContext('2d');
 
-  // Show 14 days back + 14 days forward around today
-  var todayIdx = allSnapshots.findIndex(function(s) { return s.date === TODAY_ISO; });
-  if (todayIdx === -1) todayIdx = histSnapshots.length;
-  var winStart = Math.max(0, todayIdx - 14);
-  var winEnd = Math.min(allSnapshots.length - 1, todayIdx + 14);
+  // Show 14 days back + 14 days forward around centerDate (today by default,
+  // or a specific date jumped to via jumpToDate() - see forecast?date=...)
+  var centerIdx = allSnapshots.findIndex(function(s) { return s.date === centerDate; });
+  if (centerIdx === -1) centerIdx = allSnapshots.findIndex(function(s) { return s.date === TODAY_ISO; });
+  if (centerIdx === -1) centerIdx = histSnapshots.length;
+  var winStart = Math.max(0, centerIdx - 14);
+  var winEnd = Math.min(allSnapshots.length - 1, centerIdx + 14);
   var xMin = labels[winStart];
   var xMax = labels[winEnd];
 
@@ -516,6 +536,21 @@ function toggleFcstEdit(uid, defaultAmt) {
   }
 }
 
+function jumpToDate(isoDate) {
+  var idx = allSnapshots.findIndex(function(s) { return s.date === isoDate; });
+  if (idx === -1) {
+    // Beyond the 90-day forecast window (or before the 90-day scrollback) -
+    // nothing to show yet, so say so rather than silently doing nothing.
+    alert('That date is outside the current 90-day forecast window.');
+    return;
+  }
+  centerDate = isoDate;
+  renderChart();
+  showDayPanel(isoDate);
+  var chartEl = document.getElementById('forecastChart');
+  if (chartEl) chartEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 function resetZoom() {
   if (chart) {
     chart.resetZoom();
@@ -570,6 +605,22 @@ function showDayPanel(isoDate) {
   } else {
     items.forEach(function(item, i) {
       var isBill = item.type === 'bill';
+      var isEvent = item.type === 'event';
+
+      if (isEvent) {
+        // A future event is a one-off, not a recurring bill to "mark
+        // paid" - just show it, same red/outgoing styling as a bill.
+        html += '<div class="day-item">' +
+          '<div>' +
+            '<span style="font-size:16px; margin-right:6px;">📅</span>' +
+            '<span class="fw-semibold">' + escHtml(item.name) + '</span>' +
+            '<span class="text-muted small ms-2">' + escHtml(item.account) + '</span>' +
+          '</div>' +
+          '<span class="fw-bold money" style="font-size:14px;color:#ef4444;">-£' + item.amount.toFixed(2) + '</span>' +
+        '</div>';
+        return;
+      }
+
       var icon = isBill ? '💸' : '💰';
       var btnClass = isBill ? 'btn-danger' : 'btn-success';
       var btnLabel = isBill ? 'Mark as Paid' : 'Mark as Received';
@@ -852,7 +903,15 @@ function toggleBreakdown(uid, btn) {
   }
 }
 
-if (accountNames.length > 0) { renderChart(); renderSavingsGrowth(); }
+if (accountNames.length > 0) {
+  renderChart();
+  renderSavingsGrowth();
+  // ?date=YYYY-MM-DD - arrived here via a "View in forecast" link from a
+  // future event elsewhere in the app; centre the chart on it and open its
+  // day panel straight away rather than making the user find it themselves.
+  var _requestedDate = new URLSearchParams(window.location.search).get('date');
+  if (_requestedDate) { jumpToDate(_requestedDate); }
+}
 
 // ── Intraday view (activates when zoomed to ≤ 2 days) ───────────────────────
 function onChartViewChange(c) {
@@ -1040,11 +1099,12 @@ function resetWhatIf() {
   document.getElementById('whatIfResetBtn').style.display = 'none';
 }
 
-// Clean ?refresh=1 and ?msg= from URL bar without triggering a reload
+// Clean ?refresh=1, ?msg= and ?date= from URL bar without triggering a reload
 if (window.location.search) {
   var url = new URL(window.location);
   url.searchParams.delete('refresh');
   url.searchParams.delete('msg');
+  url.searchParams.delete('date');
   window.history.replaceState({}, '', url);
 }
 
