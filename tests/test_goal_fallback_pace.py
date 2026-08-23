@@ -13,6 +13,7 @@ available to it alone, and suppressed entirely rather than showing a
 fabricated positive number when Safe to Spend itself is zero.
 """
 import datetime
+import re
 
 import pytest
 
@@ -59,6 +60,47 @@ def _add_contribution(db_conn, goal_id, user_id, amount, days_ago):
     db_conn.commit()
 
 
+def _slider_default_value(section, goal_id):
+    """Extracts the commitment slider's initial value attribute for a goal
+    - the observable successor to the old "around £X/month" prose text
+    (removed August 2026), since the slider now defaults to that exact
+    figure (see _compute_goal_commitment_bounds' fallback_pace_per_day).
+    Snapped to the nearest £5, so callers comparing against a hand-computed
+    expected figure should allow a small tolerance."""
+    m = re.search(rf'id="commitSlider{goal_id}"[^>]*value="([\d.]+)"', section)
+    assert m, f"commitSlider{goal_id} value attribute not found"
+    return float(m.group(1))
+
+
+def _direct_fallback_monthly_rate(app, user_id, goal_row):
+    """Calls _compute_goal_pace_map() directly (inside a real request
+    context so Safe to Spend resolves - see the Flask-Login current_user
+    note above) to get the raw fallback £/month figure BEFORE it's clamped
+    into a slider's [floor, max] travel range.
+
+    This is deliberately a different observable than _slider_default_value:
+    the slider's default is intentionally range-clamped (a sensible-max
+    safety feature of the commitment UI itself, see
+    _compute_goal_commitment_bounds), so it no longer always reflects the
+    raw capped-by-ceiling estimate these tests exist to verify. The
+    underlying ceiling/cap arithmetic (_cap_fallback_rate_for_goal,
+    _recurring_income_bills_daily_rate) is unchanged by the slider UI and
+    is still exactly what's being tested here - just via the function
+    directly rather than by scraping a UI value that now has an extra,
+    unrelated clamp applied on top of it."""
+    import flask_login
+    import app as app_module
+
+    with app.test_request_context():
+        user = app_module.load_user(str(user_id))
+        flask_login.login_user(user)
+        pace_map, _fallback_count = app_module._compute_goal_pace_map([goal_row], user_id)
+    pace_per_day, is_estimate = pace_map[goal_row["id"]]
+    assert is_estimate is True, "expected the fallback estimate path, not real tracked pace"
+    assert pace_per_day is not None
+    return pace_per_day * 30.44
+
+
 def _add_bill(db_conn, user_id, name, amount, day, account="Current", frequency="monthly"):
     db_conn.execute(
         "INSERT INTO scheduled_expenses (name, amount, day, account, user_id, frequency) VALUES (?,?,?,?,?,?)",
@@ -80,6 +122,11 @@ class TestFallbackReplacesInsufficientData:
         assert "not enough recent activity yet to estimate a pace" not in section
 
     def test_estimate_clearly_labelled_differently_from_real_pace(self, auth_client, db_conn, test_user, test_account):
+        """The explanatory "Based on your typical Safe to Spend..." prose
+        paragraph was removed (August 2026 - the commitment slider replaces
+        it), but the estimate must still be visually and textually
+        distinguishable from a real tracked pace: the "Estimated" label and
+        its italic styling remain."""
         _add_income(db_conn, test_user["id"])
         _add_goal(db_conn, test_user["id"], "Fresh goal", 1000.0)
 
@@ -89,18 +136,26 @@ class TestFallbackReplacesInsufficientData:
         assert "Estimated" in section
         assert "At current pace" not in section
         assert "font-style:italic" in section
-        assert "Based on your typical Safe to Spend" in section
 
     def test_estimate_shows_a_real_monthly_figure_and_projected_date(self, auth_client, db_conn, test_user, test_account):
+        """The "around £X/month" prose figure was removed along with the
+        explanatory paragraph, but the equivalent number now drives the
+        commitment slider's own default position - and a real projected
+        completion date (or years-away text) is still shown as a fact."""
+        import app as app_module
         _add_income(db_conn, test_user["id"], amount=3000.0)
-        _add_goal(db_conn, test_user["id"], "Numeric goal", 500.0)
+        gid = _add_goal(db_conn, test_user["id"], "Numeric goal", 500.0)
 
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
         section = body[body.find("Numeric goal"):body.find("Numeric goal") + 4200]
-        assert "/month" in section
         # Some projected date must appear (either a real ISO date or years-away text)
         assert "<strong>" in section
+        assert f'id="commitSlider{gid}"' in section
+        # The slider's default reflects a real, positive £/month-derived figure
+        m = re.search(rf'id="commitSlider{gid}"[^>]*value="([\d.]+)"', section)
+        assert m
+        assert float(m.group(1)) > 0
 
 
 # ── 2. SWITCHES TO REAL PACE ONCE ENOUGH DATA EXISTS ─────────────────────────
@@ -158,9 +213,12 @@ class TestMultipleGoalsSplitTheEstimate:
         global in one of its internal calls rather than the user_id it's
         passed - a pre-existing quirk unrelated to this feature, but one
         that means this needs a real authenticated request context to
-        resolve correctly, same as the route itself always has in practice."""
-        import re
+        resolve correctly, same as the route itself always has in practice.
 
+        The old "around £X/month" prose figure is gone (August 2026 -
+        replaced by the commitment slider), but the slider's own default
+        value is driven by the exact same split-evenly-across-goals
+        calculation, so it's the new observable channel for this."""
         # Target amounts are deliberately large here (see
         # TestFallbackNeverImpliesUnrealisticSpeed below) - the fallback
         # estimate is now capped so it can never imply finishing a goal in
@@ -171,35 +229,58 @@ class TestMultipleGoalsSplitTheEstimate:
         # capped figure regardless of how many goals shared the estimate.
         # A large target keeps this specific test isolated to just the
         # splitting behaviour.
+        #
+        # The slider's own default range (max ~= 50% of Safe to Spend, a
+        # deliberate "don't over-commit" ceiling - see
+        # _compute_goal_commitment_bounds) is a SEPARATE safety clamp from
+        # the even-split arithmetic this test verifies, and it must not be
+        # allowed to interfere: a large account balance keeps Safe to Spend
+        # (and therefore the slider's max) generous, while a bill caps the
+        # real recurring-income-minus-bills ceiling (the actual numerator
+        # being split) to a modest, predictable figure well under that max
+        # - so neither the single- nor two-goal default gets clamped by the
+        # range cap, and the raw 2x relationship is directly observable via
+        # the slider's value attribute.
+        db_conn.execute("UPDATE accounts SET balance=20000 WHERE id=?", (test_account["id"],))
+        db_conn.commit()
         _add_income(db_conn, test_user["id"], amount=3000.0)
-        _add_goal(db_conn, test_user["id"], "GoalOne", 100000.0)
+        _add_bill(db_conn, test_user["id"], "Rent", 2000.0, 28)
+        gid1 = _add_goal(db_conn, test_user["id"], "GoalOne", 100000.0)
 
         resp1 = auth_client.get("/manage?tab=goals")
         section1 = resp1.get_data(as_text=True)
         section1 = section1[section1.find("GoalOne"):section1.find("GoalOne") + 4200]
-        match1 = re.search(r"around £([\d.]+)/month", section1)
-        assert match1, "expected a £X/month estimate with a single goal"
-        single_rate = float(match1.group(1))
+        single_rate = _slider_default_value(section1, gid1)
+        assert single_rate > 0
 
         _add_goal(db_conn, test_user["id"], "GoalTwo", 100000.0)
         resp2 = auth_client.get("/manage?tab=goals")
         section2 = resp2.get_data(as_text=True)
         section2 = section2[section2.find("GoalOne"):section2.find("GoalOne") + 4200]
-        match2 = re.search(r"around £([\d.]+)/month", section2)
-        assert match2, "expected a £X/month estimate once a second goal exists"
-        split_rate = float(match2.group(1))
+        split_rate = _slider_default_value(section2, gid1)
 
-        assert split_rate == pytest.approx(single_rate / 2, rel=0.02)
+        # rel tolerance covers the £5 slider-snap on top of the underlying
+        # even-split arithmetic itself.
+        assert split_rate == pytest.approx(single_rate / 2, rel=0.05)
 
     def test_ui_notes_the_split_across_goals(self, auth_client, db_conn, test_user, test_account):
+        """The old "split evenly across N goals" caveat sentence is gone
+        along with the rest of the explanatory prose, but the underlying
+        even split must still hold - both goals' sliders should default to
+        the same figure, proving the shared surplus is genuinely divided
+        between them rather than double-counted."""
         _add_income(db_conn, test_user["id"])
-        _add_goal(db_conn, test_user["id"], "GoalOne", 1000.0)
-        _add_goal(db_conn, test_user["id"], "GoalTwo", 1000.0)
+        gid1 = _add_goal(db_conn, test_user["id"], "GoalOne", 100000.0)
+        gid2 = _add_goal(db_conn, test_user["id"], "GoalTwo", 100000.0)
 
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
-        section = body[body.find("GoalOne"):body.find("GoalOne") + 4200]
-        assert "split evenly across 2 goals" in section
+        section1 = body[body.find("GoalOne"):body.find("GoalOne") + 4200]
+        section2 = body[body.find("GoalTwo"):body.find("GoalTwo") + 4200]
+        val1 = _slider_default_value(section1, gid1)
+        val2 = _slider_default_value(section2, gid2)
+        assert val1 > 0
+        assert val1 == pytest.approx(val2, rel=0.05)
 
     def test_single_goal_estimate_has_no_split_note(self, auth_client, db_conn, test_user, test_account):
         _add_income(db_conn, test_user["id"])
@@ -358,52 +439,40 @@ class TestFallbackNeverImpliesUnrealisticSpeed:
        numbers on screen, but not a meaningful "typical monthly pace".
     """
 
-    def test_repro_scenario_no_longer_produces_an_inflated_figure(self, auth_client, db_conn, test_user):
+    def test_repro_scenario_no_longer_produces_an_inflated_figure(self, app, auth_client, db_conn, test_user):
         """The exact scenario that produced the original bug report's
         absurd figure: a modest account (£1,000 balance) with a normal
         £3,000/month income, viewed partway through a manual cycle. Before
         the fix this rendered a monthly figure many times larger than even
         the account's own balance+income; after the fix it's capped to a
         figure proportionate to what the £1,000 goal itself needs."""
-        import re
         _add_account(db_conn, test_user["id"], "Current", balance=1000.0)
         _add_income(db_conn, test_user["id"], amount=3000.0)
-        _add_goal(db_conn, test_user["id"], "Repro goal", 1000.0)
+        gid = _add_goal(db_conn, test_user["id"], "Repro goal", 1000.0)
 
-        resp = auth_client.get("/manage?tab=goals")
-        body = resp.get_data(as_text=True)
-        section = body[body.find("Repro goal"):body.find("Repro goal") + 4200]
-        match = re.search(r"around £([\d,\.]+)/month", section)
-        assert match, "expected a £X/month estimate"
-        monthly_figure = float(match.group(1).replace(",", ""))
+        goal = dict(db_conn.execute("SELECT * FROM goals WHERE id=?", (gid,)).fetchone())
+        monthly_figure = _direct_fallback_monthly_rate(app, test_user["id"], goal)
         # Never more than the goal's own target - the whole point of the cap.
         # (The original bug produced £13,528.75 against this exact account.)
         assert monthly_figure <= 1000.0 + 0.5
 
-    def test_cap_never_implies_completion_faster_than_about_a_month(self, auth_client, db_conn, test_user):
+    def test_cap_never_implies_completion_faster_than_about_a_month(self, app, auth_client, db_conn, test_user):
         """Direct check of the safeguard's core invariant: whatever the raw
         Safe-to-Spend-derived rate would have been, the capped pace can
         never imply finishing the goal's remaining amount in under
-        ~30 days, however large the underlying balance/income is. Goes
-        through the real route (see the Flask-Login current_user note on
-        the "split evenly" test above) so Safe to Spend resolves correctly."""
-        import re
+        ~30 days, however large the underlying balance/income is."""
         import app as app_module
         _add_account(db_conn, test_user["id"], "Current", balance=50000.0)
         _add_income(db_conn, test_user["id"], amount=10000.0)
-        _add_goal(db_conn, test_user["id"], "Tiny goal, huge surplus", 200.0)
+        gid = _add_goal(db_conn, test_user["id"], "Tiny goal, huge surplus", 200.0)
 
-        resp = auth_client.get("/manage?tab=goals")
-        body = resp.get_data(as_text=True)
-        section = body[body.find("Tiny goal, huge surplus"):body.find("Tiny goal, huge surplus") + 4200]
-        match = re.search(r"around £([\d,\.]+)/month", section)
-        assert match, "expected a £X/month estimate"
-        monthly_figure = float(match.group(1).replace(",", ""))
+        goal = dict(db_conn.execute("SELECT * FROM goals WHERE id=?", (gid,)).fetchone())
+        monthly_figure = _direct_fallback_monthly_rate(app, test_user["id"], goal)
         implied_daily_pace = monthly_figure / 30.44
         days_to_complete = 200.0 / implied_daily_pace
         assert days_to_complete >= app_module._FALLBACK_MIN_DAYS_TO_COMPLETE - 0.5
 
-    def test_cap_does_not_suppress_genuine_large_surplus_for_a_large_goal(self, auth_client, db_conn, test_user):
+    def test_cap_does_not_suppress_genuine_large_surplus_for_a_large_goal(self, app, auth_client, db_conn, test_user):
         """The safeguard must only catch implausibly FAST estimates, not
         arbitrarily shrink a large-but-real figure for a goal that's large
         enough to genuinely warrant it - catching misleading numbers isn't
@@ -418,17 +487,12 @@ class TestFallbackNeverImpliesUnrealisticSpeed:
         enough that the separate 1-month-completion cap doesn't bind either,
         isolating this test to just the "large real surplus isn't
         suppressed" behaviour it's meant to verify."""
-        import re
         _add_account(db_conn, test_user["id"], "Current", balance=200000.0)
         _add_income(db_conn, test_user["id"], amount=100000.0)
-        _add_goal(db_conn, test_user["id"], "Big real goal", 5000000.0)
+        gid = _add_goal(db_conn, test_user["id"], "Big real goal", 5000000.0)
 
-        resp = auth_client.get("/manage?tab=goals")
-        body = resp.get_data(as_text=True)
-        section = body[body.find("Big real goal"):body.find("Big real goal") + 4200]
-        match = re.search(r"around £([\d,\.]+)/month", section)
-        assert match, "expected a £X/month estimate"
-        monthly_figure = float(match.group(1).replace(",", ""))
+        goal = dict(db_conn.execute("SELECT * FROM goals WHERE id=?", (gid,)).fetchone())
+        monthly_figure = _direct_fallback_monthly_rate(app, test_user["id"], goal)
         # A genuinely large recurring income against a genuinely large goal
         # should NOT be clamped down - neither cap should bite here.
         assert monthly_figure < 5000000.0
@@ -490,15 +554,13 @@ class TestRecurringIncomeMinusBillsCeiling:
     can never exceed, regardless of balance or where in the cycle it's
     checked."""
 
-    def test_estimate_matches_regardless_of_whether_bills_have_already_passed_in_the_cycle(self, auth_client, db_conn, test_user):
+    def test_estimate_matches_regardless_of_whether_bills_have_already_passed_in_the_cycle(self, app, auth_client, db_conn, test_user):
         """The exact instability from the investigation: identical income
         and bills, only the bills' due-dates moved from before today to
         after today. Before this fix, Safe to Spend swung by the full bill
         total depending on which had already "fallen off" the future-bills
         list. The ceiling should make both scenarios converge on the same
         capped £/month figure now."""
-        import re
-
         # All bills fall due on the 1st-20th - already passed by today (23rd)
         _add_account(db_conn, test_user["id"], "Current", balance=650.0)
         _add_income(db_conn, test_user["id"], amount=2200.0, day=28)
@@ -507,14 +569,10 @@ class TestRecurringIncomeMinusBillsCeiling:
         _add_bill(db_conn, test_user["id"], "Phone", 30.0, 10)
         _add_bill(db_conn, test_user["id"], "Subscriptions", 60.0, 15)
         _add_bill(db_conn, test_user["id"], "Groceries budget", 260.0, 20)
-        _add_goal(db_conn, test_user["id"], "Bills passed goal", 5000.0)
+        gid = _add_goal(db_conn, test_user["id"], "Bills passed goal", 5000.0)
 
-        resp = auth_client.get("/manage?tab=goals")
-        body = resp.get_data(as_text=True)
-        section = body[body.find("Bills passed goal"):body.find("Bills passed goal") + 4200]
-        match = re.search(r"around £([\d,\.]+)/month", section)
-        assert match
-        estimate = float(match.group(1).replace(",", ""))
+        goal = dict(db_conn.execute("SELECT * FROM goals WHERE id=?", (gid,)).fetchone())
+        estimate = _direct_fallback_monthly_rate(app, test_user["id"], goal)
 
         # See test_estimate_matches_when_bills_have_not_yet_passed_in_the_cycle
         # below for the complementary bills-still-ahead scenario - both
@@ -522,12 +580,11 @@ class TestRecurringIncomeMinusBillsCeiling:
         real_income_minus_bills = 2200.0 - (900.0 + 150.0 + 30.0 + 60.0 + 260.0)
         assert estimate == pytest.approx(real_income_minus_bills, abs=1.0)
 
-    def test_estimate_matches_when_bills_have_not_yet_passed_in_the_cycle(self, auth_client, db_conn, test_user):
+    def test_estimate_matches_when_bills_have_not_yet_passed_in_the_cycle(self, app, auth_client, db_conn, test_user):
         """Same income/bills totals as the test above, but with every bill's
         due-date still ahead of today (24th-29th) - confirms this scenario
         converges on the SAME capped figure as the bills-already-passed
         scenario, rather than a different, bill-timing-dependent number."""
-        import re
         _add_account(db_conn, test_user["id"], "Current", balance=650.0)
         _add_income(db_conn, test_user["id"], amount=2200.0, day=28)
         _add_bill(db_conn, test_user["id"], "Rent", 900.0, 24)
@@ -535,34 +592,25 @@ class TestRecurringIncomeMinusBillsCeiling:
         _add_bill(db_conn, test_user["id"], "Phone", 30.0, 26)
         _add_bill(db_conn, test_user["id"], "Subscriptions", 60.0, 27)
         _add_bill(db_conn, test_user["id"], "Groceries budget", 260.0, 29)
-        _add_goal(db_conn, test_user["id"], "Bills ahead goal", 5000.0)
+        gid = _add_goal(db_conn, test_user["id"], "Bills ahead goal", 5000.0)
 
-        resp = auth_client.get("/manage?tab=goals")
-        body = resp.get_data(as_text=True)
-        section = body[body.find("Bills ahead goal"):body.find("Bills ahead goal") + 4200]
-        match = re.search(r"around £([\d,\.]+)/month", section)
-        assert match
-        estimate = float(match.group(1).replace(",", ""))
+        goal = dict(db_conn.execute("SELECT * FROM goals WHERE id=?", (gid,)).fetchone())
+        estimate = _direct_fallback_monthly_rate(app, test_user["id"], goal)
 
         real_income_minus_bills = 2200.0 - (900.0 + 150.0 + 30.0 + 60.0 + 260.0)
         assert estimate == pytest.approx(real_income_minus_bills, abs=1.0)
 
-    def test_large_balance_no_longer_inflates_estimate_beyond_recurring_surplus(self, auth_client, db_conn, test_user):
+    def test_large_balance_no_longer_inflates_estimate_beyond_recurring_surplus(self, app, auth_client, db_conn, test_user):
         """A large leftover balance is legitimate (accumulated savings) but
         must not be treated as if it recurs every month - the estimate
         should track real recurring income minus bills, not the balance."""
-        import re
         _add_account(db_conn, test_user["id"], "Current", balance=50000.0)
         _add_income(db_conn, test_user["id"], amount=2000.0, day=25)
         _add_bill(db_conn, test_user["id"], "Rent", 1200.0, 1)
-        _add_goal(db_conn, test_user["id"], "Large balance goal", 5000.0)
+        gid = _add_goal(db_conn, test_user["id"], "Large balance goal", 5000.0)
 
-        resp = auth_client.get("/manage?tab=goals")
-        body = resp.get_data(as_text=True)
-        section = body[body.find("Large balance goal"):body.find("Large balance goal") + 4200]
-        match = re.search(r"around £([\d,\.]+)/month", section)
-        assert match
-        estimate = float(match.group(1).replace(",", ""))
+        goal = dict(db_conn.execute("SELECT * FROM goals WHERE id=?", (gid,)).fetchone())
+        estimate = _direct_fallback_monthly_rate(app, test_user["id"], goal)
         assert estimate == pytest.approx(800.0, abs=1.0)  # 2000 - 1200, not balance-inflated
 
     def test_negative_recurring_surplus_shows_honest_message_not_fabricated_figure(self, auth_client, db_conn, test_user):
@@ -593,13 +641,12 @@ class TestRecurringIncomeMinusBillsCeiling:
         assert "around £" not in section
         assert "not enough recent activity yet to estimate a pace" in section
 
-    def test_ceiling_and_completion_speed_cap_stack_whichever_is_lower_wins(self, auth_client, db_conn, test_user):
+    def test_ceiling_and_completion_speed_cap_stack_whichever_is_lower_wins(self, app, auth_client, db_conn, test_user):
         """The two caps address different things (a per-user recurring
         surplus ceiling vs a per-goal completion-speed ceiling) and must
         stack correctly - a SMALL goal against a healthy recurring surplus
         should be bound by the completion-speed cap, not the (much higher)
         income ceiling."""
-        import re
         _add_account(db_conn, test_user["id"], "Current", balance=2000.0)
         _add_income(db_conn, test_user["id"], amount=4000.0, day=25)
         _add_bill(db_conn, test_user["id"], "Rent", 1000.0, 1)
@@ -607,14 +654,10 @@ class TestRecurringIncomeMinusBillsCeiling:
         # only needs £300 total, so completing it in 3000/month would be
         # ~3 days - the completion-speed cap (not the income ceiling) must
         # be what actually binds here.
-        _add_goal(db_conn, test_user["id"], "Tiny goal", 300.0)
+        gid = _add_goal(db_conn, test_user["id"], "Tiny goal", 300.0)
 
-        resp = auth_client.get("/manage?tab=goals")
-        body = resp.get_data(as_text=True)
-        section = body[body.find("Tiny goal"):body.find("Tiny goal") + 4200]
-        match = re.search(r"around £([\d,\.]+)/month", section)
-        assert match
-        estimate = float(match.group(1).replace(",", ""))
+        goal = dict(db_conn.execute("SELECT * FROM goals WHERE id=?", (gid,)).fetchone())
+        estimate = _direct_fallback_monthly_rate(app, test_user["id"], goal)
         # Bound by remaining(300)/30.44 days, not by the 3000/month ceiling
         assert estimate == pytest.approx(300.0, abs=1.0)
         assert estimate < 3000.0

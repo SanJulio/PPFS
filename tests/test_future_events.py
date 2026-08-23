@@ -192,9 +192,16 @@ class TestFinancialOverviewIncludesFutureEvents:
 
     def test_event_on_savings_account_not_deducted_from_safe_to_spend(self, auth_client, db_conn, test_user, test_account, second_account):
         """Safe to Spend only tracks spending-type accounts (current/cash) -
-        an event tied to a savings account should still show in "bills left"
-        totals but must not reduce the spending-account Safe to Spend
-        figure, exactly like a scheduled bill on a savings account."""
+        an event tied to a savings account must not reduce the spending-
+        account Safe to Spend figure, exactly like a scheduled bill on a
+        savings account.
+
+        August 2026 update: the Bills Left HEADLINE figure is now
+        spending-linked-only too (see the "Bills left / Safe to spend
+        labelling fix" below) - a savings-linked event still appears in
+        the full future_bills_list/breakdown (checked separately), just no
+        longer inflates this headline number, since it was never going to
+        touch spendable money."""
         _add_event(db_conn, test_user["id"], "Savings withdrawal plan", 100.0, _iso(5), second_account["name"])
         resp = auth_client.get("/")
         body = resp.get_data(as_text=True)
@@ -202,7 +209,7 @@ class TestFinancialOverviewIncludesFutureEvents:
         assert m
         assert float(m.group(1).replace(",", "")) == pytest.approx(test_account["balance"])
         m2 = re.search(r'id="future-bills-val"[^>]*>£([\d,\.]+)', body)
-        assert float(m2.group(1).replace(",", "")) == pytest.approx(100.0)
+        assert float(m2.group(1).replace(",", "")) == pytest.approx(0.0)
 
     def test_event_on_locked_account_excluded(self, auth_client, db_conn, test_user, test_account, second_account):
         _lock(db_conn, second_account["id"])

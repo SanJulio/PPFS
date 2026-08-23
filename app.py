@@ -19,6 +19,7 @@ import calendar
 import json
 import uuid
 import random
+import math
 
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -170,7 +171,7 @@ def set_csrf_token():
 @app.before_request
 def check_csrf():
     if request.method == 'POST':
-        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid', '/dismiss-auto-apply', '/api/income-preview', '/api/edit-pending-item', '/api/edit-cycle-item', '/api/set-primary-income', '/my-money/setup/dismiss', '/api/goal-pace-preview']
+        exempt = ['/login', '/register', '/stripe/webhook', '/auto-apply', '/mark-bill-paid', '/dismiss-auto-apply', '/api/income-preview', '/api/edit-pending-item', '/api/edit-cycle-item', '/api/set-primary-income', '/my-money/setup/dismiss', '/api/goal-pace-preview', '/api/goal-commitment-preview']
         if request.path not in exempt:
             token = request.form.get('csrf_token')
             if not token or token != session.get('csrf_token'):
@@ -1017,6 +1018,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
                 "account": acc,
                 "due_date": due.isoformat(),
                 "type": "bill",
+                "account_type": accounts[acc]["type"],
             })
             if accounts[acc]["type"] in spending_types:
                 spending_future_bills += expense["amount"]
@@ -1069,6 +1071,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
             "account": acc,
             "due_date": due.isoformat(),
             "type": "event",
+            "account_type": accounts[acc]["type"],
         })
         if accounts[acc]["type"] in spending_types:
             spending_future_bills += amt
@@ -1094,6 +1097,24 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
         freq = rule.get("frequency", "monthly")
         from_acc = rule.get("from_account", "")
         if from_acc not in accounts or accounts[from_acc].get("is_locked"):
+            continue
+        # A rule's destination can also become locked independently of its
+        # source (e.g. a Pro->Free downgrade locking the linked savings
+        # account a goal commitment feeds) - forecast()/api_snapshot()
+        # already handle this implicitly (their `simulated`/`accounts`
+        # dicts are pre-filtered to exclude locked accounts entirely, so
+        # `to_acc in simulated` already fails safely), but this function's
+        # `accounts` dict still contains locked accounts (with the flag
+        # set) for its own balance-aggregation step, so the check has to
+        # be explicit here. Pauses the WHOLE rule rather than only skipping
+        # the credit side - continuing to deduct from Safe to Spend for a
+        # transfer that can't actually land anywhere would be exactly the
+        # "committing against a frozen account" the pause is meant to
+        # prevent, not a partial fix. Only applies when to_account is a
+        # real value - debt/standalone-goal commitments deliberately leave
+        # it '' and are unaffected (see database.py's goal_id migration).
+        to_acc_check = rule.get("to_account", "")
+        if to_acc_check and to_acc_check in accounts and accounts[to_acc_check].get("is_locked"):
             continue
 
         sr_candidates = []
@@ -1129,6 +1150,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
                 "day": rule["day"],
                 "account": from_acc,
                 "due_date": due.isoformat(),
+                "account_type": accounts[from_acc]["type"],
             })
             if accounts[from_acc]["type"] in spending_types:
                 spending_future_bills += amt
@@ -1183,6 +1205,12 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
     return {
         "spending_balance": spending_balance,
         "future_bills": all_future_bills,
+        # Spending-account-linked bills/events only - the figure Safe to
+        # Spend is actually derived from (see safe_spending above). Exposed
+        # separately so the Bills Left headline can show THIS, not the
+        # all-inclusive future_bills total, while the breakdown still lists
+        # everything (see future_bills_list's account_type field).
+        "future_bills_spending": spending_future_bills,
         "future_income": future_income,
         "future_income_list": sorted(future_income_list, key=lambda x: x.get("date", "")),
         "safe_spending": safe_spending,
@@ -2079,6 +2107,9 @@ def api_overview():
     start_iso = start.isoformat()
     filtered_bills = [b for b in ov["future_bills_list"] if b.get("due_date", "") >= start_iso]
     filtered_bills_total = sum(b["amount"] for b in filtered_bills)
+    # Spending-account-linked only - what the Bills Left headline should
+    # show (see calculate_financial_overview's future_bills_spending).
+    filtered_bills_spending_total = sum(b["amount"] for b in filtered_bills if b.get("account_type") in ("current", "cash"))
     filtered_income = [i for i in ov["future_income_list"] if i.get("date", "") >= start_iso]
 
     return jsonify({
@@ -2087,6 +2118,7 @@ def api_overview():
         "scheduled": monthly["scheduled"],
         "bills_list": monthly["bills_list"],
         "future_bills": filtered_bills_total,
+        "future_bills_spending": filtered_bills_spending_total,
         "future_bills_list": filtered_bills,
         "future_income": ov["future_income"],
         "future_income_list": filtered_income,
@@ -3305,7 +3337,11 @@ def api_snapshot():
     accounts_rows = get_active_accounts(current_user.id)
     # Locked accounts are frozen and excluded from this simulation entirely —
     # same reasoning as forecast(): a balance that can't change shouldn't be
-    # projected forward as if it were live.
+    # projected forward as if it were live. Names captured before filtering
+    # so a savings_rule whose to_account is locked can be paused entirely
+    # below (see the loop) rather than just silently skipping the credit
+    # side while still deducting from an unlocked from_account.
+    _snap_locked_names = {r["name"] for r in accounts_rows if r.get("is_locked")}
     accounts_rows = [r for r in accounts_rows if not r.get("is_locked")]
     accounts = {}
     for r in accounts_rows:
@@ -3462,6 +3498,14 @@ def api_snapshot():
                 from_acc = rule.get("from_account", "")
                 to_acc = rule.get("to_account", "")
                 amt = float(rule["amount"])
+                # A non-empty to_account that's locked pauses the WHOLE rule,
+                # not just the credit side - continuing to deduct from an
+                # unlocked from_account for a transfer that can't land
+                # anywhere would be exactly the "committing against a frozen
+                # account" a pause is meant to prevent. An empty to_account
+                # (debt/standalone goal commitments, by design) is unaffected.
+                if to_acc and to_acc in _snap_locked_names:
+                    continue
                 if from_acc in simulated:
                     bills_due.append({
                         "name": f"Transfer to {to_acc}",
@@ -4189,6 +4233,141 @@ def _project_goal_completion(progress, pace_per_day, target_date_str=None, is_es
     }
 
 
+# --- Goal Contribution Engine (August 2026) ---
+# A goal's recurring contribution slider commitment is stored as an
+# ordinary savings_rules row with goal_id set (see database.py's migration
+# comment for the full schema reasoning) - one engine feeding Safe to
+# Spend/forecast, not a parallel system. Deliberately projection-only, like
+# every other savings_rules row: setting a commitment reduces Safe to
+# Spend/the forecast from the next cycle onward, but never fabricates a
+# real balance change or goal_contributions row - the user still makes the
+# real transfer/logs the real contribution themselves.
+
+_GOAL_COMMITMENT_SNAP = 5.0  # slider snaps to the nearest £5
+# Default slider max is capped well below 100% of Safe to Spend so the
+# starting range itself discourages over-committing - a user who genuinely
+# wants to commit more can still type a larger figure into the paired
+# number field.
+_GOAL_COMMITMENT_DEFAULT_MAX_PCT = 0.5
+
+
+def _snap_to_increment(value, increment=_GOAL_COMMITMENT_SNAP, mode="nearest"):
+    """Snaps a raw £ amount to the nearest (or, for a floor/ceiling bound,
+    the safe rounding direction's) multiple of `increment`. mode='up' never
+    understates a floor; mode='down' never overstates a cap; 'nearest' is
+    for values with no direction requirement (e.g. a default position)."""
+    if value is None:
+        return None
+    value = max(0.0, float(value))
+    if increment <= 0:
+        return round(value, 2)
+    units = value / increment
+    if mode == "up":
+        units = math.ceil(units - 1e-9)
+    elif mode == "down":
+        units = math.floor(units + 1e-9)
+    else:
+        units = round(units)
+    return round(units * increment, 2)
+
+
+def _get_goal_commitment(goal_id, user_id):
+    """Returns the existing savings_rules row linked to this goal (via
+    goal_id), or None if the goal has no standing recurring commitment
+    set up yet."""
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM savings_rules WHERE goal_id = %s AND user_id = %s", (goal_id, user_id))
+    else:
+        cursor.execute("SELECT * FROM savings_rules WHERE goal_id = ? AND user_id = ?", (goal_id, user_id))
+    cols = [d[0] for d in cursor.description]
+    row = cursor.fetchone()
+    cursor.close()
+    release_db(db)
+    return dict(zip(cols, row)) if row else None
+
+
+def _compute_goal_commitment_bounds(goal, progress, pace, safe_to_spend, fallback_pace_per_day=None):
+    """Returns the slider's {floor, default, max} in £/cycle, all snapped
+    to _GOAL_COMMITMENT_SNAP.
+
+    - Debt goal WITH a known minimum_payment: floor = that minimum (can
+      never be dragged below a real required payment); default = the
+      target-date-derived suggested pace if it's at least the minimum,
+      else the minimum itself - so the default is never a bare 0 when a
+      real minimum is known, per spec.
+    - Debt goal with no known minimum, or a savings goal: floor = 0 (no
+      hard requirement to protect against); default = the suggested pace
+      if one exists, else 0 - savings goals are explicitly allowed to
+      default lower than debt goals with a real minimum.
+    - max: the larger of a modest £50 baseline and
+      _GOAL_COMMITMENT_DEFAULT_MAX_PCT of current Safe to Spend, so a user
+      with very little Safe to Spend still gets a usable range rather than
+      a near-zero max. The default is clamped to sit within [floor, max].
+
+    fallback_pace_per_day is the goal's already-computed real/estimated
+    recent £/day pace (g["projection"]["pace_per_day"], itself either real
+    tracked velocity or the Safe-to-Spend-derived fallback estimate — see
+    _compute_goal_pace_map). _suggest_goal_pace() only returns a figure
+    when a target date is set; without one, the slider would otherwise
+    default to a bare 0 even though a perfectly good pace figure already
+    exists and used to be shown as "around £X/month" — so this is
+    consulted second, before finally falling back to 0.
+    """
+    minimum_payment = goal.get("minimum_payment")
+    minimum_payment = float(minimum_payment) if minimum_payment not in (None, "") else None
+    suggested = pace.get("monthly_pace") if pace and not pace.get("overdue") else None
+    if suggested is None and fallback_pace_per_day is not None and fallback_pace_per_day > 0:
+        suggested = fallback_pace_per_day * 30.44
+
+    if goal.get("goal_type") == "debt" and minimum_payment is not None and minimum_payment > 0:
+        floor = minimum_payment
+        default = suggested if (suggested is not None and suggested >= minimum_payment) else minimum_payment
+    else:
+        floor = 0.0
+        default = suggested if suggested is not None else 0.0
+
+    safe_to_spend = max(0.0, float(safe_to_spend or 0.0))
+    max_value = max(50.0, safe_to_spend * _GOAL_COMMITMENT_DEFAULT_MAX_PCT)
+    # A floor from a real minimum payment always wins even if it exceeds
+    # the "sensible default" max - never hide a real requirement.
+    max_value = max(max_value, floor)
+
+    floor_snapped = _snap_to_increment(floor, mode="up")
+    max_snapped = _snap_to_increment(max_value, mode="down")
+    if max_snapped < floor_snapped:
+        max_snapped = floor_snapped
+    default_snapped = _snap_to_increment(default, mode="nearest")
+    default_snapped = min(max(default_snapped, floor_snapped), max_snapped)
+
+    return {
+        "floor": floor_snapped,
+        "default": default_snapped,
+        "max": max_snapped,
+        "has_minimum_payment": minimum_payment is not None and minimum_payment > 0,
+    }
+
+
+def _compute_goal_commitment_preview(progress, target_date_str, amount, safe_to_spend):
+    """Shared by /api/goal-commitment-preview (live slider dragging) and
+    manage()'s initial server-render (so the card shows real numbers
+    before any JS has run, rather than a blank "Calculating…") - one
+    calculation, not two copies that could drift apart. Feeds the
+    candidate amount into _project_goal_completion() as a hypothetical
+    pace, exactly like the real/estimated pace everywhere else."""
+    amount = max(0.0, float(amount or 0))
+    pace_per_day = amount / 30.44
+    projection = _project_goal_completion(progress, pace_per_day, target_date_str, is_estimate=False)
+    resulting_safe_to_spend = round(float(safe_to_spend or 0.0) - amount, 2)
+    return {
+        "amount": round(amount, 2),
+        "resulting_safe_to_spend": resulting_safe_to_spend,
+        "would_go_negative": resulting_safe_to_spend < 0,
+        "projection": projection,
+    }
+
+
 # Keyword -> emoji, checked in order against the goal's (lower-cased) name.
 # First match wins. Deliberately plain emoji rather than an icon font/SVG
 # library — the app already uses emoji as its icon language everywhere
@@ -4611,6 +4790,30 @@ def manage():
 
     safe_to_spend_for_goals = _get_safe_to_spend(uid) if goals else None
 
+    # Goal Contribution Engine: each active goal's existing standing
+    # commitment (if any) plus the slider's floor/default/max, computed
+    # from the same progress/pace/Safe-to-Spend values already resolved
+    # above — no separate recalculation. Only for active goals; a
+    # completed goal has nothing to commit toward.
+    for g in goals:
+        if g["status"] != "active":
+            g["commitment"] = None
+            g["commitment_bounds"] = None
+            continue
+        g["commitment"] = _get_goal_commitment(g["id"], uid)
+        g["commitment_bounds"] = _compute_goal_commitment_bounds(
+            g, g["progress"], g["pace"], safe_to_spend_for_goals or 0.0,
+            fallback_pace_per_day=g["projection"].get("pace_per_day") if g.get("projection") else None,
+        )
+        # Initial slider position: the existing commitment's amount if one
+        # is already set, else the bounds' own default - and the preview
+        # shown before any JS has run reflects THAT starting amount, via
+        # the exact same helper the live drag-preview route uses.
+        _initial_amount = g["commitment"]["amount"] if g["commitment"] else g["commitment_bounds"]["default"]
+        g["commitment_preview"] = _compute_goal_commitment_preview(
+            g["progress"], g.get("target_date"), _initial_amount, safe_to_spend_for_goals or 0.0
+        )
+
     return render_template("manage.html",
         accounts=accounts,
         bills=bills,
@@ -4927,6 +5130,200 @@ def api_goal_pace_preview():
     pace["warning"] = warning
     pace["safe_to_spend"] = safe_to_spend
     return jsonify({"pace": pace})
+
+
+@app.post("/api/goal-commitment-preview")
+@login_required
+def api_goal_commitment_preview():
+    """Live feedback for the goal contribution slider: given a candidate
+    £/cycle amount, returns (a) the resulting Safe to Spend for the current
+    cycle and (b) the projected completion date that amount would imply,
+    computed by feeding it as a hypothetical pace_per_day into the exact
+    same _project_goal_completion() used for the goal's real/estimated pace
+    everywhere else — not a bespoke recalculation. Never saved server-side;
+    the slider is only persisted when the user explicitly confirms (see
+    /settings/set-goal-commitment)."""
+    data = request.get_json(silent=True) or {}
+    if data.get("csrf_token") != session.get("csrf_token"):
+        return jsonify({"error": "CSRF"}), 403
+
+    try:
+        goal_id = int(data.get("goal_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid goal_id"}), 400
+    try:
+        amount = max(0.0, float(data.get("amount") or 0))
+    except (TypeError, ValueError):
+        amount = 0.0
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM goals WHERE id=%s AND user_id=%s", (goal_id, current_user.id))
+    else:
+        cursor.execute("SELECT * FROM goals WHERE id=? AND user_id=?", (goal_id, current_user.id))
+    cols = [d[0] for d in cursor.description]
+    row = cursor.fetchone()
+    cursor.close()
+    release_db(db)
+    if not row:
+        return jsonify({"error": "Goal not found"}), 404
+    goal = dict(zip(cols, row))
+    goal["target_amount"] = float(goal["target_amount"] or 0)
+
+    accounts_by_id = {a["id"]: a for a in get_all_accounts(current_user.id)}
+    progress = _compute_goal_progress(goal, current_user.id, accounts_by_id=accounts_by_id)
+    safe_to_spend = _get_safe_to_spend(current_user.id) or 0.0
+
+    pace_for_bounds = _suggest_goal_pace(goal["target_amount"], progress["progress_amount"], goal.get("target_date"))
+    # Same real/estimated pace manage()'s initial render uses, so the
+    # bounds returned here (e.g. after re-fetching on demand) match.
+    pace_map, _fallback_count = _compute_goal_pace_map([goal], current_user.id, accounts_by_id=accounts_by_id)
+    fallback_pace_per_day, _ = pace_map.get(goal["id"], (None, False))
+    bounds = _compute_goal_commitment_bounds(goal, progress, pace_for_bounds, safe_to_spend, fallback_pace_per_day=fallback_pace_per_day)
+
+    preview = _compute_goal_commitment_preview(progress, goal.get("target_date"), amount, safe_to_spend)
+    preview["bounds"] = bounds
+    return jsonify(preview)
+
+
+@app.post("/settings/set-goal-commitment")
+@login_required
+def settings_set_goal_commitment():
+    """Creates, updates, or removes the standing recurring commitment
+    behind a goal's contribution slider - an ordinary savings_rules row
+    with goal_id set (see database.py's migration for the full schema
+    reasoning). Deliberately NOT Pro-gated, unlike settings_add_savings_rule
+    - Goals themselves aren't a Pro feature, and this is conceptually part
+    of Goals reusing the savings_rules engine, not the Savings Rules
+    feature itself.
+
+    amount <= 0 removes the commitment entirely (a slider dragged to zero
+    means "no standing commitment", not "commit £0/cycle") rather than
+    being rejected as an invalid amount."""
+    goal_id_raw = (request.form.get("goal_id") or "").strip()
+    amount_raw = (request.form.get("amount") or "").strip()
+    from_account = (request.form.get("from_account") or "").strip()
+
+    try:
+        goal_id = int(goal_id_raw)
+    except (ValueError, TypeError):
+        return redirect(url_for("manage", tab="goals", msg="Invalid goal."))
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM goals WHERE id=%s AND user_id=%s", (goal_id, current_user.id))
+    else:
+        cursor.execute("SELECT * FROM goals WHERE id=? AND user_id=?", (goal_id, current_user.id))
+    cols = [d[0] for d in cursor.description]
+    row = cursor.fetchone()
+    if not row:
+        cursor.close()
+        release_db(db)
+        return redirect(url_for("manage", tab="goals", msg="Goal not found."))
+    goal = dict(zip(cols, row))
+
+    try:
+        amount = round(float(amount_raw), 2)
+    except (ValueError, TypeError):
+        amount = 0.0
+
+    existing = _get_goal_commitment(goal_id, current_user.id)
+
+    if amount <= 0:
+        if existing:
+            if USE_POSTGRES:
+                cursor.execute("DELETE FROM savings_rules WHERE id=%s AND user_id=%s", (existing["id"], current_user.id))
+            else:
+                cursor.execute("DELETE FROM savings_rules WHERE id=? AND user_id=?", (existing["id"], current_user.id))
+            db.commit()
+        cursor.close()
+        release_db(db)
+        bust_forecast_cache(current_user.id)
+        return redirect(url_for("manage", tab="goals", msg="Recurring commitment removed."))
+
+    if not from_account:
+        cursor.close()
+        release_db(db)
+        return redirect(url_for("manage", tab="goals", msg="Choose which account this comes from."))
+
+    # Block against a currently-locked source account, same as bills/
+    # income/transfers already do - a fresh commitment shouldn't be set up
+    # against an account that can't take new activity.
+    if _is_account_locked(current_user.id, from_account):
+        cursor.close()
+        release_db(db)
+        return redirect(url_for("manage", tab="goals", msg="That account is locked."))
+
+    # Server-side floor enforcement - the slider UI already prevents
+    # dragging below a real minimum payment, but a form POST could bypass
+    # that client-side check entirely.
+    minimum_payment = goal.get("minimum_payment")
+    if goal.get("goal_type") == "debt" and minimum_payment not in (None, "") and float(minimum_payment) > 0:
+        if amount < float(minimum_payment):
+            cursor.close()
+            release_db(db)
+            return redirect(url_for("manage", tab="goals", msg=f"This goal has a minimum payment of £{float(minimum_payment):.2f} — the commitment can't be set below it."))
+
+    # to_account is only ever populated for a goal linked to a real,
+    # unlocked SAVINGS account - crediting it is unambiguous and is the
+    # whole point (it's what should visibly grow in the forecast chart).
+    # Debt-linked and standalone goals leave it '' - a one-sided deduction
+    # from from_account only, exactly like a bill. See database.py's
+    # goal_id migration comment for the full reasoning.
+    to_account = ""
+    linked_account_id = goal.get("linked_account_id")
+    if linked_account_id and goal.get("goal_type") == "savings":
+        if USE_POSTGRES:
+            cursor.execute("SELECT name, type, is_locked FROM accounts WHERE id=%s AND user_id=%s", (linked_account_id, current_user.id))
+        else:
+            cursor.execute("SELECT name, type, is_locked FROM accounts WHERE id=? AND user_id=?", (linked_account_id, current_user.id))
+        acc_cols = [d[0] for d in cursor.description]
+        acc_row = cursor.fetchone()
+        if acc_row:
+            acc = dict(zip(acc_cols, acc_row))
+            if acc.get("type") == "savings" and not acc.get("is_locked"):
+                to_account = acc["name"]
+
+    # Anchored to the user's actual CURRENT cycle start day (not the raw
+    # manual-mode budget_cycle_start column, which is unused/stale for a
+    # user in automatic cycle mode) so the rule reliably falls inside every
+    # future cycle's window regardless of cycle mode.
+    import cycle_engine as _ce
+    try:
+        day = _ce.get_cycle(current_user.id)["display_start"].day
+    except Exception:
+        day = 1
+
+    if existing:
+        if USE_POSTGRES:
+            cursor.execute(
+                "UPDATE savings_rules SET amount=%s, day=%s, from_account=%s, to_account=%s WHERE id=%s AND user_id=%s",
+                (amount, day, from_account, to_account, existing["id"], current_user.id),
+            )
+        else:
+            cursor.execute(
+                "UPDATE savings_rules SET amount=?, day=?, from_account=?, to_account=? WHERE id=? AND user_id=?",
+                (amount, day, from_account, to_account, existing["id"], current_user.id),
+            )
+    else:
+        rule_name = f"{goal['name']} contribution"
+        if USE_POSTGRES:
+            cursor.execute(
+                "INSERT INTO savings_rules (name, amount, day, frequency, from_account, to_account, user_id, goal_id) VALUES (%s,%s,%s,'monthly',%s,%s,%s,%s)",
+                (rule_name, amount, day, from_account, to_account, current_user.id, goal_id),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO savings_rules (name, amount, day, frequency, from_account, to_account, user_id, goal_id) VALUES (?,?,?,'monthly',?,?,?,?)",
+                (rule_name, amount, day, from_account, to_account, current_user.id, goal_id),
+            )
+    db.commit()
+    cursor.close()
+    release_db(db)
+    bust_forecast_cache(current_user.id)
+    return redirect(url_for("manage", tab="goals", msg=f"Recurring commitment of £{amount:.2f} set for '{goal['name']}'."))
 
 
 @app.post("/settings/add-account")
@@ -5814,6 +6211,10 @@ def forecast():
     # data. The template shows a note with the count so the user knows why
     # their forecast covers fewer accounts than they actually have.
     locked_count = sum(1 for r in accounts_rows if r.get("is_locked"))
+    # Captured before filtering so a savings_rule whose to_account is
+    # locked can be paused entirely below (see the savings_rules loop),
+    # not just have its credit side silently skipped.
+    _fc_locked_names = {r["name"] for r in accounts_rows if r.get("is_locked")}
     accounts_rows = [r for r in accounts_rows if not r.get("is_locked")]
     accounts = {}
     savings_rates = {}
@@ -5970,6 +6371,11 @@ def forecast():
                 from_acc = rule["from_account"]
                 to_acc = rule["to_account"]
                 amt = float(rule["amount"])
+                # See api_snapshot()'s equivalent loop for the full
+                # reasoning: a non-empty, locked to_account pauses the
+                # whole rule, not just the credit side.
+                if to_acc and to_acc in _fc_locked_names:
+                    continue
                 if from_acc in simulated:
                     simulated[from_acc] -= amt
                 if to_acc in simulated:

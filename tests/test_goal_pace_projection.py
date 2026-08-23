@@ -273,7 +273,17 @@ class TestGoalsTabProjectionDisplay:
         assert "At current pace" in body
         assert "Target:" not in body.split("Rainy day fund")[1][:600]
 
-    def test_on_track_shows_green_and_comparison(self, auth_client, db_conn, test_user):
+    def test_on_track_still_computed_and_projected_date_shown(self, auth_client, db_conn, test_user):
+        """The on-track/behind-target colour comparison text was removed
+        (August 2026 - replaced by the contribution slider, which shows
+        its own live projected date against the target instead), but the
+        underlying real-pace calculation is unchanged - the projected date
+        it produces must still appear on the card as a bare fact, and
+        _project_goal_completion() must still resolve it as on_track under
+        the hood (covered directly elsewhere; checked here too since it's
+        cheap and this is exactly the scenario that used to render green)."""
+        import re
+        import app as app_module
         acc_id = _add_account(db_conn, test_user["id"], "Savings", balance=5000.0)
         target = _iso(days_ahead=200)
         _add_goal(db_conn, test_user["id"], "House deposit", 10000.0, target_date=target,
@@ -282,13 +292,31 @@ class TestGoalsTabProjectionDisplay:
         db_conn.execute("UPDATE accounts SET balance = balance + 3000 WHERE id=?", (acc_id,))
         db_conn.commit()
 
+        # Rough approximation of the real span-based pace calc, just to
+        # confirm this really is an on-track scenario (the app's actual
+        # _compute_goal_recent_pace() reconstructs balance-at-window-start
+        # from transaction history, which won't match a naive /30 exactly -
+        # that precision is already covered by test_goal_pace_projection's
+        # other, more direct tests of that function).
+        pace_per_day = 3000.0 / 30
+        progress = {"progress_amount": 4000.0, "target_amount": 10000.0}
+        expected = app_module._project_goal_completion(progress, pace_per_day, target, is_estimate=False)
+        assert expected["on_track"] is True  # confirms this is genuinely the on-track scenario
+
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
         section = body[body.find("House deposit"):body.find("House deposit") + 4200]
-        assert "on track" in section
-        assert "#198754" in section  # green
+        assert "At current pace" in section
+        assert re.search(r"\d{4}-\d{2}-\d{2}", section)  # a real projected date is shown
+        assert target in section
 
-    def test_behind_target_shows_red_or_amber(self, auth_client, db_conn, test_user):
+    def test_behind_target_projected_date_still_shown(self, auth_client, db_conn, test_user):
+        """Same as above for the behind-target case - the colour-coded
+        "behind target / try £X more" text is gone (superseded by the
+        slider), but the real pace's projected date is still a visible
+        fact the user can compare against the target date themselves."""
+        import re
+        import app as app_module
         acc_id = _add_account(db_conn, test_user["id"], "Loan", balance=-8000.0)
         target = _iso(days_ahead=10)
         _add_goal(db_conn, test_user["id"], "Pay off loan", 8000.0, goal_type="debt", target_date=target,
@@ -301,11 +329,19 @@ class TestGoalsTabProjectionDisplay:
         db_conn.execute("UPDATE accounts SET balance = balance + 1200 WHERE id=?", (acc_id,))
         db_conn.commit()
 
+        # See test_on_track_still_computed_and_projected_date_shown for why
+        # this is a rough approximation rather than an exact match.
+        pace_per_day = 1200.0 / 30
+        progress = {"progress_amount": 1200.0, "target_amount": 8000.0}
+        expected = app_module._project_goal_completion(progress, pace_per_day, target, is_estimate=False)
+        assert expected["on_track"] is False  # confirms this is genuinely the behind-target scenario
+
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
         section = body[body.find("Pay off loan"):body.find("Pay off loan") + 4200]
-        assert "behind target" in section
-        assert "#dc3545" in section  # red
+        assert "At current pace" in section
+        assert re.search(r"\d{4}-\d{2}-\d{2}", section)  # a real projected date is shown
+        assert target in section
 
     def test_insufficient_data_shows_honest_message_not_a_date(self, auth_client, db_conn, test_user):
         _add_goal(db_conn, test_user["id"], "Brand new goal", 1000.0)

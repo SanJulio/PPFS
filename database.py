@@ -1479,5 +1479,79 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: savings_rules.goal_id (Goal Contribution Engine) ---
+    # A recurring goal commitment (set via the goal's contribution slider)
+    # is stored as an ordinary savings_rules row with this column set,
+    # rather than a new parallel table - the whole point is one engine
+    # feeding Safe to Spend/forecast, not two systems that can disagree.
+    # Nullable: NULL for every ordinary (non-goal) savings rule, unchanged.
+    #
+    # to_account stays populated (a real transfer, exactly like any other
+    # savings rule) only for a rule linked to a GOAL WITH A LINKED SAVINGS
+    # ACCOUNT - crediting a real account there is unambiguous and is the
+    # whole point (it's what should visibly grow in the forecast chart).
+    # For a debt goal or a standalone goal, to_account is left '' (the
+    # existing "no real destination" convention every consumer already
+    # handles safely via `if to_acc in accounts`) - crediting a debt
+    # account automatically would be sign-ambiguous (works whether debt is
+    # stored as a negative balance or a positive "amount owed" figure for
+    # *reading* progress via abs() diffs, but a real credit can't safely
+    # guess which direction to move the number), and a standalone goal has
+    # no account to credit at all. Confirmed deliberately projection-only
+    # (see get_pending_auto_apply_items/run_auto_apply_backfill - neither
+    # ever touches savings_rules, unlike bills/income): a goal commitment
+    # reduces Safe to Spend/forecast exactly like any other savings rule,
+    # but never fabricates a real balance change or goal_contributions row
+    # on its own - the user still makes the real transfer/logs the real
+    # contribution themselves, same as every savings rule today.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='savings_rules' AND column_name='goal_id'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE savings_rules ADD COLUMN goal_id INTEGER DEFAULT NULL")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE savings_rules ADD COLUMN goal_id INTEGER DEFAULT NULL")
+            db.commit()
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_savings_rules_goal_id ON savings_rules(goal_id)")
+        db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (savings_rules.goal_id): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # --- MIGRATION: goals.minimum_payment ---
+    # Optional, debt goals only: a known required minimum payment (e.g. a
+    # credit card's contractual minimum). When set, it becomes a hard floor
+    # on the contribution slider (can't be dragged below it) and the
+    # slider's default position, rather than defaulting to 0 or an
+    # arbitrary suggested pace - a debt goal with a real minimum shouldn't
+    # let a user casually commit less than what's actually required.
+    # NULL (the default) means "no known minimum" - the slider then behaves
+    # like a savings goal's (floor of 0, defaults to the suggested pace).
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='goals' AND column_name='minimum_payment'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE goals ADD COLUMN minimum_payment NUMERIC(12,2) DEFAULT NULL")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE goals ADD COLUMN minimum_payment REAL DEFAULT NULL")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (goals.minimum_payment): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

@@ -130,7 +130,8 @@ def _create_test_schema(db_path: Path):
             frequency TEXT NOT NULL DEFAULT 'monthly',
             from_account TEXT NOT NULL,
             to_account TEXT NOT NULL,
-            user_id INTEGER NOT NULL
+            user_id INTEGER NOT NULL,
+            goal_id INTEGER DEFAULT NULL
         )""",
         """CREATE TABLE IF NOT EXISTS future_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -204,7 +205,8 @@ def _create_test_schema(db_path: Path):
             starting_balance REAL,
             status TEXT NOT NULL DEFAULT 'active',
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            completed_at TEXT
+            completed_at TEXT,
+            minimum_payment REAL DEFAULT NULL
         )""",
         """CREATE TABLE IF NOT EXISTS goal_contributions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

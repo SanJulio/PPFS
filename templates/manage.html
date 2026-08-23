@@ -958,50 +958,84 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         </div>
 
         {% set proj = g.projection %}
-        {% if proj and proj.state in ('projected', 'years_away') %}
-          {% if g.target_date %}
-          <div class="d-flex gap-2 mb-2">
-            <div class="goal-stat-box">
-              <div class="goal-stat-label">Target date</div>
-              <div class="goal-stat-value">{{ g.target_date }}</div>
-            </div>
-            <div class="goal-stat-box" style="background:{{ '#ecfdf5' if proj.status_color == 'green' else '#fffbeb' if proj.status_color == 'amber' else '#fef2f2' }};">
-              <div class="goal-stat-label">{{ d.pace_label }}</div>
-              <div class="goal-stat-value" style="color:{{ '#166534' if proj.status_color == 'green' else '#b45309' if proj.status_color == 'amber' else '#dc3545' }};{% if proj.is_estimate %} font-style:italic;{% endif %}"><strong>{% if proj.state == 'projected' %}{{ proj.projected_date }}{% else %}{{ proj.years_away }}+ years{% endif %}</strong></div>
-            </div>
-          </div>
-          {% if proj.on_track %}
-            <div class="small mb-2" style="color:#166534;">✓ You're on track to hit your target</div>
-          {% elif proj.state == 'projected' and d.months_behind %}
-            <div class="small mb-2" style="color:#b45309;">
-              ⚠ {{ d.months_behind }} month{{ 's' if d.months_behind != 1 else '' }} behind target{% if d.extra_monthly_needed %} — try £{{ "%.2f"|format(d.extra_monthly_needed) }}/month more{% endif %}
-            </div>
-          {% else %}
-            <div class="small mb-2" style="color:#dc3545;">⚠ Behind target</div>
+        {#- Bare facts only, deliberately: target date and real tracked pace
+           (if any). No on-track/behind-target comparison, no "try £X more"
+           suggestion, no estimate-explanation paragraph — that judgemental
+           text is exactly what the commitment slider below replaces. #}
+        <div class="small text-muted mb-2">
+          {% if g.target_date %}Target date: <strong style="color:#111;">{{ g.target_date }}</strong>{% endif %}
+          {% if proj and proj.state == 'projected' %}
+            {% if g.target_date %} · {% endif %}{{ d.pace_label }}: <strong style="color:#111;{% if proj.is_estimate %} font-style:italic;{% endif %}">{{ proj.projected_date }}</strong>
+          {% elif proj and proj.state == 'years_away' %}
+            {% if g.target_date %} · {% endif %}{{ d.pace_label }}: <strong style="color:#111;{% if proj.is_estimate %} font-style:italic;{% endif %}">{{ proj.years_away }}+ years away</strong>
+          {% elif proj and proj.state == 'no_progress' %}
+            {% if g.target_date %} · {% endif %}<span style="color:#dc3545;">⚠ No recent progress</span>
+          {% elif proj and proj.state == 'reached' %}
+            {% if g.target_date %} · {% endif %}<span style="color:#166534;">✅ Target reached</span>
+          {% elif proj and proj.state == 'insufficient_data' %}
+            {% if g.target_date %} · {% endif %}<span style="color:#9ca3af;">not enough recent activity yet to estimate a pace</span>
           {% endif %}
-          {% else %}
-          <div class="goal-stat-box mb-2" style="background:#f8f9fa; max-width:100%;">
-            <div class="goal-stat-label">{{ d.pace_label }}</div>
-            <div class="goal-stat-value"{% if proj.is_estimate %} style="font-style:italic;"{% endif %}><strong>{% if proj.state == 'projected' %}{{ proj.projected_date }}{% else %}{{ proj.years_away }}+ years away{% endif %}</strong></div>
-          </div>
-          {% endif %}
-        {% elif proj and proj.state == 'no_progress' %}
-          <div class="small mb-2" style="color:#dc3545;">⚠ No recent progress — at this pace you won't reach this goal</div>
-        {% elif proj and proj.state == 'reached' %}
-          <div class="small mb-2" style="color:#166534;">✅ Target reached</div>
-        {% elif proj and proj.state == 'insufficient_data' %}
-          <div class="small mb-2" style="color:#9ca3af;">not enough recent activity yet to estimate a pace{% if g.target_date %} — target: {{ g.target_date }}{% endif %}</div>
-        {% endif %}
-        {% if proj and proj.is_estimate and proj.pace_per_day %}
-          <div class="small mb-2" style="color:#9ca3af;">
-            Based on your typical Safe to Spend — around £{{ "%.2f"|format(proj.pace_per_day * 30.44) }}/month{% if proj.fallback_goal_count and proj.fallback_goal_count > 1 %}, split evenly across {{ proj.fallback_goal_count }} goals that don't have tracked history yet{% endif %}. This will switch to a real tracked pace once you {{ 'log a couple of contributions' if not g.progress.is_linked else "have a bit more of this account's balance history" }}.
-          </div>
-        {% endif %}
+        </div>
 
-        {% if g.target_date and g.pace and g.pace.overdue %}
-          <div class="small text-danger mb-2">Target date has passed — £{{ "%.2f"|format(g.pace.remaining_amount) }} still needed.</div>
-        {% elif g.target_date and g.pace and safe_to_spend_for_goals is not none and g.pace.monthly_pace > safe_to_spend_for_goals %}
-          <div class="small mb-2" style="color:#b45309;">⚠️ Suggested pace (£{{ "%.2f"|format(g.pace.monthly_pace) }}/month) is more than your current Safe to Spend (£{{ "%.2f"|format(safe_to_spend_for_goals) }})</div>
+        {% if g.status == 'active' %}
+        <form method="POST" action="/settings/set-goal-commitment" class="goal-commitment-form mt-2 pt-2" style="border-top:1px dashed #ddd;" data-goal-id="{{ g.id }}">
+          <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+          <input type="hidden" name="goal_id" value="{{ g.id }}">
+          <div class="small fw-semibold text-muted mb-1">🔁 Recurring contribution — set aside every cycle</div>
+          <input type="range" class="form-range goal-commit-slider" id="commitSlider{{ g.id }}"
+                 min="{{ g.commitment_bounds.floor }}" max="{{ g.commitment_bounds.max }}" step="5"
+                 value="{{ g.commitment.amount if g.commitment else g.commitment_bounds.default }}"
+                 oninput="onGoalCommitSlide({{ g.id }}, this.value)">
+          <div class="d-flex align-items-center gap-2">
+            <span class="small text-muted">£</span>
+            <input type="number" class="form-control form-control-sm goal-commit-number" name="amount"
+                   id="commitNumber{{ g.id }}" style="max-width:110px;" step="5" min="0"
+                   value="{{ g.commitment.amount if g.commitment else g.commitment_bounds.default }}"
+                   oninput="onGoalCommitNumber({{ g.id }}, this.value)">
+            <span class="small text-muted">per cycle</span>
+          </div>
+          {% if g.commitment_bounds.has_minimum_payment %}
+          <div class="small mt-1" style="color:#9ca3af;">Minimum payment: £{{ "%.2f"|format(g.commitment_bounds.floor) }} — the slider won't go lower.</div>
+          {% endif %}
+
+          {% set cp = g.commitment_preview %}
+          <div class="small mt-2" id="commitPreview{{ g.id }}">
+            {% if cp.would_go_negative %}
+              <div style="color:#dc3545;font-weight:600;">⚠ This would push Safe to Spend negative</div>
+            {% endif %}
+            Safe to Spend after:
+            <strong style="color:{{ '#dc3545' if cp.would_go_negative else '#166534' }};">£{{ "%.2f"|format(cp.resulting_safe_to_spend) }}</strong>
+            {% if cp.projection.state == 'projected' %}
+              · Projected: <strong>{{ cp.projection.projected_date }}</strong>
+            {% elif cp.projection.state == 'years_away' %}
+              · Projected: <strong>{{ cp.projection.years_away }}+ years away</strong>
+            {% elif cp.projection.state == 'reached' %}
+              · ✅ Already reached
+            {% elif cp.projection.state == 'no_progress' %}
+              · no progress at £0/cycle
+            {% endif %}
+          </div>
+
+          <div class="d-flex gap-2 mt-2 align-items-center flex-wrap">
+            <select class="form-select form-select-sm" name="from_account" style="max-width:170px;">
+              {% for a in accounts %}
+                {% if a.type in ('current', 'cash') and not a.get('is_locked') %}
+                <option value="{{ a.name }}" {% if g.commitment and g.commitment.from_account == a.name %}selected{% endif %}>{{ a.name }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-sm btn-dark">{{ 'Update' if g.commitment else 'Set' }} commitment</button>
+          </div>
+        </form>
+        {% if g.commitment %}
+        <form method="POST" action="/settings/set-goal-commitment" onsubmit="return confirm('Remove this recurring commitment?')">
+          <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+          <input type="hidden" name="goal_id" value="{{ g.id }}">
+          <input type="hidden" name="amount" value="0">
+          <input type="hidden" name="from_account" value="{{ g.commitment.from_account }}">
+          <button type="submit" class="btn btn-sm btn-link text-danger p-0 mt-1">Remove commitment</button>
+        </form>
+        {% endif %}
         {% endif %}
 
         {% if not g.progress.is_linked %}
@@ -1550,6 +1584,76 @@ function _doUpdateGoalPacePreview() {
     previewEl.innerHTML = html;
   })
   .catch(function() { previewEl.textContent = 'Could not calculate a suggested pace.'; });
+}
+
+// --- Goal Contribution Engine: slider <-> number field <-> live preview ---
+var _goalCommitTimers = {};
+
+function _snapGoalCommit(value) {
+  var n = parseFloat(value);
+  if (isNaN(n) || n < 0) n = 0;
+  return Math.round(n / 5) * 5;
+}
+
+function onGoalCommitSlide(goalId, value) {
+  var snapped = _snapGoalCommit(value);
+  var numberEl = document.getElementById('commitNumber' + goalId);
+  if (numberEl) numberEl.value = snapped;
+  _scheduleGoalCommitPreview(goalId, snapped);
+}
+
+function onGoalCommitNumber(goalId, value) {
+  var snapped = _snapGoalCommit(value);
+  var sliderEl = document.getElementById('commitSlider' + goalId);
+  if (sliderEl) {
+    // A user can type past the slider's default max deliberately - keep
+    // the number field showing what they typed, only clamp the slider's
+    // own visual position so it doesn't error on an out-of-range value.
+    var sliderMax = parseFloat(sliderEl.max);
+    var sliderMin = parseFloat(sliderEl.min);
+    sliderEl.value = Math.max(sliderMin, Math.min(sliderMax, snapped));
+  }
+  _scheduleGoalCommitPreview(goalId, snapped);
+}
+
+function _scheduleGoalCommitPreview(goalId, amount) {
+  clearTimeout(_goalCommitTimers[goalId]);
+  _goalCommitTimers[goalId] = setTimeout(function() { _updateGoalCommitPreview(goalId, amount); }, 250);
+}
+
+function _updateGoalCommitPreview(goalId, amount) {
+  var previewEl = document.getElementById('commitPreview' + goalId);
+  if (!previewEl) return;
+  previewEl.textContent = 'Calculating…';
+
+  var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+  fetch('/api/goal-commitment-preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ csrf_token: csrf, goal_id: goalId, amount: amount })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.error) { previewEl.textContent = ''; return; }
+    var color = data.would_go_negative ? '#dc3545' : '#166534';
+    var html = '';
+    if (data.would_go_negative) {
+      html += '<div style="color:#dc3545;font-weight:600;">⚠ This would push Safe to Spend negative</div>';
+    }
+    html += 'Safe to Spend after: <strong style="color:' + color + ';">£' + data.resulting_safe_to_spend.toFixed(2) + '</strong>';
+    var p = data.projection;
+    if (p.state === 'projected') {
+      html += ' · Projected: <strong>' + p.projected_date + '</strong>';
+    } else if (p.state === 'years_away') {
+      html += ' · Projected: <strong>' + p.years_away + '+ years away</strong>';
+    } else if (p.state === 'reached') {
+      html += ' · ✅ Already reached';
+    } else if (p.state === 'no_progress') {
+      html += ' · no progress at £0/cycle';
+    }
+    previewEl.innerHTML = html;
+  })
+  .catch(function() { previewEl.textContent = ''; });
 }
 
 function openLogContributionModal(goalId, goalName) {

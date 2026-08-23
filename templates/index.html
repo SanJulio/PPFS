@@ -528,13 +528,17 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
           <div class="text-muted small">Bills left</div>
           <span id="arrow-bills" class="fw-bold" style="font-size:14px;color:#bbb">▾</span>
         </div>
-        <div id="future-bills-val" class="fs-4 fw-bold text-danger amount-private">£{{ "%.2f"|format(overview.future_bills) }}</div>
+        <div id="future-bills-val" class="fs-4 fw-bold text-danger amount-private">£{{ "%.2f"|format(overview.future_bills_spending) }}</div>
       </div>
       <div id="tile-bills" class="d-none mt-2 px-1">
-        {% for b in overview.future_bills_list %}
+        {% set spending_bills = overview.future_bills_list | selectattr('account_type', 'in', ['current', 'cash']) | list %}
+        {% set savings_bills = overview.future_bills_list | rejectattr('account_type', 'in', ['current', 'cash']) | list %}
+        {% if spending_bills %}
+        <div class="small fw-semibold text-muted mt-1 mb-1">Reducing Safe to Spend</div>
+        {% for b in spending_bills %}
         {% if b.type == 'event' %}
         <a href="/forecast?date={{ b.due_date }}" class="d-flex justify-content-between small py-1 border-bottom text-decoration-none" style="color:inherit;" title="See this event's impact on your forecast">
-          <span>📅 {{ b.name }} <span class="text-muted">({{ b.due_date }})</span></span>
+          <span>📅 {{ b.name }} <span class="text-muted">({{ b.account }} · {{ b.due_date }})</span></span>
           <span class="fw-semibold text-danger amount-private">£{{ "%.2f"|format(b.amount) }}</span>
         </a>
         {% else %}
@@ -545,11 +549,34 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
              data-amount="{{ b.amount }}"
              data-account="{{ b.account|e }}"
              data-day="{{ b.day }}">
-          <span>{{ b.name }} <span class="text-muted">(day {{ b.day }})</span></span>
+          <span>{{ b.name }} <span class="text-muted">({{ b.account }} · day {{ b.day }})</span></span>
           <span class="fw-semibold text-danger amount-private">£{{ "%.2f"|format(b.amount) }}</span>
         </div>
         {% endif %}
         {% endfor %}
+        {% endif %}
+        {% if savings_bills %}
+        <div class="small fw-semibold text-muted mt-2 mb-1">Covered by savings — not affecting Safe to Spend</div>
+        {% for b in savings_bills %}
+        {% if b.type == 'event' %}
+        <a href="/forecast?date={{ b.due_date }}" class="d-flex justify-content-between small py-1 border-bottom text-decoration-none" style="color:inherit;opacity:0.75;" title="See this event's impact on your forecast">
+          <span>📅 {{ b.name }} <span class="text-muted">({{ b.account }} · {{ b.due_date }})</span></span>
+          <span class="fw-semibold text-muted">£{{ "%.2f"|format(b.amount) }}</span>
+        </a>
+        {% else %}
+        <div class="d-flex justify-content-between small py-1 border-bottom bill-pay-row"
+             style="cursor:pointer;opacity:0.75;"
+             data-bill-id="{{ b.id }}"
+             data-name="{{ b.name|e }}"
+             data-amount="{{ b.amount }}"
+             data-account="{{ b.account|e }}"
+             data-day="{{ b.day }}">
+          <span>{{ b.name }} <span class="text-muted">({{ b.account }} · day {{ b.day }})</span></span>
+          <span class="fw-semibold text-muted">£{{ "%.2f"|format(b.amount) }}</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% endif %}
         {% if not overview.future_bills_list %}
         <div class="small text-muted py-1">No bills remaining this month 🎉</div>
         {% endif %}
@@ -574,7 +601,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
           <div id="safe-bills-row" class="d-flex justify-content-between align-items-center border-bottom safe-bkdn-row" onclick="openBillBreakdown()" style="padding:10px 0;cursor:pointer;">
             <span style="font-size:13px;color:#374151;">Bills remaining</span>
             <div class="d-flex align-items-center" style="gap:6px;">
-              <span id="safe-bills-remaining-val" class="amount-private text-danger" style="font-size:13px;">−£{{ "%.2f"|format(overview.future_bills) }}</span>
+              <span id="safe-bills-remaining-val" class="amount-private text-danger" style="font-size:13px;">−£{{ "%.2f"|format(overview.future_bills_spending) }}</span>
               <span style="font-size:13px;color:#d1d5db;">›</span>
             </div>
           </div>
@@ -585,7 +612,7 @@ var ADJ_BALANCES = JSON.parse(document.getElementById('adj-balances-json').textC
               <span style="font-size:13px;color:#d1d5db;">›</span>
             </div>
           </div>
-          {% set eoc = overview.spending_balance - overview.future_bills + overview.future_income %}
+          {% set eoc = overview.spending_balance - overview.future_bills_spending + overview.future_income %}
           <div class="d-flex justify-content-between align-items-center" style="padding:10px 0;">
             <span style="font-size:13px;font-weight:700;color:#111827;">End of cycle</span>
             <span id="safe-eoc-val" class="amount-private {% if eoc > 0 %}text-success{% else %}text-danger{% endif %}" style="font-size:15px;font-weight:700;">£{{ "%.2f"|format(eoc) }}</span>
@@ -2019,10 +2046,15 @@ function _applyOverviewData(d, start, end) {
   _curFutureBillsList = d.future_bills_list || _curFutureBillsList;
   _curFutureIncomeList = d.future_income_list || _curFutureIncomeList;
 
-  // Bills left (tile summary) + Bills remaining (Safe to Spend breakdown) — always the same figure
-  document.getElementById('future-bills-val').textContent = '£' + d.future_bills.toFixed(2);
+  // Bills left (tile summary) + Bills remaining (Safe to Spend breakdown) —
+  // both reflect spending-account-linked bills/events only, since that's
+  // what actually threatens Safe to Spend. A bill/event linked to a savings
+  // account is still visible in the breakdown below, just not driving
+  // these headline figures - see future_bills_spending vs future_bills.
+  var _futureBillsSpending = d.future_bills_spending !== undefined ? d.future_bills_spending : d.future_bills;
+  document.getElementById('future-bills-val').textContent = '£' + _futureBillsSpending.toFixed(2);
   var brEl = document.getElementById('safe-bills-remaining-val');
-  if (brEl) brEl.textContent = '−£' + d.future_bills.toFixed(2);
+  if (brEl) brEl.textContent = '−£' + _futureBillsSpending.toFixed(2);
 
   // Income still due (Safe to Spend breakdown) — show/hide and update value
   var incRow = document.getElementById('safe-income-row');
@@ -2036,7 +2068,7 @@ function _applyOverviewData(d, start, end) {
   var eocEl = document.getElementById('safe-eoc-val');
   if (eocEl) {
     var _fi = d.future_income !== undefined ? d.future_income : _ovFutureIncome;
-    var _eoc = _ovSpendingBalance - d.future_bills + _fi;
+    var _eoc = _ovSpendingBalance - _futureBillsSpending + _fi;
     eocEl.textContent = '£' + _eoc.toFixed(2);
     eocEl.classList.remove('text-success', 'text-danger');
     eocEl.classList.add(_eoc > 0 ? 'text-success' : 'text-danger');
@@ -2044,33 +2076,50 @@ function _applyOverviewData(d, start, end) {
   var blEl = document.getElementById('tile-bills');
   if (blEl) {
     var _months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    blEl.innerHTML = (d.future_bills_list && d.future_bills_list.length)
-      ? d.future_bills_list.map(function(b) {
-          var eName = _drpEsc(b.name).replace(/"/g, '&quot;');
-          var eAcc  = _drpEsc(b.account).replace(/"/g, '&quot;');
-          var dateLabel = b.due_date
-            ? (function() { var dt = new Date(b.due_date + 'T00:00:00'); return dt.getDate() + ' ' + _months[dt.getMonth()]; })()
-            : 'day ' + b.day;
-          if (b.type === 'event') {
-            // A one-off future event isn't a payable bill - link through to
-            // the forecast instead of the bill-pay-row's mark-paid behaviour.
-            return '<a href="/forecast?date=' + b.due_date + '" class="d-flex justify-content-between small py-1 border-bottom text-decoration-none" style="color:inherit;" title="See this event\'s impact on your forecast">'
-              + '<span>📅 ' + _drpEsc(b.name) + ' <span class="text-muted">(' + dateLabel + ')</span></span>'
-              + '<span class="fw-semibold text-danger amount-private">£' + parseFloat(b.amount).toFixed(2) + '</span>'
-              + '</a>';
-          }
-          return '<div class="d-flex justify-content-between small py-1 border-bottom bill-pay-row"'
-            + ' style="cursor:pointer;"'
-            + ' data-bill-id="' + b.id + '"'
-            + ' data-name="' + eName + '"'
-            + ' data-amount="' + b.amount + '"'
-            + ' data-account="' + eAcc + '"'
-            + ' data-day="' + b.day + '">'
-            + '<span>' + _drpEsc(b.name) + ' <span class="text-muted">(' + dateLabel + ')</span></span>'
-            + '<span class="fw-semibold text-danger amount-private">£' + parseFloat(b.amount).toFixed(2) + '</span>'
-            + '</div>';
-        }).join('')
-      : '<div class="small text-muted py-1">No bills remaining this month 🎉</div>';
+    var _isSpendAcc = function(b) { return b.account_type === 'current' || b.account_type === 'cash'; };
+    var _renderBillRow = function(b, muted) {
+      var eName = _drpEsc(b.name).replace(/"/g, '&quot;');
+      var eAcc  = _drpEsc(b.account).replace(/"/g, '&quot;');
+      var dateLabel = b.due_date
+        ? (function() { var dt = new Date(b.due_date + 'T00:00:00'); return dt.getDate() + ' ' + _months[dt.getMonth()]; })()
+        : 'day ' + b.day;
+      var amtClass = muted ? 'fw-semibold text-muted' : 'fw-semibold text-danger amount-private';
+      var opacityStyle = muted ? 'opacity:0.75;' : '';
+      if (b.type === 'event') {
+        // A one-off future event isn't a payable bill - link through to
+        // the forecast instead of the bill-pay-row's mark-paid behaviour.
+        return '<a href="/forecast?date=' + b.due_date + '" class="d-flex justify-content-between small py-1 border-bottom text-decoration-none" style="color:inherit;' + opacityStyle + '" title="See this event\'s impact on your forecast">'
+          + '<span>📅 ' + _drpEsc(b.name) + ' <span class="text-muted">(' + eAcc + ' · ' + dateLabel + ')</span></span>'
+          + '<span class="' + amtClass + '">£' + parseFloat(b.amount).toFixed(2) + '</span>'
+          + '</a>';
+      }
+      return '<div class="d-flex justify-content-between small py-1 border-bottom bill-pay-row"'
+        + ' style="cursor:pointer;' + opacityStyle + '"'
+        + ' data-bill-id="' + b.id + '"'
+        + ' data-name="' + eName + '"'
+        + ' data-amount="' + b.amount + '"'
+        + ' data-account="' + eAcc + '"'
+        + ' data-day="' + b.day + '">'
+        + '<span>' + _drpEsc(b.name) + ' <span class="text-muted">(' + eAcc + ' · ' + dateLabel + ')</span></span>'
+        + '<span class="' + amtClass + '">£' + parseFloat(b.amount).toFixed(2) + '</span>'
+        + '</div>';
+    };
+    if (d.future_bills_list && d.future_bills_list.length) {
+      var _spendItems = d.future_bills_list.filter(_isSpendAcc);
+      var _saveItems = d.future_bills_list.filter(function(b) { return !_isSpendAcc(b); });
+      var _html = '';
+      if (_spendItems.length) {
+        _html += '<div class="small fw-semibold text-muted mt-1 mb-1">Reducing Safe to Spend</div>';
+        _html += _spendItems.map(function(b) { return _renderBillRow(b, false); }).join('');
+      }
+      if (_saveItems.length) {
+        _html += '<div class="small fw-semibold text-muted mt-2 mb-1">Covered by savings — not affecting Safe to Spend</div>';
+        _html += _saveItems.map(function(b) { return _renderBillRow(b, true); }).join('');
+      }
+      blEl.innerHTML = _html;
+    } else {
+      blEl.innerHTML = '<div class="small text-muted py-1">No bills remaining this month 🎉</div>';
+    }
   }
 
   // Safe to spend — now reflects income + bills in the selected period
@@ -2382,19 +2431,37 @@ function openBillBreakdown() {
     list.innerHTML = '<div style="text-align:center;padding:28px 0;font-size:14px;color:#9ca3af;">No bills due in this period.</div>';
     document.getElementById('breakdownTotal').innerHTML = '';
   } else {
-    list.innerHTML = items.map(function(b) {
+    var _isSpendAcc = function(b) { return b.account_type === 'current' || b.account_type === 'cash'; };
+    var _renderRow = function(b, muted) {
       var dl = b.due_date ? _fmtDs(b.due_date) : 'day ' + b.day;
       var isEvent = b.type === 'event';
       var namePrefix = isEvent ? '📅 ' : '';
+      var acc = b.account ? _drpEsc(b.account) + ' · ' : '';
+      var amtColor = muted ? '#9ca3af' : '#ef4444';
       var row = '<div><div style="font-size:14px;font-weight:600;color:#111827;">' + namePrefix + _drpEsc(b.name) + '</div>'
-        + '<div style="font-size:12px;color:#9ca3af;margin-top:2px;">' + dl + (isEvent ? ' · view in forecast' : '') + '</div></div>'
-        + '<span style="font-size:14px;color:#ef4444;font-weight:600;">−£' + parseFloat(b.amount).toFixed(2) + '</span>';
+        + '<div style="font-size:12px;color:#9ca3af;margin-top:2px;">' + acc + dl + (isEvent ? ' · view in forecast' : '') + '</div></div>'
+        + '<span style="font-size:14px;color:' + amtColor + ';font-weight:600;">−£' + parseFloat(b.amount).toFixed(2) + '</span>';
       if (isEvent && b.due_date) {
         return '<a href="/forecast?date=' + b.due_date + '" class="d-flex justify-content-between align-items-start text-decoration-none" style="padding:12px 0;border-bottom:1px solid #f3f4f6;color:inherit;">' + row + '</a>';
       }
       return '<div class="d-flex justify-content-between align-items-start" style="padding:12px 0;border-bottom:1px solid #f3f4f6;">' + row + '</div>';
-    }).join('');
-    var tot = items.reduce(function(s, b) { return s + parseFloat(b.amount); }, 0);
+    };
+    var spendItems = items.filter(_isSpendAcc);
+    var saveItems = items.filter(function(b) { return !_isSpendAcc(b); });
+    var html = '';
+    if (spendItems.length) {
+      html += '<div style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.03em;padding:10px 0 2px;">Reducing Safe to Spend</div>';
+      html += spendItems.map(function(b) { return _renderRow(b, false); }).join('');
+    }
+    if (saveItems.length) {
+      html += '<div style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.03em;padding:14px 0 2px;">Covered by savings — not affecting Safe to Spend</div>';
+      html += saveItems.map(function(b) { return _renderRow(b, true); }).join('');
+    }
+    list.innerHTML = html;
+    // "Total remaining" matches the Bills Left headline - spending-linked
+    // only, since savings-covered items were never going to touch Safe to
+    // Spend and shouldn't inflate this figure (they're still itemised above).
+    var tot = spendItems.reduce(function(s, b) { return s + parseFloat(b.amount); }, 0);
     document.getElementById('breakdownTotal').innerHTML = '<div class="d-flex justify-content-between align-items-center" style="padding:16px 0;border-top:2px solid #fca5a5;background:#fff5f5;margin:0 -20px;padding-left:20px;padding-right:20px;">'
       + '<span style="font-size:15px;font-weight:700;color:#111827;">Total remaining</span>'
       + '<span style="font-size:18px;font-weight:700;color:#ef4444;">−£' + tot.toFixed(2) + '</span></div>';
