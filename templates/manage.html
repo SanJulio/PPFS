@@ -764,7 +764,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             {% for e in future_events %}
             <tr>
               <td>{{ e.name }}</td>
-              <td>{{ e.date }}</td>
+              <td>{{ e.date | dateformat }}</td>
               <td class="text-end money">£{{ "%.2f"|format(e.amount) }}</td>
               <td class="text-end">
                 <div class="d-flex gap-2 justify-content-end flex-wrap">
@@ -851,7 +851,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
               <td>{{ i.name }}</td>
               <td><span class="badge text-bg-light">{{ i.type }}</span></td>
               <td class="text-end money">£{{ "%.2f"|format(i.initial_amount) }}</td>
-              <td class="text-end small text-muted">{{ i.date }}</td>
+              <td class="text-end small text-muted">{{ i.date | dateformat }}</td>
               <td class="text-end">
                 <form method="POST" action="/settings/delete-investment" onsubmit="return confirm('Delete {{ i.name }}?')">
                   <input type="hidden" name="id" value="{{ i.id }}">
@@ -963,9 +963,9 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
            suggestion, no estimate-explanation paragraph — that judgemental
            text is exactly what the commitment slider below replaces. #}
         <div class="small text-muted mb-2">
-          {% if g.target_date %}Target date: <strong style="color:#111;">{{ g.target_date }}</strong>{% endif %}
+          {% if g.target_date %}Target date: <strong style="color:#111;">{{ g.target_date | dateformat }}</strong>{% endif %}
           {% if proj and proj.state == 'projected' %}
-            {% if g.target_date %} · {% endif %}{{ d.pace_label }}: <strong style="color:#111;{% if proj.is_estimate %} font-style:italic;{% endif %}">{{ proj.projected_date }}</strong>
+            {% if g.target_date %} · {% endif %}{{ d.pace_label }}: <strong style="color:#111;{% if proj.is_estimate %} font-style:italic;{% endif %}">{{ proj.projected_date | dateformat }}</strong>
           {% elif proj and proj.state == 'years_away' %}
             {% if g.target_date %} · {% endif %}{{ d.pace_label }}: <strong style="color:#111;{% if proj.is_estimate %} font-style:italic;{% endif %}">{{ proj.years_away }}+ years away</strong>
           {% elif proj and proj.state == 'no_progress' %}
@@ -1006,7 +1006,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             Safe to Spend after:
             <strong style="color:{{ '#dc3545' if cp.would_go_negative else '#166534' }};">£{{ "%.2f"|format(cp.resulting_safe_to_spend) }}</strong>
             {% if cp.projection.state == 'projected' %}
-              · Projected: <strong>{{ cp.projection.projected_date }}</strong>
+              · Projected: <strong>{{ cp.projection.projected_date | dateformat }}</strong>
             {% elif cp.projection.state == 'years_away' %}
               · Projected: <strong>{{ cp.projection.years_away }}+ years away</strong>
             {% elif cp.projection.state == 'reached' %}
@@ -1044,7 +1044,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             <div class="small mb-2">
               {% for c in g.contributions %}
               <div class="d-flex justify-content-between align-items-center py-1">
-                <span class="text-muted">{{ c.date }}{% if c.note %} · {{ c.note }}{% endif %}</span>
+                <span class="text-muted">{{ c.date | dateformat }}{% if c.note %} · {{ c.note }}{% endif %}</span>
                 <span class="d-flex align-items-center gap-2">
                   <span class="money fw-semibold">£{{ "%.2f"|format(c.amount) }}</span>
                   <form method="POST" action="/settings/delete-goal-contribution" onsubmit="return confirm('Remove this contribution?')">
@@ -1399,8 +1399,7 @@ function _doUpdateIncomePreview() {
     }
     var amtLabel = amountVal > 0 ? '£' + amountVal.toLocaleString('en-GB', {minimumFractionDigits: 0, maximumFractionDigits: 2}) : '';
     el.innerHTML = data.dates.map(function(d) {
-      var dt = new Date(d + 'T00:00:00');
-      var dateStr = dt.toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'});
+      var dateStr = _fmtUKDate(d);
       return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e9ecef;font-size:13px;">' +
              '<span>' + dateStr + '</span>' +
              (amtLabel ? '<span style="color:#198754;font-weight:600;">' + amtLabel + '</span>' : '') +
@@ -1589,6 +1588,14 @@ function _doUpdateGoalPacePreview() {
 // --- Goal Contribution Engine: slider <-> number field <-> live preview ---
 var _goalCommitTimers = {};
 
+function _fmtUKDate(iso) {
+  if (!iso) return '';
+  var d = new Date(iso + 'T00:00:00');
+  var dd = String(d.getDate()).padStart(2, '0');
+  var mm = String(d.getMonth() + 1).padStart(2, '0');
+  return dd + '/' + mm + '/' + d.getFullYear();
+}
+
 function _snapGoalCommit(value) {
   var n = parseFloat(value);
   if (isNaN(n) || n < 0) n = 0;
@@ -1643,7 +1650,7 @@ function _updateGoalCommitPreview(goalId, amount) {
     html += 'Safe to Spend after: <strong style="color:' + color + ';">£' + data.resulting_safe_to_spend.toFixed(2) + '</strong>';
     var p = data.projection;
     if (p.state === 'projected') {
-      html += ' · Projected: <strong>' + p.projected_date + '</strong>';
+      html += ' · Projected: <strong>' + _fmtUKDate(p.projected_date) + '</strong>';
     } else if (p.state === 'years_away') {
       html += ' · Projected: <strong>' + p.years_away + '+ years away</strong>';
     } else if (p.state === 'reached') {

@@ -307,8 +307,8 @@ class TestGoalsTabProjectionDisplay:
         body = resp.get_data(as_text=True)
         section = body[body.find("House deposit"):body.find("House deposit") + 4200]
         assert "At current pace" in section
-        assert re.search(r"\d{4}-\d{2}-\d{2}", section)  # a real projected date is shown
-        assert target in section
+        assert re.search(r"\d{2}/\d{2}/\d{4}", section)  # a real projected date is shown, UK DD/MM/YYYY
+        assert app_module.dateformat_filter(target) in section  # target date shown as UK DD/MM/YYYY
 
     def test_behind_target_projected_date_still_shown(self, auth_client, db_conn, test_user):
         """Same as above for the behind-target case - the colour-coded
@@ -340,8 +340,8 @@ class TestGoalsTabProjectionDisplay:
         body = resp.get_data(as_text=True)
         section = body[body.find("Pay off loan"):body.find("Pay off loan") + 4200]
         assert "At current pace" in section
-        assert re.search(r"\d{4}-\d{2}-\d{2}", section)  # a real projected date is shown
-        assert target in section
+        assert re.search(r"\d{2}/\d{2}/\d{4}", section)  # a real projected date is shown, UK DD/MM/YYYY
+        assert app_module.dateformat_filter(target) in section  # target date shown as UK DD/MM/YYYY
 
     def test_insufficient_data_shows_honest_message_not_a_date(self, auth_client, db_conn, test_user):
         _add_goal(db_conn, test_user["id"], "Brand new goal", 1000.0)

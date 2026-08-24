@@ -1787,8 +1787,7 @@ function openTxDetail(txKey) {
   var isIncome = data.listType === 'income';
   document.getElementById('txDetailName').textContent = data.name;
   document.getElementById('txDetailAmount').textContent = (isIncome ? '+' : '–') + '£' + Math.abs(data.amount).toFixed(2);
-  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var dateLabel = data.iso ? (function(){ var d = new Date(data.iso + 'T00:00:00'); return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear(); })() : (data.date || '—');
+  var dateLabel = data.iso ? (function(){ var d = new Date(data.iso + 'T00:00:00'); var dd = String(d.getDate()).padStart(2, '0'); var mm = String(d.getMonth() + 1).padStart(2, '0'); return dd + '/' + mm + '/' + d.getFullYear(); })() : (data.date || '—');
   document.getElementById('txDetailDate').textContent = dateLabel;
   document.getElementById('txDetailAccount').textContent = data.account;
   showTxDetailView();
@@ -1812,8 +1811,7 @@ function showTxEditForm() {
   if (!_txCurrent) return;
   document.getElementById('txEditName').value = _txCurrent.name;
   document.getElementById('txEditAmount').value = Math.abs(_txCurrent.amount).toFixed(2);
-  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var dateLabel = _txCurrent.iso ? (function(){ var d = new Date(_txCurrent.iso + 'T00:00:00'); return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear(); })() : (_txCurrent.date || '');
+  var dateLabel = _txCurrent.iso ? (function(){ var d = new Date(_txCurrent.iso + 'T00:00:00'); var dd = String(d.getDate()).padStart(2, '0'); var mm = String(d.getMonth() + 1).padStart(2, '0'); return dd + '/' + mm + '/' + d.getFullYear(); })() : (_txCurrent.date || '');
   document.getElementById('txEditDate').value = dateLabel;
   document.getElementById('txEditAccount').value = _txCurrent.account;
   document.getElementById('txDetailView').style.display = 'none';

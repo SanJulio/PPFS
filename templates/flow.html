@@ -458,14 +458,14 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
 
           <div class="d-flex justify-content-between small text-muted py-1 border-bottom mb-2">
             <span>Initial investment</span>
-            <span>£{{ "%.2f"|format(inv.initial_amount) }} on {{ inv.date }}</span>
+            <span>£{{ "%.2f"|format(inv.initial_amount) }} on {{ inv.date | dateformat }}</span>
           </div>
 
           {% if inv.updates %}
           <div class="small fw-bold mb-2">Value History</div>
           {% for u in inv.updates %}
           <div class="d-flex justify-content-between small py-1 border-bottom">
-            <span class="text-muted">{{ u.date }}</span>
+            <span class="text-muted">{{ u.date | dateformat }}</span>
             <span class="fw-semibold 
               {% if u.value >= inv.initial_amount %}text-success{% else %}text-danger{% endif %}">
               £{{ "%.2f"|format(u.value) }}

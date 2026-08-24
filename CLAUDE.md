@@ -48,9 +48,12 @@ So `verify-full` against the internal hostname will always fail on hostname mism
 - **Account locking**: accounts beyond a Free-tier user's 3-account allowance (from a past Pro subscription) are locked, not deleted, and excluded from most calculations. Full reference below.
 - **Self-employed income averaging**: an alternative to fixed-payday income for irregular earners, living entirely inside the existing `income` table's `rule_type`/`rule_config` pattern. Full reference below.
 - **Spending Alert Threshold**: an optional, user-defined low-balance warning, separate from Safe to Spend. Full reference below.
+- **Date display**: every full calendar date shown to a user (has a day, month, *and* year) renders as UK `DD/MM/YYYY` — see "UK date formatting" below.
 
 ## Windows-only `%-d` strftime gotcha (verification harnesses only — never touches the actual app)
-Some templates use `strftime('%-d %B %Y')` (Linux/macOS-only day-of-month format, no leading zero) — e.g. `templates/settings.html`'s "Next cycle starts" line, fed by `cycle_engine.get_next_cycle_start()`. This works fine on production (Render runs Linux) but **crashes with `ValueError: Invalid format string` on Windows** (the Windows CRT only supports `%#d` for the same effect). This has been hit multiple times during local verification work on this Windows dev machine.
+**Currently moot** (August 2026): the app-wide switch to UK `DD/MM/YYYY` date formatting (see "UK date formatting" below) replaced every `%-d`-based strftime call with `%d`/`%m`/`%Y` — all standard, cross-platform format codes with no Windows/Linux discrepancy. `grep -rn "%-d"` across `templates/*.html`, `app.py`, `cycle_engine.py`, `income_engine.py` now returns nothing. The section below is kept for history and in case a future written-month-style date format (`%B`, `%b`) gets reintroduced somewhere and hits this again — the workaround pattern still applies if so.
+
+Some templates used `strftime('%-d %B %Y')` (Linux/macOS-only day-of-month format, no leading zero) — e.g. `templates/settings.html`'s "Next cycle starts" line, fed by `cycle_engine.get_next_cycle_start()`. This works fine on production (Render runs Linux) but **crashes with `ValueError: Invalid format string` on Windows** (the Windows CRT only supports `%#d` for the same effect). This has been hit multiple times during local verification work on this Windows dev machine.
 **Not a real bug — do not "fix" it in the app code.** The correct move when it blocks local browser verification is to monkeypatch it away in the disposable verification harness only:
 ```python
 class _WinSafeDate(_dt.date):
@@ -64,6 +67,38 @@ def _wrapped(*a, **kw):
 cycle_engine.get_next_cycle_start = _wrapped
 ```
 This pattern has been reused for every local Playwright-based verification pass this session (a disposable Flask process on a throwaway port, seeded via `tests/conftest.py`'s `_create_test_schema()` against a temp SQLite file, `SECRET_KEY` set inline, rate limiter disabled) — it's the standard way to spin up a quick, safe, non-staging-touching local check.
+
+## UK date formatting (August 2026)
+
+**Rule**: every **full calendar date** shown to a user — has a day, a month, *and* a year, identifying one specific point in time — renders as UK-order `DD/MM/YYYY` (e.g. `25/12/2026`), not ISO (`2026-12-25`), not US order, not a written month name with a year.
+
+**Explicitly out of scope, left as-is — these are contextual labels, not full dates**: short day+month labels with no year (chart x-axis ticks, cycle period headers like "1 May – 31 May", forecast tooltips like "24 Aug", `income_engine.describe_rule()` output) stay exactly as they were. Adding a year to those would be redundant/cluttered in tight UI space, and this was an explicit scope decision, not an oversight — don't "fix" them into `DD/MM/YYYY` as a drive-by. Also untouched: any `<input type="date">` `value` attribute (must stay ISO — that's the HTML5 spec, the browser handles locale display on its own) and any `?date=YYYY-MM-DD` URL query parameter (internal routing, never shown raw to the user).
+
+**Server-side (Jinja)**: `app.py` registers a template filter, `dateformat`, that converts an ISO `YYYY-MM-DD` string to `DD/MM/YYYY`:
+```python
+@app.template_filter('dateformat')
+def dateformat_filter(value):
+    try:
+        from datetime import datetime as _dt
+        return _dt.strptime(str(value), '%Y-%m-%d').strftime('%d/%m/%Y')
+    except Exception:
+        return value
+```
+Applied via `{{ some_iso_date | dateformat }}` everywhere a full date is rendered directly from a DB column or computed ISO string: `transactions.html`/`actions.html` (transaction date), `admin_analytics.html` (daily rows, oldest-record date), `manage.html` (Future Events date, Investments date, Goals tab's `target_date`/`projected_date`/contribution `date`), `flow.html` (investment initial date, value-history update dates), `import.html` (CSV preview date column). A Python `date`/`datetime` object rendered directly via `.strftime()` in a template (not through this filter) uses `%d/%m/%Y` the same way — e.g. `settings.html`'s "Next cycle starts" line (`next_cycle_start.strftime('%d/%m/%Y')`) and the `/api/snapshot` route's `min_balance_date`/`date` response fields (`app.py`, built via `.strftime('%d/%m/%Y')` rather than the old `f"{d.day} {d.strftime('%b %Y')}"` pattern).
+
+**Client-side (JS)**: no shared JS file exists (see "No shared base template" above — every template is standalone), so each template that needs to format an ISO string into `DD/MM/YYYY` on the client carries its own small helper rather than importing a common one. The established shape (`templates/manage.html`'s `_fmtUKDate(iso)`, and the equivalent inline function in `templates/index.html`'s transaction detail/edit popups):
+```js
+function _fmtUKDate(iso) {
+  if (!iso) return '';
+  var d = new Date(iso + 'T00:00:00');
+  var dd = String(d.getDate()).padStart(2, '0');
+  var mm = String(d.getMonth() + 1).padStart(2, '0');
+  return dd + '/' + mm + '/' + d.getFullYear();
+}
+```
+Deliberately a manual zero-padded build rather than `date.toLocaleDateString('en-GB')` (which *also* happens to produce `DD/MM/YYYY` for the default en-GB numeric format) — the manual version has no dependency on the browser's locale data or Intl support and is trivially testable by string-matching the output. Applied to: `manage.html`'s Income modal live-preview dates and the Goal Contribution slider's live preview (`_updateGoalCommitPreview`, formats the `/api/goal-commitment-preview` response's `projected_date`); `index.html`'s transaction detail popup and its read-only edit-form date field (both derive from a transaction's `iso` field). Chart-tick/short-label JS (`forecast.html`'s many `toLocaleDateString('en-GB', {day, month})` calls with no `year` key, `calendar.html`'s day-view header) is unaffected — those were already UK day-before-month order and don't carry a year to reformat.
+
+**A pre-existing inconsistency noted but deliberately not touched**: `templates/index.html`'s small inline "Bills left" dropdown (`#tile-bills`) shows a future event's `due_date` as a raw, unfiltered ISO string in its Jinja-rendered initial page load, while the exact same data in the bigger "Bills remaining" bottom-sheet modal (`openBillBreakdown()`) and the AJAX re-render path both go through the established `_fmtDs()` short-label helper (day + short month, no year — matching the "short label" convention above, since a bill's due date is always within the current, implied-year cycle). This is a real, separate inconsistency (the small dropdown should probably use the same short-label style, not gain a full year) — flagged here rather than fixed as a drive-by, since it's a label-shortening question distinct from the DD/MM/YYYY full-date work this section documents.
 
 ## Database tables (13)
 `users`, `accounts`, `transactions`, `scheduled_expenses`, `income`, `savings_rules`, `future_events`, `flask_sessions`, `investments`, `investment_updates`, `cycle_overrides`, `goals`, `goal_contributions`
@@ -575,6 +610,13 @@ The income modal (`id="incomeModal"`) is a full-screen overlay with scrollable c
 - `home()` future income — queries `SELECT *` (all columns), uses `income_engine.get_payment_dates()` for upcoming month income; also computes `spending_alerts` via `get_triggered_spending_alerts()` (August 2026)
 
 ## What was last worked on
+
+### August 2026 — UK date formatting (DD/MM/YYYY) app-wide
+- Requested starting from the Goals tab specifically (raw ISO `target_date`/`projected_date`/contribution dates were showing there unformatted), then extended app-wide per explicit instruction. Scoped with the user first: full calendar dates (day+month+year, a genuine point in time) convert to `DD/MM/YYYY`; short contextual labels with no year (chart ticks, cycle period headers, forecast tooltips) stay as they are — adding a year there would be redundant clutter, a deliberate exclusion rather than an oversight. Full design in "UK date formatting" above.
+- Changed the existing `dateformat` Jinja filter (previously `9 Apr 2026` written-month style) to output `DD/MM/YYYY`, which automatically fixed every template already using it (`transactions.html`, `actions.html`, `admin_analytics.html` ×3) and applied it fresh to raw unfiltered ISO renders found across `manage.html` (Goals tab, Future Events, Investments), `flow.html` (investments), `import.html` (CSV preview). Converted `settings.html`'s "Next cycle starts" line and the `/api/snapshot` route's `min_balance_date`/`date` fields from written-month formats to `%d/%m/%Y` directly in `app.py`. Added small local `_fmtUKDate()` JS helpers (no shared JS file exists in this codebase — see "No shared base template") to `manage.html` (Income modal preview, Goal Contribution slider's live preview) and `index.html` (transaction detail/edit popups) to replace manual written-month string building.
+- **Side effect**: this eliminated every remaining `%-d` strftime usage in the codebase (`grep -rn "%-d"` now returns nothing), so the documented Windows-only strftime crash gotcha (see above) no longer applies anywhere — noted in that section rather than deleted, in case a written-month format gets reintroduced later.
+- Noted but deliberately left alone: `index.html`'s small inline Bills-left dropdown shows a future event's due date as a raw unfiltered ISO string, inconsistent with the sibling bigger-modal/AJAX-refresh paths which already use the established short-label `_fmtDs()` helper (day+month, no year). Flagged in "UK date formatting" above as a separate, pre-existing inconsistency rather than folded into this fix, since the correct resolution there is matching the existing short-label convention, not adding a year.
+- No test assertions depended on the old written-month format (checked first) — `dateformat`-filter usages and `projected_date`/`min_balance_date` tests all assert on structure/presence or compare raw ISO values from the underlying Python functions directly, not on rendered display text.
 
 ### August 2026 — Goal Contribution Engine (Part 2 of the core calculation engine brief)
 - Replaced the goals tab's text-heavy pace insight with the slider described in "Goal Contribution Engine" above — a recurring per-cycle contribution taken directly off Safe to Spend, feeding into the exact same `savings_rules` engine as bills/future events rather than a display-only suggestion. Two open product decisions were flagged back rather than assumed, per the brief's explicit instruction, and both came back decided by the user: one slider mechanism for both debt and savings goals (debt gets a hard floor at its known minimum payment and defaults to the suggested pace, not zero; savings has no floor), and `savings_rules` extended with a nullable `goal_id` rather than a new table (confirmed structurally sound against the schema first). A further open question — whether the commitment should auto-apply as a real transaction — was investigated (found `savings_rules` has no auto-apply mechanism at all today) and presented back rather than assumed; the user confirmed projection-only, citing data-integrity risk from a real/tracked-balance mismatch, and suggested a non-blocking follow-up (a cycle-start reminder nudge) to preserve the "pay yourself first" feel honestly instead. While implementing the locked-account-pause requirement, found and fixed a real pre-existing bug in all three live engine sites: a locked savings_rule *destination* alone was silently pausing only the credit side via an independent `if` rather than pausing the whole rule — now pauses correctly everywhere, for every savings_rule, not just goal-linked ones. 76 new tests (`tests/test_goal_contribution_engine.py`), plus a systematic pass converting every existing test that depended on the now-removed prose text to check the surviving underlying behaviour instead (never a weakened assertion) — including one genuine regression this caught and fixed along the way, where a goal with real/estimated pace but no target date was silently defaulting its slider to £0 rather than falling back to that pace.

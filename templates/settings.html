@@ -285,7 +285,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
               Cycle powered by <strong>{{ primary_income_name }}</strong>.
             </p>
             {% if next_cycle_start %}
-            <p class="text-muted small mb-3">Next cycle starts <strong>{{ next_cycle_start.strftime('%-d %B %Y') }}</strong>.</p>
+            <p class="text-muted small mb-3">Next cycle starts <strong>{{ next_cycle_start.strftime('%d/%m/%Y') }}</strong>.</p>
             {% endif %}
             <p class="small text-muted mb-3">
               <a href="/manage?tab=income">Change primary income source →</a>
@@ -310,7 +310,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             <span class="text-muted small text-nowrap">of each month (1–28)</span>
           </div>
           {% if next_cycle_start and cycle_mode == 'manual' %}
-          <p class="text-muted small mb-3">Next cycle starts <strong>{{ next_cycle_start.strftime('%-d %B %Y') }}</strong>.</p>
+          <p class="text-muted small mb-3">Next cycle starts <strong>{{ next_cycle_start.strftime('%d/%m/%Y') }}</strong>.</p>
           {% endif %}
         </div>
 

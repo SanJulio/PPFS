@@ -169,7 +169,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                   class="form-check-input"
                   {% if not row.is_transfer %}checked{% endif %}>
               </td>
-              <td class="text-muted small">{{ row.date }}</td>
+              <td class="text-muted small">{{ row.date | dateformat }}</td>
               <td class="small">
                 {{ row.description }}
                 {% if row.is_transfer %}<span class="badge text-bg-secondary ms-1" style="font-size:10px;">transfer</span>{% endif %}

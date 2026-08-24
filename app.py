@@ -152,10 +152,10 @@ app = Flask(__name__)
 
 @app.template_filter('dateformat')
 def dateformat_filter(value):
-    """Convert YYYY-MM-DD string to '9 Apr 2026' format."""
+    """Convert YYYY-MM-DD string to UK 'DD/MM/YYYY' format."""
     try:
         from datetime import datetime as _dt
-        return _dt.strptime(str(value), '%Y-%m-%d').strftime('%-d %b %Y')
+        return _dt.strptime(str(value), '%Y-%m-%d').strftime('%d/%m/%Y')
     except Exception:
         return value
 
@@ -3533,12 +3533,12 @@ def api_snapshot():
         for name in simulated:
             if simulated[name] < min_balances[name]:
                 min_balances[name] = simulated[name]
-                min_balance_dates[name] = f"{sim_day.day} {sim_day.strftime('%b %Y')}"
+                min_balance_dates[name] = sim_day.strftime('%d/%m/%Y')
 
         sim_day += timedelta(days=1)
 
     return jsonify({
-        "date": f"{target.day} {target.strftime('%b %Y')}",
+        "date": target.strftime('%d/%m/%Y'),
         "days": days,
         "accounts": {
             name: {
