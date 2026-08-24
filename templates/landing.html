@@ -59,8 +59,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -472,93 +470,19 @@ footer a:hover { color: var(--text-primary); }
 .footer-dot { opacity: 0.3; }
 .footer-logo { height: 20px; object-fit: contain; filter: var(--logo-filter); opacity: 0.45; display: block; }
 
-/* ── INTERACTIVE PREVIEW (forecast section inner styles) ── */
-.preview-card {
-  background: var(--surface-card); border-radius: 20px; padding: 40px;
+/* ── DEMO VIDEO (forecast section inner styles) ── */
+.demo-video-wrap {
+  background: var(--surface-card); border-radius: 20px; padding: 12px;
   box-shadow: 0 4px 24px var(--card-shadow); border: 1px solid var(--border-color);
   max-width: 800px; margin: 0 auto;
 }
-.preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-bottom: 28px; }
-.preview-label { font-size: 13px; font-weight: 500; color: var(--text-label); margin-bottom: 10px; }
-.preview-input-wrap {
-  display: flex; align-items: center; border: 1.5px solid var(--border-color);
-  border-radius: 12px; overflow: hidden; background: var(--surface-card); transition: border-color 0.2s;
-}
-.preview-input-wrap:focus-within { border-color: var(--brand); }
-.preview-prefix {
-  padding: 0 14px; font-size: 15px; font-weight: 500; color: var(--text-body-muted);
-  background: var(--surface-inset); border-right: 1.5px solid var(--border-color);
-  height: 48px; display: flex; align-items: center; flex-shrink: 0;
-}
-.preview-input {
-  flex: 1; border: none; outline: none; padding: 0 14px;
-  font-size: 15px; font-family: 'DM Sans', sans-serif; color: var(--text-input);
-  height: 48px; background: transparent; min-width: 0;
-}
-.pay-pills { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.pay-pill {
-  padding: 8px 10px; border-radius: 50px; border: 1.5px solid var(--border-color);
-  background: var(--surface-card); font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
-  color: var(--text-body-muted3); cursor: pointer; transition: all 0.15s; text-align: center; line-height: 1;
-  -webkit-appearance: none; appearance: none;
-}
-.pay-pill.selected { background: var(--brand); border-color: var(--brand); color: var(--on-brand-text); }
-.pay-pill:hover:not(.selected) { border-color: var(--brand); color: var(--brand); }
-.pay-pill-sm { font-size: 11px; }
-.bill-chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; align-items: start; }
-.bill-chip-wrap { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
-.bill-chip {
-  padding: 10px 8px; border-radius: 12px; border: 1.5px solid var(--border-color);
-  background: var(--surface-card); font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
-  color: var(--text-body-muted3); cursor: pointer; transition: all 0.15s; text-align: center; width: 100%;
-  -webkit-appearance: none; appearance: none;
-}
-.bill-chip.selected { background: var(--chip-selected-bg); border: 1.5px solid var(--brand); color: var(--brand); font-weight: 600; }
-.bill-chip:hover:not(.selected) { border-color: var(--chip-hover-border); }
-.bill-amount-wrap { position: relative; }
-.bill-amount-prefix { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 13px; color: var(--text-body-muted); pointer-events: none; }
-.bill-amount-input {
-  width: 100%; max-width: 160px; border: 1.5px solid var(--border-color); border-radius: 8px;
-  padding: 6px 10px 6px 22px; font-size: 13px; font-family: 'DM Sans', sans-serif;
-  color: var(--text-input); outline: none; transition: border-color 0.2s;
-}
-.preview-grid-full { grid-column: 1 / -1; }
-.bill-amount-input:focus { border-color: var(--brand); }
-.preview-cta {
-  width: 100%; padding: 16px; border-radius: 12px; border: none;
-  font-family: 'DM Sans', sans-serif; font-size: 16px; font-weight: 500;
-  cursor: pointer; margin-top: 8px; transition: all 0.2s;
-}
-.preview-cta:disabled { background: var(--disabled-bg); color: var(--text-disabled); cursor: not-allowed; }
-.preview-cta:not(:disabled) { background: var(--grad); color: var(--on-brand-text); }
-.preview-cta:not(:disabled):hover { opacity: 0.9; transform: translateY(-1px); }
+.demo-video { display: block; width: 100%; height: auto; border-radius: 12px; background: #000; }
 
 /* ── FORECAST OUTPUT ── */
-.forecast-output-wrap { display: none; max-width: 800px; margin: 28px auto 0; }
-.forecast-output-wrap.fo-active { display: block; animation: foIn 0.3s ease forwards; }
-@keyframes foIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-.fo-stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
-.fo-stat-card { background: var(--surface-card); border-radius: 16px; padding: 20px 18px; box-shadow: 0 2px 12px var(--card-shadow-sm); border: 1px solid var(--border-color); }
-.fo-stat-label { font-size: 12px; font-weight: 500; color: var(--text-body-muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px; }
-.fo-stat-value { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; line-height: 1.2; margin-bottom: 4px; }
-.fo-stat-sub { font-size: 12px; color: var(--text-body-muted); font-weight: 300; }
-.fo-chart-card { background: var(--surface-card); border-radius: 16px; padding: 20px; box-shadow: 0 2px 12px var(--card-shadow-sm); border: 1px solid var(--border-color); margin-bottom: 12px; }
-.fo-chart-wrap { height: 220px; }
 .fo-signup { text-align: center; padding: 16px 0 8px; }
 .fo-signup p { font-size: 15px; color: var(--text-body-muted3); margin-bottom: 12px; font-weight: 300; }
 .fo-signup-btn { display: block; padding: 16px; border-radius: 12px; background: var(--grad); color: var(--on-brand-text); font-family: 'DM Sans', sans-serif; font-size: 16px; font-weight: 500; text-decoration: none; transition: all 0.2s; max-width: 320px; margin: 0 auto; }
 .fo-signup-btn:hover { opacity: 0.9; transform: translateY(-1px); color: var(--on-brand-text); }
-.col-green { color: var(--status-success); }
-.col-amber { color: var(--status-warning); }
-.col-red   { color: var(--status-danger); }
-.fo-afford-input-wrap { position: relative; margin-bottom: 10px; }
-.fo-afford-prefix { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-body-muted3); font-family: 'DM Sans', sans-serif; font-size: 15px; pointer-events: none; }
-.fo-afford-input { width: 100%; padding: 14px 14px 14px 26px; border: 1.5px solid var(--border-color); border-radius: 10px; font-family: 'DM Sans', sans-serif; font-size: 15px; color: var(--text-input); outline: none; transition: border-color 0.2s; box-sizing: border-box; -webkit-appearance: none; appearance: none; }
-.fo-afford-input:focus { border-color: var(--brand); }
-.fo-afford-btn { width: 100%; padding: 14px; border-radius: 10px; border: none; background: var(--afford-btn-bg); color: var(--on-brand-text); font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 500; cursor: pointer; transition: background 0.2s; margin-top: 6px; -webkit-appearance: none; appearance: none; }
-.fo-afford-btn:hover { background: var(--afford-btn-bg-hover); }
-.afford-date-pills { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 12px; }
-.afford-result { font-size: 14px; line-height: 1.6; margin: 0; }
 
 /* ── RESPONSIVE ── */
 @media (min-width: 641px) {
@@ -598,16 +522,9 @@ footer a:hover { color: var(--text-primary); }
   .nav-cta-short { display: inline; }
   .hero-subgrid { grid-template-columns: 1fr; gap: 10px; margin-bottom: 32px; }
   .hero-features { grid-template-columns: 1fr; gap: 16px; margin-bottom: 32px; }
-  .preview-grid { grid-template-columns: 1fr; }
-  .preview-card { padding: 24px 16px; }
-  .bill-chips { grid-template-columns: repeat(2, 1fr); }
-  .fo-stat-row { grid-template-columns: 1fr; gap: 0; background: var(--surface-card); border-radius: 16px; box-shadow: 0 2px 12px var(--card-shadow-sm); border: 1px solid var(--border-color); overflow: hidden; margin-bottom: 12px; }
-  .fo-stat-card { border-radius: 0; box-shadow: none; border: none; border-bottom: 1px solid var(--border-subtle); padding: 16px 18px; }
-  .fo-stat-card:last-child { border-bottom: none; }
-  .fo-chart-wrap { height: 180px; }
+  .demo-video-wrap { padding: 8px; }
   .pricing-card-body { padding: 28px 20px; }
   .forecast-section { padding-bottom: 60px; }
-  .bill-amount-input { max-width: 100%; }
 
   .story-item { padding: 56px 24px; }
   .story-number { font-size: 72px; }
@@ -685,7 +602,7 @@ footer a:hover { color: var(--text-primary); }
     </div>
 
     <div class="hero-cta-wrap">
-      <a href="#forecast-demo" class="btn-hero">Try Free Demo ↓</a>
+      <a href="#forecast-demo" class="btn-hero">Watch the Demo ↓</a>
     </div>
     <p class="hero-note">GDPR safe &middot; No card required &middot; Takes 2 minutes</p>
     <div class="hero-chevron" aria-hidden="true">
@@ -697,140 +614,21 @@ footer a:hover { color: var(--text-primary); }
 <!-- ── ACT 2: FORECAST ── -->
 <section class="forecast-section" id="forecast-demo">
   <div class="forecast-section-header reveal">
-    <div class="section-label">Live demo</div>
-    <h2>Put your numbers in.<br>See your future.</h2>
-    <p>No sign up. No commitment. Just your numbers.</p>
+    <div class="section-label">See it in action</div>
+    <h2>Watch how it works.<br>90 seconds.</h2>
+    <p>A real walkthrough of forecasting, bills, and Safe to Spend.</p>
   </div>
 
-  <div class="preview-card reveal reveal-delay-1">
-    <div class="preview-grid">
-      <!-- Balance -->
-      <div class="preview-grid-full">
-        <div class="preview-label">Current account balance</div>
-        <div class="preview-input-wrap">
-          <span class="preview-prefix">£</span>
-          <input type="number" id="balanceInput" class="preview-input" value="850" min="0" oninput="liveUpdateForecast()">
-        </div>
-      </div>
-      <!-- Income -->
-      <div>
-        <div class="preview-label">Monthly take-home pay</div>
-        <div class="preview-input-wrap">
-          <span class="preview-prefix">£</span>
-          <input type="number" id="incomeInput" class="preview-input" value="2500" min="0" oninput="updatePreviewCta()">
-        </div>
-      </div>
-      <!-- Payday -->
-      <div>
-        <div class="preview-label">Payday</div>
-        <div class="pay-pills" id="paydayPills">
-          <button class="pay-pill" onclick="selectPayday(this)">Weekly</button>
-          <button class="pay-pill" onclick="selectPayday(this)">Fortnightly</button>
-          <button class="pay-pill" onclick="selectPayday(this)">1st</button>
-          <button class="pay-pill" onclick="selectPayday(this)">15th</button>
-          <button class="pay-pill selected" onclick="selectPayday(this)">25th</button>
-          <button class="pay-pill pay-pill-sm" onclick="selectPayday(this)">Last working day</button>
-        </div>
-      </div>
-    </div>
-    <!-- Bills -->
-    <div style="margin-bottom:28px;">
-      <div class="preview-label" style="margin-bottom:12px;">Monthly bills</div>
-      <div class="bill-chips" id="billChips">
-        <div class="bill-chip-wrap">
-          <button class="bill-chip selected" onclick="toggleBill(this)">🏠 Rent</button>
-          <div class="bill-amount-wrap">
-            <span class="bill-amount-prefix">£</span>
-            <input class="bill-amount-input" type="number" value="900" min="0" oninput="updatePreviewCta()">
-          </div>
-        </div>
-        <div class="bill-chip-wrap">
-          <button class="bill-chip" onclick="toggleBill(this)">🚗 Car payment</button>
-          <div class="bill-amount-wrap" style="display:none;">
-            <span class="bill-amount-prefix">£</span>
-            <input class="bill-amount-input" type="number" value="350" min="0" oninput="updatePreviewCta()">
-          </div>
-        </div>
-        <div class="bill-chip-wrap">
-          <button class="bill-chip selected" onclick="toggleBill(this)">📱 Phone</button>
-          <div class="bill-amount-wrap">
-            <span class="bill-amount-prefix">£</span>
-            <input class="bill-amount-input" type="number" value="40" min="0" oninput="updatePreviewCta()">
-          </div>
-        </div>
-        <div class="bill-chip-wrap">
-          <button class="bill-chip" onclick="toggleBill(this)">💪 Gym</button>
-          <div class="bill-amount-wrap" style="display:none;">
-            <span class="bill-amount-prefix">£</span>
-            <input class="bill-amount-input" type="number" value="30" min="0" oninput="updatePreviewCta()">
-          </div>
-        </div>
-        <div class="bill-chip-wrap">
-          <button class="bill-chip" onclick="toggleBill(this)">📺 Subscriptions</button>
-          <div class="bill-amount-wrap" style="display:none;">
-            <span class="bill-amount-prefix">£</span>
-            <input class="bill-amount-input" type="number" value="20" min="0" oninput="updatePreviewCta()">
-          </div>
-        </div>
-        <div class="bill-chip-wrap">
-          <button class="bill-chip" onclick="toggleBill(this)">💰 Savings</button>
-          <div class="bill-amount-wrap" style="display:none;">
-            <span class="bill-amount-prefix">£</span>
-            <input class="bill-amount-input" type="number" value="200" min="0" oninput="updatePreviewCta()">
-          </div>
-        </div>
-      </div>
-    </div>
-    <button class="preview-cta" id="previewCta" disabled onclick="runPreviewForecast()">See my forecast →</button>
+  <div class="demo-video-wrap reveal reveal-delay-1">
+    <video class="demo-video" controls playsinline preload="metadata" poster="{{ url_for('static', filename='forecast-screenshot.jpg') }}">
+      <source src="{{ url_for('static', filename='0820 video.mp4') }}" type="video/mp4">
+      Your browser doesn't support embedded video.
+    </video>
   </div>
 
-  <div id="forecastOutput" class="forecast-output-wrap">
-    <div class="fo-stat-row">
-      <div class="fo-stat-card">
-        <div class="fo-stat-label">Safe to Spend</div>
-        <div class="fo-stat-value" id="foStatSafe">—</div>
-        <div class="fo-stat-sub" id="foStatSafeSub">—</div>
-      </div>
-      <div class="fo-stat-card">
-        <div class="fo-stat-label">Forecast Risk</div>
-        <div class="fo-stat-value" id="foStatRisk">—</div>
-        <div class="fo-stat-sub" id="foStatRiskSub">—</div>
-      </div>
-      <div class="fo-stat-card">
-        <div class="fo-stat-label">In 90 Days</div>
-        <div class="fo-stat-value" id="foStatEnd">—</div>
-        <div class="fo-stat-sub" id="foStatEndSub">—</div>
-      </div>
-    </div>
-    <div class="fo-chart-card">
-      <div class="fo-chart-wrap">
-        <canvas id="previewChart"></canvas>
-      </div>
-    </div>
-    <div id="affordCard" class="fo-chart-card" style="display:none;">
-      <div class="fo-stat-label" style="margin-bottom:6px;">Can I afford this?</div>
-      <p style="font-size:14px;color:var(--text-body-muted);margin-bottom:12px;font-weight:300;">Enter a purchase amount to see what it does to your forecast.</p>
-      <div class="afford-date-pills">
-        <button class="pay-pill pay-pill-sm" onclick="setAffordDate('today')">Today</button>
-        <button class="pay-pill pay-pill-sm selected" onclick="setAffordDate('this_month')">This month</button>
-        <button class="pay-pill pay-pill-sm" onclick="setAffordDate('3_months')">In 3 months</button>
-        <button class="pay-pill pay-pill-sm" onclick="setAffordDate('custom')">Custom date</button>
-      </div>
-      <div id="affordCustomDateWrap" style="display:none;margin-bottom:12px;">
-        <input id="affordCustomDate" type="date" style="width:100%;padding:10px 12px;border:1.5px solid var(--border-color);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:14px;color:var(--text-input);outline:none;box-sizing:border-box;" onchange="clearAffordUi()">
-      </div>
-      <div class="fo-afford-input-wrap">
-        <span class="fo-afford-prefix">£</span>
-        <input id="affordInput" class="fo-afford-input" type="number" min="0" placeholder="e.g. 500">
-      </div>
-      <button class="fo-afford-btn" onclick="checkAfford()">Check it →</button>
-      <div id="affordResult" style="display:none;margin-top:14px;"></div>
-      <a id="affordClear" href="#" onclick="clearAfford();return false;" style="display:none;font-size:12px;color:var(--text-disabled);margin-top:8px;text-decoration:underline;">clear</a>
-    </div>
-    <div class="fo-signup">
-      <p>Want to track this with your real accounts?</p>
-      <a href="/welcome" id="foSignupBtn" class="fo-signup-btn">Save my forecast — it's free →</a>
-    </div>
+  <div class="fo-signup" style="margin-top:28px;">
+    <p>Want to track this with your real accounts?</p>
+    <a href="/welcome" id="foSignupBtn" class="fo-signup-btn">Save my forecast — it's free →</a>
   </div>
 </section>
 
@@ -903,374 +701,6 @@ footer a:hover { color: var(--text-primary); }
     <a href="mailto:hello@spendara.co.uk">Contact</a>
   </div>
 </footer>
-
-<script>
-var _previewChart = null;
-var _foRevealed = false;
-var _lastResult = null;
-
-function fmtMoney(n) {
-  return '£' + Math.abs(n).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-}
-function fmtMoneyDec(n) {
-  return '£' + Math.abs(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-function fmtShortDate(d) {
-  var mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return d.getDate() + ' ' + mo[d.getMonth()];
-}
-
-function selectPayday(btn) {
-  document.querySelectorAll('#paydayPills .pay-pill').forEach(function(p) { p.classList.remove('selected'); });
-  btn.classList.add('selected');
-  liveUpdateForecast();
-}
-
-function toggleBill(btn) {
-  btn.classList.toggle('selected');
-  var amountWrap = btn.parentElement.querySelector('.bill-amount-wrap');
-  amountWrap.style.display = btn.classList.contains('selected') ? 'block' : 'none';
-  updatePreviewCta();
-  liveUpdateForecast();
-}
-
-function updatePreviewCta() {
-  var income = parseFloat(document.getElementById('incomeInput').value) || 0;
-  var hasBills = document.querySelectorAll('#billChips .bill-chip.selected').length > 0;
-  document.getElementById('previewCta').disabled = !(income > 0 && hasBills);
-}
-
-function getPaydayConfig() {
-  var pill = document.querySelector('#paydayPills .pay-pill.selected');
-  var label = pill ? pill.textContent.trim() : '25th';
-  if (label === 'Weekly') return { type: 'weekly', cycleDays: 7 };
-  if (label === 'Fortnightly') return { type: 'fortnightly', cycleDays: 14 };
-  if (label === '1st') return { type: 'monthly', day: 1, cycleDays: 30 };
-  if (label === '15th') return { type: 'monthly', day: 15, cycleDays: 30 };
-  if (label === 'Last working day') return { type: 'monthly_last', cycleDays: 30 };
-  return { type: 'monthly', day: 25, cycleDays: 30 };
-}
-
-function isLastWorkingDayOfMonth(d) {
-  var last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  while (last.getDay() === 0 || last.getDay() === 6) { last.setDate(last.getDate() - 1); }
-  return d.getDate() === last.getDate();
-}
-
-function getTotalBills() {
-  var total = 0;
-  document.querySelectorAll('#billChips .bill-chip-wrap').forEach(function(wrap) {
-    var chip = wrap.querySelector('.bill-chip');
-    if (chip.classList.contains('selected')) {
-      total += parseFloat(wrap.querySelector('.bill-amount-input').value) || 0;
-    }
-  });
-  return total;
-}
-
-function clearAffordUi() {
-  var inp = document.getElementById('affordInput');
-  if (inp) inp.value = '';
-  var rEl = document.getElementById('affordResult');
-  if (rEl) { rEl.style.display = 'none'; rEl.innerHTML = ''; }
-  var cEl = document.getElementById('affordClear');
-  if (cEl) cEl.style.display = 'none';
-}
-
-function clearAfford() {
-  clearAffordUi();
-  if (_lastResult) { renderForecastOutput(_lastResult); }
-}
-
-var _affordDateMode = 'this_month';
-
-function setAffordDate(mode) {
-  _affordDateMode = mode;
-  var pills = document.querySelectorAll('.afford-date-pills .pay-pill');
-  pills.forEach(function(p) { p.classList.remove('selected'); });
-  var modeIdx = { today: 0, this_month: 1, '3_months': 2, custom: 3 }[mode];
-  if (pills[modeIdx]) pills[modeIdx].classList.add('selected');
-  var wrap = document.getElementById('affordCustomDateWrap');
-  if (wrap) wrap.style.display = mode === 'custom' ? 'block' : 'none';
-  if (mode === 'custom') {
-    var today0 = new Date(); today0.setHours(0,0,0,0);
-    var toIso = function(d) { return d.toISOString().slice(0,10); };
-    var inp = document.getElementById('affordCustomDate');
-    if (inp) {
-      inp.min = toIso(today0);
-      inp.max = toIso(new Date(today0.getTime() + 90 * 86400000));
-      if (!inp.value) inp.value = toIso(new Date(today0.getTime() + 30 * 86400000));
-    }
-  }
-  clearAffordUi();
-}
-
-function getAffordTargetDayIdx() {
-  var today0 = new Date(); today0.setHours(0,0,0,0);
-  if (_affordDateMode === 'today') return 0;
-  var target;
-  if (_affordDateMode === 'this_month') {
-    target = new Date(today0.getFullYear(), today0.getMonth() + 1, 0);
-  } else if (_affordDateMode === '3_months') {
-    target = new Date(today0.getTime() + 90 * 86400000);
-  } else {
-    var val = document.getElementById('affordCustomDate') ? document.getElementById('affordCustomDate').value : '';
-    if (!val) return 30;
-    var parts = val.split('-');
-    target = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-  }
-  var diff = Math.round((target - today0) / 86400000);
-  return Math.max(0, Math.min(90, diff));
-}
-
-function getAffordTargetLabel() {
-  if (_affordDateMode === 'today') return 'today';
-  var dayIdx = getAffordTargetDayIdx();
-  if (!_lastResult || !_lastResult.dates[dayIdx]) return 'soon';
-  return 'on ' + fmtShortDate(_lastResult.dates[dayIdx]);
-}
-
-function checkAfford() {
-  var P = parseFloat(document.getElementById('affordInput').value) || 0;
-  if (P <= 0 || !_lastResult) return;
-  var dayIdx = getAffordTargetDayIdx();
-  var balAtDate = _lastResult.balances[dayIdx];
-  var afterPurchase = balAtDate - P;
-  var dateLabel = getAffordTargetLabel();
-  var html = '';
-
-  if (afterPurchase >= 200) {
-    html = '<p class="afford-result col-green"><strong>Yes, you can afford this ' + dateLabel + '.</strong> Your projected balance would be ' + fmtMoney(afterPurchase) + '.</p>';
-  } else if (afterPurchase >= 0) {
-    html = '<p class="afford-result col-amber"><strong>You can afford this ' + dateLabel + ', but it\'ll be tight.</strong> You\'d have ' + fmtMoney(afterPurchase) + ' left.</p>';
-  } else {
-    html = '<p class="afford-result col-red"><strong>This would put you in the red ' + dateLabel + '.</strong> You\'d be ' + fmtMoney(Math.abs(afterPurchase)) + ' short.</p>';
-  }
-
-  var resultEl = document.getElementById('affordResult');
-  resultEl.innerHTML = html;
-  resultEl.style.display = 'block';
-  document.getElementById('affordClear').style.display = 'inline';
-  renderForecastOutput(computeForecast(getStartBalance() - P));
-}
-
-function getStartBalance() {
-  return parseFloat(document.getElementById('balanceInput').value) || 1000;
-}
-
-function computeForecast(startBalance) {
-  if (startBalance === undefined || startBalance === null) startBalance = getStartBalance();
-  var monthlyIncome = parseFloat(document.getElementById('incomeInput').value) || 0;
-  var totalBills = getTotalBills();
-  var payday = getPaydayConfig();
-  var cycleIncome;
-  if (payday.type === 'weekly') { cycleIncome = monthlyIncome * 12 / 52; }
-  else if (payday.type === 'fortnightly') { cycleIncome = monthlyIncome * 12 / 26; }
-  else { cycleIncome = monthlyIncome; }
-
-  var billsPerCycle;
-  if (payday.type === 'weekly') { billsPerCycle = totalBills * 12 / 52; }
-  else if (payday.type === 'fortnightly') { billsPerCycle = totalBills * 12 / 26; }
-  else { billsPerCycle = totalBills; }
-
-  var balance = startBalance;
-  var balances = [balance];
-  var dates = [];
-  var paydayIndexes = [];
-  var today = new Date(); today.setHours(0, 0, 0, 0);
-  dates.push(new Date(today));
-
-  for (var i = 1; i <= 90; i++) {
-    var d = new Date(today.getTime() + i * 86400000);
-    dates.push(d);
-    var isPayday = false;
-    if (payday.type === 'weekly') { if (i % 7 === 0) isPayday = true; }
-    else if (payday.type === 'fortnightly') { if (i % 14 === 0) isPayday = true; }
-    else if (payday.type === 'monthly') { if (d.getDate() === payday.day) isPayday = true; }
-    else if (payday.type === 'monthly_last') { if (isLastWorkingDayOfMonth(d)) isPayday = true; }
-    if (isPayday) { balance += cycleIncome; paydayIndexes.push(i); }
-    if (d.getDate() === 1) { balance -= totalBills; }
-    balances.push(balance);
-  }
-
-  var minBalance = Infinity, minIndex = 0, firstNegIndex = -1;
-  for (var j = 0; j < balances.length; j++) {
-    if (balances[j] < minBalance) { minBalance = balances[j]; minIndex = j; }
-    if (firstNegIndex === -1 && balances[j] < 0) { firstNegIndex = j; }
-  }
-
-  return {
-    balances: balances, dates: dates, paydayIndexes: paydayIndexes,
-    cycleDays: payday.cycleDays, totalBills: totalBills, cycleIncome: cycleIncome,
-    cycleNet: cycleIncome - billsPerCycle, dailySafe: (cycleIncome - billsPerCycle) / payday.cycleDays,
-    minBalance: minBalance, minIndex: minIndex, firstNegIndex: firstNegIndex, endBalance: balances[90]
-  };
-}
-
-function renderForecastOutput(r) {
-  var safeEl = document.getElementById('foStatSafe');
-  var safeSubEl = document.getElementById('foStatSafeSub');
-  var nextPayStr = r.paydayIndexes.length > 0 ? fmtShortDate(r.dates[r.paydayIndexes[0]]) : null;
-  if (r.dailySafe >= 0) {
-    safeEl.textContent = fmtMoneyDec(r.dailySafe) + ' / day';
-    safeEl.className = 'fo-stat-value col-green';
-    safeSubEl.textContent = fmtMoney(r.cycleNet) + (nextPayStr ? ' free until ' + nextPayStr : ' free this cycle');
-  } else {
-    safeEl.textContent = '–' + fmtMoneyDec(Math.abs(r.dailySafe)) + ' / day';
-    safeEl.className = 'fo-stat-value col-amber';
-    safeSubEl.textContent = 'Bills exceed income by ' + fmtMoney(Math.abs(r.cycleNet));
-  }
-
-  var riskEl = document.getElementById('foStatRisk');
-  var riskSubEl = document.getElementById('foStatRiskSub');
-  if (r.firstNegIndex !== -1) {
-    riskEl.textContent = 'Goes negative';
-    riskEl.className = 'fo-stat-value col-amber';
-    riskSubEl.textContent = fmtShortDate(r.dates[r.firstNegIndex]) + ' · ' + fmtMoney(r.balances[r.firstNegIndex]) + ' below zero';
-  } else {
-    riskEl.textContent = 'Looking good';
-    riskEl.className = 'fo-stat-value col-green';
-    riskSubEl.textContent = 'Lowest: ' + fmtMoney(r.minBalance) + ' on ' + fmtShortDate(r.dates[r.minIndex]);
-  }
-
-  var endEl = document.getElementById('foStatEnd');
-  var endSubEl = document.getElementById('foStatEndSub');
-  endEl.textContent = (r.endBalance < 0 ? '–' : '') + fmtMoney(r.endBalance);
-  if (r.endBalance > 500) { endEl.className = 'fo-stat-value col-green'; endSubEl.textContent = 'Strong finish'; }
-  else if (r.endBalance >= 0) { endEl.className = 'fo-stat-value col-amber'; endSubEl.textContent = 'Tight by end'; }
-  else { endEl.className = 'fo-stat-value col-red'; endSubEl.textContent = 'Overdraft risk'; }
-
-  var labels = r.dates.map(function(d, i) {
-    return (i === 0 || i % 14 === 0 || i === 90) ? fmtShortDate(d) : '';
-  });
-  var pointRadii = r.balances.map(function(_, i) {
-    return r.paydayIndexes.indexOf(i) !== -1 ? 4 : 0;
-  });
-  var pointBgColors = r.balances.map(function(b, i) {
-    return r.paydayIndexes.indexOf(i) !== -1 ? (b < 0 ? '#ef4444' : '#4f46e5') : 'transparent';
-  });
-
-  var dataMin = Math.min.apply(null, r.balances);
-  var dataMax = Math.max.apply(null, r.balances);
-  var yRange = (dataMax - dataMin) || Math.abs(dataMax) || 1000;
-  var yBuf = yRange < 2000 ? yRange * 0.15 : yRange <= 5000 ? yRange * 0.10 : yRange * 0.06;
-  var yMin = dataMin - yBuf;
-  var yMax = dataMax + yBuf;
-
-  if (_previewChart) {
-    _previewChart.data.labels = labels;
-    _previewChart.data.datasets[0].data = r.balances;
-    _previewChart.data.datasets[0].pointRadius = pointRadii;
-    _previewChart.data.datasets[0].pointBackgroundColor = pointBgColors;
-    _previewChart.options.scales.y.min = yMin;
-    _previewChart.options.scales.y.max = yMax;
-    _previewChart.update('none');
-    return;
-  }
-
-  var ctx = document.getElementById('previewChart').getContext('2d');
-  _previewChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [{
-        data: r.balances,
-        borderWidth: 2,
-        fill: true,
-        tension: 0.3,
-        pointRadius: pointRadii,
-        pointBackgroundColor: pointBgColors,
-        pointBorderColor: 'transparent',
-        segment: {
-          borderColor: function(c) { return (c.p0.parsed.y < 0 || c.p1.parsed.y < 0) ? '#ef4444' : '#4f46e5'; },
-          backgroundColor: function(c) { return (c.p0.parsed.y < 0 || c.p1.parsed.y < 0) ? 'rgba(239,68,68,0.06)' : 'rgba(79,70,229,0.06)'; }
-        }
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            title: function(items) { return r.dates[items[0].dataIndex] ? fmtShortDate(r.dates[items[0].dataIndex]) : ''; },
-            label: function(item) { return ' Balance: £' + Math.round(item.parsed.y).toLocaleString(); }
-          },
-          bodyFont: { family: 'DM Sans' },
-          titleFont: { family: 'DM Sans' }
-        },
-        annotation: {
-          annotations: {
-            zeroLine: { type: 'line', yMin: 0, yMax: 0, borderColor: 'rgba(100,100,100,0.22)', borderWidth: 1, borderDash: [4, 4] },
-            todayLine: { type: 'line', xMin: 0, xMax: 0, borderColor: 'rgba(160,160,160,0.55)', borderWidth: 1.5, borderDash: [4, 4], label: { content: 'Today', display: true, position: 'start', color: '#9ca3af', font: { size: 10, family: 'DM Sans' }, padding: 2 } }
-          }
-        }
-      },
-      scales: {
-        x: {
-          grid: { display: false },
-          ticks: { font: { size: 11, family: 'DM Sans' }, color: '#9ca3af', maxRotation: 0 }
-        },
-        y: {
-          min: yMin,
-          max: yMax,
-          grid: { color: 'rgba(0,0,0,0.04)' },
-          ticks: { callback: function(v) { return '£' + (Math.round(v / 100) * 100).toLocaleString('en-GB'); }, font: { size: 11, family: 'DM Sans' }, color: '#9ca3af' }
-        }
-      }
-    }
-  });
-}
-
-function runPreviewForecast() {
-  var r = computeForecast();
-  _lastResult = r;
-  renderForecastOutput(r);
-  clearAffordUi();
-  if (!_foRevealed) {
-    var el = document.getElementById('forecastOutput');
-    el.classList.add('fo-active');
-    _foRevealed = true;
-    document.getElementById('affordCard').style.display = 'block';
-    setTimeout(function() { el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 120);
-  }
-}
-
-function liveUpdateForecast() {
-  if (_foRevealed) {
-    var r = computeForecast();
-    _lastResult = r;
-    renderForecastOutput(r);
-    clearAffordUi();
-  }
-}
-
-document.getElementById('balanceInput').addEventListener('input', liveUpdateForecast);
-document.getElementById('incomeInput').addEventListener('input', function() {
-  updatePreviewCta();
-  liveUpdateForecast();
-});
-document.querySelectorAll('.bill-amount-input').forEach(function(inp) {
-  inp.addEventListener('input', liveUpdateForecast);
-});
-
-var _foSignupBtn = document.getElementById('foSignupBtn');
-if (_foSignupBtn) {
-  _foSignupBtn.addEventListener('click', function(e) {
-    e.preventDefault();
-    var income = parseFloat(document.getElementById('incomeInput').value) || 0;
-    var bills = getTotalBills();
-    var balance = parseFloat(document.getElementById('balanceInput').value) || 0;
-    var pill = document.querySelector('#paydayPills .pay-pill.selected');
-    var payday = pill ? pill.textContent.trim() : '';
-    var params = new URLSearchParams({ income: income, payday: payday, bills: bills, balance: balance });
-    window.location.href = '/welcome?' + params.toString();
-  });
-}
-
-updatePreviewCta();
-</script>
 
 <script>
 // Scroll reveal
