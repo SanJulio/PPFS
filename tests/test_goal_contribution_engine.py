@@ -667,7 +667,7 @@ class TestLockedDestinationPausesWholeRule:
         assert float(m.group(1).replace(",", "")) >= 0.0
 
 
-def _goal_section(body, marker, size=5200):
+def _goal_section(body, marker, size=7500):
     idx = body.find(marker)
     assert idx != -1, f"{marker!r} not found in page"
     return body[idx:idx + size]
@@ -791,7 +791,7 @@ class TestSliderTemplate:
                     "progress_pct": 0.0, "raw_ratio": 0.0, "is_linked": True,
                     "account_name": second_account["name"], "account_locked": False}
         expected = app_module._compute_goal_commitment_preview(progress, None, bounds["default"], test_account["balance"])
-        assert f'£{expected["resulting_safe_to_spend"]:.2f}' in section
+        assert f'£{app_module.moneyfmt_filter(expected["resulting_safe_to_spend"])}' in section
 
     def test_new_helpers_present_in_page_js(self, auth_client, db_conn, test_user, test_account, second_account):
         _add_goal(db_conn, test_user["id"], "House deposit", 5000.0, linked_account_id=second_account["id"])

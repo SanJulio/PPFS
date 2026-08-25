@@ -148,9 +148,9 @@ class TestFallbackReplacesInsufficientData:
 
         resp = auth_client.get("/manage?tab=goals")
         body = resp.get_data(as_text=True)
-        section = body[body.find("Numeric goal"):body.find("Numeric goal") + 4200]
-        # Some projected date must appear (either a real ISO date or years-away text)
-        assert "<strong>" in section
+        section = body[body.find("Numeric goal"):body.find("Numeric goal") + 7500]
+        # Some projected date must appear (either a real UK-formatted date or years-away text)
+        assert re.search(r"\d{2}/\d{2}/\d{4}", section) or "years away" in section
         assert f'id="commitSlider{gid}"' in section
         # The slider's default reflects a real, positive £/month-derived figure
         m = re.search(rf'id="commitSlider{gid}"[^>]*value="([\d.]+)"', section)

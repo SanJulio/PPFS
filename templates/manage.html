@@ -75,6 +75,23 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 .goal-progress-fill {
   height: 100%; border-radius: 999px; transition: width 0.3s ease;
 }
+/* Bootstrap's default .form-range thumb is 1rem (16px) - well under the
+   44x44px minimum mobile tap target (Apple HIG; Material's 48x48dp is
+   similar). Only this app's slider (the goal commitment slider) uses
+   type="range" at all, so this is scoped to it specifically rather than
+   overriding .form-range globally. */
+.goal-commit-slider {
+  height: 44px;
+  padding: 0; /* Bootstrap's default vertical padding would offset the
+                 track from the enlarged thumb's true centre */
+}
+.goal-commit-slider::-webkit-slider-thumb {
+  width: 44px; height: 44px;
+  margin-top: -20px; /* .form-range's 4px track height still applies; centre the thumb on it */
+}
+.goal-commit-slider::-moz-range-thumb {
+  width: 44px; height: 44px;
+}
 .goal-stat-box {
   flex: 1 1 0; min-width: 0; border-radius: 12px; padding: 9px 11px; background: #fff;
 }
@@ -912,7 +929,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 
       {% for g in goals %}
       {% set d = g.display %}
-      <div class="rounded-4 p-3 mb-3" style="background:#f8f9fa; border:1px solid #eee; {% if g.status == 'completed' %}opacity:0.75;{% endif %}">
+      <div class="rounded-4 p-3 mb-3" id="goal-card-{{ g.id }}" style="background:#f8f9fa; border:1px solid #eee; {% if g.status == 'completed' %}opacity:0.75;{% endif %}">
         <div class="d-flex justify-content-between align-items-start mb-3">
           <div class="d-flex align-items-start gap-2" style="min-width:0;">
             <div class="goal-icon-tile" style="background:{{ d.icon_bg }};">{{ d.icon_emoji }}</div>
@@ -948,8 +965,8 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
 
         <div class="d-flex align-items-baseline justify-content-between mb-2">
           <div style="min-width:0;">
-            <span class="money fw-bold" style="font-size:22px;">£{{ "%.2f"|format(g.progress.progress_amount) }}</span>
-            <span class="text-muted small">of £{{ "%.2f"|format(g.progress.target_amount) }}</span>
+            <span class="money fw-bold" style="font-size:22px;">£{{ g.progress.progress_amount | moneyfmt }}</span>
+            <span class="text-muted small">of £{{ g.progress.target_amount | moneyfmt }}</span>
           </div>
           <span class="fw-bold" style="color:{{ d.bar_color }}; font-size:16px;">{{ g.progress.progress_pct }}%</span>
         </div>
@@ -958,16 +975,24 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         </div>
 
         {% set proj = g.projection %}
+        {% set ahead = proj and proj.state == 'projected' and proj.status_color == 'green' and g.target_date %}
         {#- Bare facts only, deliberately: target date and real tracked pace
            (if any). No on-track/behind-target comparison, no "try £X more"
            suggestion, no estimate-explanation paragraph — that judgemental
-           text is exactly what the commitment slider below replaces. #}
+           text is exactly what the commitment slider below replaces. The
+           one exception (August 2026): a light positive reinforcement when
+           genuinely ahead of a real target date - still not a judgemental
+           red/amber system, just not leaving a good result looking neutral.
+           "(without this commitment)" makes explicit that this line is
+           pure historical velocity, computed with zero knowledge of
+           whatever the slider below is currently set to - the commitment
+           preview box is the "with this commitment" counterpart. #}
         <div class="small text-muted mb-2">
           {% if g.target_date %}Target date: <strong style="color:#111;">{{ g.target_date | dateformat }}</strong>{% endif %}
           {% if proj and proj.state == 'projected' %}
-            {% if g.target_date %} · {% endif %}{{ d.pace_label }}: <strong style="color:#111;{% if proj.is_estimate %} font-style:italic;{% endif %}">{{ proj.projected_date | dateformat }}</strong>
+            {% if g.target_date %} · {% endif %}{% if ahead %}<span style="color:#166534;font-weight:600;">✅ </span>{% endif %}{{ d.pace_label }}{% if g.status == 'active' %} <span style="font-weight:400;">(without this commitment)</span>{% endif %}: <strong style="color:{% if ahead %}#166534{% else %}#111{% endif %};{% if proj.is_estimate %} font-style:italic;{% endif %}">{{ proj.projected_date | dateformat }}</strong>{% if ahead %} <span style="color:#166534;">— ahead of schedule</span>{% endif %}
           {% elif proj and proj.state == 'years_away' %}
-            {% if g.target_date %} · {% endif %}{{ d.pace_label }}: <strong style="color:#111;{% if proj.is_estimate %} font-style:italic;{% endif %}">{{ proj.years_away }}+ years away</strong>
+            {% if g.target_date %} · {% endif %}{{ d.pace_label }}{% if g.status == 'active' %} <span style="font-weight:400;">(without this commitment)</span>{% endif %}: <strong style="color:#111;{% if proj.is_estimate %} font-style:italic;{% endif %}">{{ proj.years_away }}+ years away</strong>
           {% elif proj and proj.state == 'no_progress' %}
             {% if g.target_date %} · {% endif %}<span style="color:#dc3545;">⚠ No recent progress</span>
           {% elif proj and proj.state == 'reached' %}
@@ -978,64 +1003,107 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         </div>
 
         {% if g.status == 'active' %}
-        <form method="POST" action="/settings/set-goal-commitment" class="goal-commitment-form mt-2 pt-2" style="border-top:1px dashed #ddd;" data-goal-id="{{ g.id }}">
-          <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
-          <input type="hidden" name="goal_id" value="{{ g.id }}">
+        <div class="mt-2 pt-2" style="border-top:1px dashed #ddd;">
           <div class="small fw-semibold text-muted mb-1">🔁 Recurring contribution — set aside every cycle</div>
-          <input type="range" class="form-range goal-commit-slider" id="commitSlider{{ g.id }}"
-                 min="{{ g.commitment_bounds.floor }}" max="{{ g.commitment_bounds.max }}" step="5"
-                 value="{{ g.commitment.amount if g.commitment else g.commitment_bounds.default }}"
-                 oninput="onGoalCommitSlide({{ g.id }}, this.value)">
-          <div class="d-flex align-items-center gap-2">
-            <span class="small text-muted">£</span>
-            <input type="number" class="form-control form-control-sm goal-commit-number" name="amount"
-                   id="commitNumber{{ g.id }}" style="max-width:110px;" step="5" min="0"
+          <div class="small mb-2" style="color:{{ '#166534' if g.commitment_note.tone == 'positive' else '#9ca3af' }};">{{ g.commitment_note.text }}</div>
+
+          {% if g.commitment and g.commitment.is_paused %}
+          {#- Paused: the row (amount/account) is kept exactly as configured
+             but excluded from every live calculation - shown as a plain
+             summary rather than a live-editable slider, so it's obvious
+             this isn't currently doing anything until resumed. #}
+          <div class="rounded-3 p-2 mb-2" style="background:#f1f3f5;">
+            <div class="small fw-semibold" style="color:#6b7280;">⏸ Paused — was £{{ g.commitment.amount | moneyfmt }}/cycle from {{ g.commitment.from_account }}</div>
+            <div class="small text-muted mt-1">Not currently reducing Safe to Spend. Resume to pick up where it left off.</div>
+          </div>
+          <div class="d-flex gap-2 align-items-center flex-wrap">
+            <form method="POST" action="/settings/toggle-goal-commitment-pause">
+              <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+              <input type="hidden" name="goal_id" value="{{ g.id }}">
+              <button type="submit" class="btn btn-sm btn-dark">▶ Resume commitment</button>
+            </form>
+            <form method="POST" action="/settings/set-goal-commitment" onsubmit="return confirm('Remove this recurring commitment?')">
+              <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+              <input type="hidden" name="goal_id" value="{{ g.id }}">
+              <input type="hidden" name="amount" value="0">
+              <input type="hidden" name="from_account" value="{{ g.commitment.from_account }}">
+              <button type="submit" class="btn btn-sm btn-link text-danger p-0">Remove commitment</button>
+            </form>
+          </div>
+          {% else %}
+          <form method="POST" action="/settings/set-goal-commitment" class="goal-commitment-form" data-goal-id="{{ g.id }}">
+            <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+            <input type="hidden" name="goal_id" value="{{ g.id }}">
+            <input type="range" class="form-range goal-commit-slider" id="commitSlider{{ g.id }}"
+                   min="{{ g.commitment_bounds.floor }}" max="{{ g.commitment_bounds.max }}" step="5"
                    value="{{ g.commitment.amount if g.commitment else g.commitment_bounds.default }}"
-                   oninput="onGoalCommitNumber({{ g.id }}, this.value)">
-            <span class="small text-muted">per cycle</span>
+                   oninput="onGoalCommitSlide({{ g.id }}, this.value)">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <span class="small text-muted">£</span>
+              <input type="number" class="form-control form-control-sm goal-commit-number" name="amount"
+                     id="commitNumber{{ g.id }}" style="max-width:110px;" step="5" min="0"
+                     value="{{ g.commitment.amount if g.commitment else g.commitment_bounds.default }}"
+                     oninput="onGoalCommitNumber({{ g.id }}, this.value)">
+              <span class="small text-muted">per cycle</span>
+              <button type="button" class="btn btn-sm btn-link p-0" style="font-size:12px;"
+                      onclick="resetGoalCommitToSuggested({{ g.id }}, {{ g.commitment_bounds.default }})">↺ Reset to suggested</button>
+            </div>
+            {% if g.commitment_bounds.has_minimum_payment %}
+            <div class="small mt-1" style="color:#9ca3af;">Minimum payment: £{{ g.commitment_bounds.floor | moneyfmt }} — the slider won't go lower.</div>
+            {% endif %}
+
+            {#- "Your commitment" (amount + source, above) vs "the
+               consequence" (below) are deliberately visually separated -
+               a tinted, bordered box for the numbers the slider actually
+               changes, rather than five facts all reading at equal
+               weight. #}
+            {% set cp = g.commitment_preview %}
+            <div class="small rounded-3 p-2 mt-2" id="commitPreview{{ g.id }}" style="background:{{ '#fee2e2' if cp.would_go_negative else '#eef2ff' }};">
+              {% if cp.would_go_negative %}
+                <div style="color:#dc3545;font-weight:600;">⚠ This would push Safe to Spend negative</div>
+              {% endif %}
+              Safe to Spend after:
+              <strong style="color:{{ '#dc3545' if cp.would_go_negative else '#166534' }};">£{{ cp.resulting_safe_to_spend | moneyfmt }}</strong>
+              {% if cp.projection.state == 'projected' %}
+                · With this commitment: <strong>{{ cp.projection.projected_date | dateformat }}</strong>
+              {% elif cp.projection.state == 'years_away' %}
+                · With this commitment: <strong>{{ cp.projection.years_away }}+ years away</strong>
+              {% elif cp.projection.state == 'reached' %}
+                · ✅ Already reached
+              {% elif cp.projection.state == 'no_progress' %}
+                · no progress at £0/cycle
+              {% endif %}
+            </div>
+
+            <div class="d-flex gap-2 mt-2 align-items-center flex-wrap">
+              <select class="form-select form-select-sm" name="from_account" style="max-width:170px;">
+                {% for a in accounts %}
+                  {% if a.type in ('current', 'cash') and not a.get('is_locked') %}
+                  <option value="{{ a.name }}" {% if g.commitment and g.commitment.from_account == a.name %}selected{% endif %}>{{ a.name }}</option>
+                  {% endif %}
+                {% endfor %}
+              </select>
+              <button type="submit" class="btn btn-sm btn-dark goal-commit-submit-btn">{{ 'Update' if g.commitment else 'Set' }} commitment</button>
+            </div>
+          </form>
+          {% if g.commitment %}
+          <div class="d-flex gap-3 align-items-center flex-wrap mt-1">
+            <form method="POST" action="/settings/toggle-goal-commitment-pause">
+              <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+              <input type="hidden" name="goal_id" value="{{ g.id }}">
+              <button type="submit" class="btn btn-sm btn-link p-0">⏸ Pause commitment</button>
+            </form>
+            <form method="POST" action="/settings/set-goal-commitment" onsubmit="return confirm('Remove this recurring commitment?')">
+              <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
+              <input type="hidden" name="goal_id" value="{{ g.id }}">
+              <input type="hidden" name="amount" value="0">
+              <input type="hidden" name="from_account" value="{{ g.commitment.from_account }}">
+              <button type="submit" class="btn btn-sm btn-link text-danger p-0">Remove commitment</button>
+            </form>
           </div>
-          {% if g.commitment_bounds.has_minimum_payment %}
-          <div class="small mt-1" style="color:#9ca3af;">Minimum payment: £{{ "%.2f"|format(g.commitment_bounds.floor) }} — the slider won't go lower.</div>
           {% endif %}
-
-          {% set cp = g.commitment_preview %}
-          <div class="small mt-2" id="commitPreview{{ g.id }}">
-            {% if cp.would_go_negative %}
-              <div style="color:#dc3545;font-weight:600;">⚠ This would push Safe to Spend negative</div>
-            {% endif %}
-            Safe to Spend after:
-            <strong style="color:{{ '#dc3545' if cp.would_go_negative else '#166534' }};">£{{ "%.2f"|format(cp.resulting_safe_to_spend) }}</strong>
-            {% if cp.projection.state == 'projected' %}
-              · Projected: <strong>{{ cp.projection.projected_date | dateformat }}</strong>
-            {% elif cp.projection.state == 'years_away' %}
-              · Projected: <strong>{{ cp.projection.years_away }}+ years away</strong>
-            {% elif cp.projection.state == 'reached' %}
-              · ✅ Already reached
-            {% elif cp.projection.state == 'no_progress' %}
-              · no progress at £0/cycle
-            {% endif %}
-          </div>
-
-          <div class="d-flex gap-2 mt-2 align-items-center flex-wrap">
-            <select class="form-select form-select-sm" name="from_account" style="max-width:170px;">
-              {% for a in accounts %}
-                {% if a.type in ('current', 'cash') and not a.get('is_locked') %}
-                <option value="{{ a.name }}" {% if g.commitment and g.commitment.from_account == a.name %}selected{% endif %}>{{ a.name }}</option>
-                {% endif %}
-              {% endfor %}
-            </select>
-            <button type="submit" class="btn btn-sm btn-dark">{{ 'Update' if g.commitment else 'Set' }} commitment</button>
-          </div>
-        </form>
-        {% if g.commitment %}
-        <form method="POST" action="/settings/set-goal-commitment" onsubmit="return confirm('Remove this recurring commitment?')">
-          <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
-          <input type="hidden" name="goal_id" value="{{ g.id }}">
-          <input type="hidden" name="amount" value="0">
-          <input type="hidden" name="from_account" value="{{ g.commitment.from_account }}">
-          <button type="submit" class="btn btn-sm btn-link text-danger p-0 mt-1">Remove commitment</button>
-        </form>
-        {% endif %}
+          {% endif %}
+        </div>
         {% endif %}
 
         {% if not g.progress.is_linked %}
@@ -1046,7 +1114,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
               <div class="d-flex justify-content-between align-items-center py-1">
                 <span class="text-muted">{{ c.date | dateformat }}{% if c.note %} · {{ c.note }}{% endif %}</span>
                 <span class="d-flex align-items-center gap-2">
-                  <span class="money fw-semibold">£{{ "%.2f"|format(c.amount) }}</span>
+                  <span class="money fw-semibold">£{{ c.amount | moneyfmt }}</span>
                   <form method="POST" action="/settings/delete-goal-contribution" onsubmit="return confirm('Remove this contribution?')">
                     <input type="hidden" name="csrf_token" value="{{ session['csrf_token'] }}">
                     <input type="hidden" name="id" value="{{ c.id }}">
@@ -1596,6 +1664,10 @@ function _fmtUKDate(iso) {
   return dd + '/' + mm + '/' + d.getFullYear();
 }
 
+function _fmtUKMoney(n) {
+  return (n < 0 ? '-' : '') + Math.abs(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function _snapGoalCommit(value) {
   var n = parseFloat(value);
   if (isNaN(n) || n < 0) n = 0;
@@ -1642,17 +1714,18 @@ function _updateGoalCommitPreview(goalId, amount) {
   .then(function(r) { return r.json(); })
   .then(function(data) {
     if (data.error) { previewEl.textContent = ''; return; }
+    previewEl.style.background = data.would_go_negative ? '#fee2e2' : '#eef2ff';
     var color = data.would_go_negative ? '#dc3545' : '#166534';
     var html = '';
     if (data.would_go_negative) {
       html += '<div style="color:#dc3545;font-weight:600;">⚠ This would push Safe to Spend negative</div>';
     }
-    html += 'Safe to Spend after: <strong style="color:' + color + ';">£' + data.resulting_safe_to_spend.toFixed(2) + '</strong>';
+    html += 'Safe to Spend after: <strong style="color:' + color + ';">£' + _fmtUKMoney(data.resulting_safe_to_spend) + '</strong>';
     var p = data.projection;
     if (p.state === 'projected') {
-      html += ' · Projected: <strong>' + _fmtUKDate(p.projected_date) + '</strong>';
+      html += ' · With this commitment: <strong>' + _fmtUKDate(p.projected_date) + '</strong>';
     } else if (p.state === 'years_away') {
-      html += ' · Projected: <strong>' + p.years_away + '+ years away</strong>';
+      html += ' · With this commitment: <strong>' + p.years_away + '+ years away</strong>';
     } else if (p.state === 'reached') {
       html += ' · ✅ Already reached';
     } else if (p.state === 'no_progress') {
@@ -1661,6 +1734,14 @@ function _updateGoalCommitPreview(goalId, amount) {
     previewEl.innerHTML = html;
   })
   .catch(function() { previewEl.textContent = ''; });
+}
+
+function resetGoalCommitToSuggested(goalId, suggested) {
+  var sliderEl = document.getElementById('commitSlider' + goalId);
+  var numberEl = document.getElementById('commitNumber' + goalId);
+  if (sliderEl) sliderEl.value = Math.max(parseFloat(sliderEl.min), Math.min(parseFloat(sliderEl.max), suggested));
+  if (numberEl) numberEl.value = suggested;
+  _scheduleGoalCommitPreview(goalId, suggested);
 }
 
 function openLogContributionModal(goalId, goalName) {
@@ -1686,6 +1767,28 @@ document.querySelectorAll('.alert-success, .alert-info').forEach(function(el) {
     setTimeout(function() { el.remove(); }, 500);
   }, 4000);
 });
+
+// Goal commitment actions (set/update/pause/resume/remove) redirect back
+// to #goal-card-{id} rather than just the top of the page - this scrolls
+// straight to the goal that changed and gives it a brief highlight, since
+// a full-page-reload form POST has no other way to show "yes, that
+// worked" right next to the button that was pressed.
+if (window.location.hash && window.location.hash.indexOf('#goal-card-') === 0) {
+  var _savedCard = document.querySelector(window.location.hash);
+  if (_savedCard) {
+    _savedCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    var _origBg = _savedCard.style.background;
+    _savedCard.style.transition = 'background 0.3s ease';
+    _savedCard.style.background = '#dcfce7';
+    setTimeout(function() { _savedCard.style.background = _origBg; }, 1600);
+    var _savedBtn = _savedCard.querySelector('.goal-commit-submit-btn');
+    if (_savedBtn) {
+      var _origLabel = _savedBtn.textContent;
+      _savedBtn.textContent = '✓ Saved';
+      setTimeout(function() { _savedBtn.textContent = _origLabel; }, 2000);
+    }
+  }
+}
 </script>
 <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>
 

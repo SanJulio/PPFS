@@ -159,6 +159,18 @@ def dateformat_filter(value):
     except Exception:
         return value
 
+@app.template_filter('moneyfmt')
+def moneyfmt_filter(value):
+    """Formats a number with thousand separators and 2 decimal places
+    ('1234.5' -> '1,234.50') - no currency symbol, since every call site
+    already prefixes its own £. Not applied app-wide by default (that
+    would be a much bigger, separately-scoped sweep); introduced for the
+    Goals card, August 2026."""
+    try:
+        return f"{float(value):,.2f}"
+    except (TypeError, ValueError):
+        return value
+
 import secrets
 
 # Generate a CSRF token for every new session — embedded as a hidden field in all forms
@@ -1092,7 +1104,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
         _savings_rules = []
 
     for rule in _savings_rules:
-        if rule.get("day") is None:
+        if rule.get("day") is None or rule.get("is_paused"):
             continue
         freq = rule.get("frequency", "monthly")
         from_acc = rule.get("from_account", "")
@@ -3487,7 +3499,7 @@ def api_snapshot():
 
         # Savings rules — deduct from source, deposit to destination
         for rule in snap_savings_rules:
-            if rule.get("day") is None:
+            if rule.get("day") is None or rule.get("is_paused"):
                 continue
             freq = rule.get("frequency", "monthly")
             if freq == "monthly" and rule["day"] == sim_day.day:
@@ -4368,6 +4380,54 @@ def _compute_goal_commitment_preview(progress, target_date_str, amount, safe_to_
     }
 
 
+def _compute_commitment_note(goal, accounts_by_id):
+    """Plain-language explanation of what a recurring commitment actually
+    does for THIS goal, mirroring settings_set_goal_commitment()'s real
+    to_account resolution exactly (see database.py's goal_id migration for
+    the full reasoning) rather than describing a simplified version of it.
+
+    The commitment always reduces Safe to Spend/forecast from from_account
+    - that part is unconditional. Whether it ALSO auto-credits somewhere
+    that visibly grows this goal's own progress depends entirely on
+    whether the linked account is itself a real, unlocked SAVINGS-type
+    account on a SAVINGS goal - the one case the route's to_account logic
+    actually wires up. Every other case (debt goal, standalone goal, or a
+    savings goal linked to a non-savings/locked account, as when someone
+    tracks a savings goal against an everyday current account) is a
+    one-sided deduction with no automatic link to this goal's own progress
+    figure at all - the user has to move the money into the tracked
+    account themselves, same "no fabricated data" principle as the rest of
+    this projection-only feature."""
+    linked_account_id = goal.get("linked_account_id")
+    is_savings_goal = goal.get("goal_type") == "savings"
+
+    if not linked_account_id:
+        return {
+            "tone": "neutral",
+            "text": "Standalone goal — log what you set aside as a contribution below for it to count toward progress.",
+        }
+
+    acc = accounts_by_id.get(linked_account_id)
+    acc_name = acc["name"] if acc else "the linked account"
+
+    if is_savings_goal and acc and acc.get("type") == "savings" and not acc.get("is_locked"):
+        return {
+            "tone": "positive",
+            "text": f"Feeds into {acc_name} — it'll show growing in your forecast.",
+        }
+
+    if is_savings_goal:
+        return {
+            "tone": "neutral",
+            "text": f"Reduces Safe to Spend, but won't automatically count as progress here — pay it into {acc_name} yourself for progress to update.",
+        }
+
+    return {
+        "tone": "neutral",
+        "text": f"Reduces Safe to Spend. Pay it toward {acc_name} yourself — its balance is what tracks how much you've paid off.",
+    }
+
+
 # Keyword -> emoji, checked in order against the goal's (lower-cased) name.
 # First match wins. Deliberately plain emoji rather than an icon font/SVG
 # library — the app already uses emoji as its icon language everywhere
@@ -4801,6 +4861,7 @@ def manage():
             g["commitment_bounds"] = None
             continue
         g["commitment"] = _get_goal_commitment(g["id"], uid)
+        g["commitment_note"] = _compute_commitment_note(g, accounts_by_id)
         g["commitment_bounds"] = _compute_goal_commitment_bounds(
             g, g["progress"], g["pace"], safe_to_spend_for_goals or 0.0,
             fallback_pace_per_day=g["projection"].get("pace_per_day") if g.get("projection") else None,
@@ -5241,7 +5302,7 @@ def settings_set_goal_commitment():
         cursor.close()
         release_db(db)
         bust_forecast_cache(current_user.id)
-        return redirect(url_for("manage", tab="goals", msg="Recurring commitment removed."))
+        return redirect(url_for("manage", tab="goals", msg="Recurring commitment removed.", _anchor=f"goal-card-{goal_id}"))
 
     if not from_account:
         cursor.close()
@@ -5323,7 +5384,44 @@ def settings_set_goal_commitment():
     cursor.close()
     release_db(db)
     bust_forecast_cache(current_user.id)
-    return redirect(url_for("manage", tab="goals", msg=f"Recurring commitment of £{amount:.2f} set for '{goal['name']}'."))
+    return redirect(url_for("manage", tab="goals", msg=f"Recurring commitment of £{amount:.2f} set for '{goal['name']}'.", _anchor=f"goal-card-{goal_id}"))
+
+
+@app.post("/settings/toggle-goal-commitment-pause")
+@login_required
+def settings_toggle_goal_commitment_pause():
+    """Pauses or resumes an existing goal commitment without deleting it -
+    unlike "Remove commitment" (which deletes the savings_rules row
+    outright, losing the configured amount/from_account), this just flips
+    is_paused so the same row can be resumed later exactly as it was left.
+    A paused rule is skipped by all three live engine sites (see
+    database.py's is_paused migration) - it stops reducing Safe to Spend/
+    forecast for as long as it's paused, and resumes on its next scheduled
+    occurrence once unpaused. Doesn't touch amount/from_account/to_account
+    at all, so no validation beyond ownership is needed."""
+    goal_id_raw = (request.form.get("goal_id") or "").strip()
+    try:
+        goal_id = int(goal_id_raw)
+    except (ValueError, TypeError):
+        return redirect(url_for("manage", tab="goals", msg="Invalid goal."))
+
+    existing = _get_goal_commitment(goal_id, current_user.id)
+    if not existing:
+        return redirect(url_for("manage", tab="goals", msg="No commitment to pause."))
+
+    new_paused = 0 if existing.get("is_paused") else 1
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("UPDATE savings_rules SET is_paused=%s WHERE id=%s AND user_id=%s", (new_paused, existing["id"], current_user.id))
+    else:
+        cursor.execute("UPDATE savings_rules SET is_paused=? WHERE id=? AND user_id=?", (new_paused, existing["id"], current_user.id))
+    db.commit()
+    cursor.close()
+    release_db(db)
+    bust_forecast_cache(current_user.id)
+    msg = "Commitment paused." if new_paused else "Commitment resumed."
+    return redirect(url_for("manage", tab="goals", msg=msg, _anchor=f"goal-card-{goal_id}"))
 
 
 @app.post("/settings/add-account")
@@ -6358,6 +6456,8 @@ def forecast():
                 simulated[event["account"]] -= float(event["amount"])
 
         for rule in savings_rules:
+            if rule.get("is_paused"):
+                continue
             freq = rule.get("frequency", "monthly")
             apply_rule = False
             if freq == "monthly" and rule["day"] == sim_day.day:

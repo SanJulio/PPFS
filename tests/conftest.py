@@ -131,7 +131,8 @@ def _create_test_schema(db_path: Path):
             from_account TEXT NOT NULL,
             to_account TEXT NOT NULL,
             user_id INTEGER NOT NULL,
-            goal_id INTEGER DEFAULT NULL
+            goal_id INTEGER DEFAULT NULL,
+            is_paused INTEGER DEFAULT 0
         )""",
         """CREATE TABLE IF NOT EXISTS future_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

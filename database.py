@@ -1553,5 +1553,35 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: savings_rules.is_paused ---
+    # Lets a recurring goal commitment (or any savings_rules row) be paused
+    # without losing its configured amount/from_account/to_account - the
+    # existing "Remove commitment" action deletes the row outright, which
+    # is fine for "I don't want this any more" but loses everything if the
+    # intent was just "not right now, I'll resume it later". A paused rule
+    # is skipped by all three live engine sites (calculate_financial_
+    # overview, api_snapshot, forecast) exactly like a locked-account pause
+    # - it simply doesn't apply for as long as the flag is set, and resumes
+    # applying (from its next scheduled occurrence) the moment it's unset.
+    # 0/1 integer, same convention as is_locked/is_primary elsewhere.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='savings_rules' AND column_name='is_paused'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE savings_rules ADD COLUMN is_paused INTEGER DEFAULT 0")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE savings_rules ADD COLUMN is_paused INTEGER DEFAULT 0")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (savings_rules.is_paused): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)
