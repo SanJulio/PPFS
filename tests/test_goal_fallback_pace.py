@@ -291,11 +291,19 @@ class TestMultipleGoalsSplitTheEstimate:
         section = body[body.find("Only goal"):body.find("Only goal") + 4200]
         assert "split evenly across" not in section
 
-    def test_goal_with_real_data_does_not_count_toward_fallback_denominator(self, auth_client, db_conn, test_user):
+    def test_goal_with_real_data_does_not_count_toward_fallback_denominator(self, auth_client, db_conn, test_user, test_account):
         """A goal that already has real tracked pace isn't competing for the
         estimate the same way - it shouldn't shrink other goals' share. If
         it wrongly counted, "Brand new" would show a "split evenly across 2
-        goals" note; it must not, since only it needs the fallback."""
+        goals" note; it must not, since only it needs the fallback.
+
+        test_account gives a real £1,000 balance so Safe to Spend is
+        reliably positive (and the fallback reliably available) regardless
+        of the default income day (25) colliding with whatever day this
+        test actually runs on - without a balance to fall back on, Safe to
+        Spend (and so the fallback) would flake to 0 specifically on the
+        25th of the month, when the default income's own payment date is
+        "today" rather than genuinely still due this cycle."""
         _add_income(db_conn, test_user["id"])
         gid_real = _add_goal(db_conn, test_user["id"], "Has real data", 1000.0)
         for days_ago in (60, 40):

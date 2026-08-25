@@ -110,20 +110,45 @@ def _goal_section(body, marker, size=7500):
 # ── STAGE 1 REGRESSION: real reported scenario stays correct ────────────────
 class TestStage1RealScenarioRegression:
     def test_house_deposit_repro_safe_to_spend_and_slider_arithmetic(self, app, auth_client, db_conn, test_user):
-        """The exact real account/bill/income data from the bug report,
-        with today frozen at day 24 relative to bills on days 1/1/1/15/17/25.
-        Guards against a regression reintroducing a stale/separate Safe to
-        Spend calculation for the goal slider."""
+        """The real account/bill/income data from the bug report: 5 of 6
+        bills had already had their due date pass this cycle by the day it
+        was checked (bill days 1/1/1/15/17 vs. "today" the 24th), leaving
+        only the £40 Life Insurance bill (day 25) genuinely still ahead.
+
+        The original report used literal calendar days, which would make
+        this test flake every time it happens to run on a different day of
+        the month (bill "day 25" is only "still ahead" relative to a
+        specific "today"). Rebuilt here relative to whatever day the test
+        actually runs on: 5 bills placed the day before today (always
+        already passed, unless today is the 1st) and 1 placed the day
+        after (always still ahead, unless today is the 28th-31st) -
+        reproduces the same "5 passed, 1 left" shape and the same £1,979
+        result regardless of the real calendar date. Guards against a
+        regression reintroducing a stale/separate Safe to Spend
+        calculation for the goal slider."""
         import flask_login
         import app as app_module
+
+        today_day = datetime.date.today().day
+        if today_day >= 28:
+            # A bill "the day after today" would need to land in next
+            # month to genuinely still be ahead this cycle - real, but
+            # unrelated month-boundary complexity this test isn't trying
+            # to cover. Skipped on the ~4 days/month this would apply,
+            # rather than adding cross-month bill-matching logic just for
+            # this regression guard.
+            pytest.skip("bill-day arithmetic needs next-month handling this close to month-end")
+        passed_day = max(1, today_day - 1)
+        ahead_day = today_day + 1
 
         monzo = _add_account(db_conn, test_user["id"], "Monzo Current", balance=780.00)
         natwest_cur = _add_account(db_conn, test_user["id"], "Natwest Current", balance=1239.00)
         _add_account(db_conn, test_user["id"], "Natwest Savings", balance=18030.00, acc_type="savings", savings_type="fixed")
-        for name, amt, day in [("Rent", 1250.00, 1), ("Car Finance", 350.00, 1), ("Car Insurance", 200.00, 1),
-                                ("Spotify", 12.99, 15), ("Ai app", 18.99, 17), ("Life Insurance", 40.00, 25)]:
-            _add_bill(db_conn, test_user["id"], name, amt, day, "Monzo Current")
-        _add_income(db_conn, test_user["id"], amount=3400.00)
+        for name, amt in [("Rent", 1250.00), ("Car Finance", 350.00), ("Car Insurance", 200.00),
+                           ("Spotify", 12.99), ("Ai app", 18.99)]:
+            _add_bill(db_conn, test_user["id"], name, amt, passed_day, "Monzo Current")
+        _add_bill(db_conn, test_user["id"], "Life Insurance", 40.00, ahead_day, "Monzo Current")
+        _add_income(db_conn, test_user["id"], amount=3400.00, day=passed_day)
         _add_goal(db_conn, test_user["id"], "House Deposit", 30000.0, linked_account_id=natwest_cur, starting_balance=1239.0)
 
         with app.test_request_context():
