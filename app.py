@@ -7677,6 +7677,18 @@ def _is_account_locked_by_id(user_id, account_id):
 @limiter.limit("5 per hour")
 def admin_unlock():
     secret = request.args.get("secret", "")
+    # --- TEMPORARY DEBUG (remove once /admin/unlock 404 investigation is resolved) ---
+    logger.warning(
+        "ADMIN_UNLOCK_DEBUG: "
+        f"user_id={current_user.id!r} (type={type(current_user.id).__name__}) "
+        f"ADMIN_USER_ID={ADMIN_USER_ID!r} (type={type(ADMIN_USER_ID).__name__}) "
+        f"user_id_match={current_user.id == ADMIN_USER_ID} | "
+        f"secret_len={len(secret)} ADMIN_SECRET_len={len(ADMIN_SECRET)} "
+        f"secret_match={secret == ADMIN_SECRET} "
+        f"secret_match_stripped={secret.strip() == ADMIN_SECRET.strip()} "
+        f"admin_secret_truthy={bool(ADMIN_SECRET)}"
+    )
+    # --- END TEMPORARY DEBUG ---
     if current_user.id == ADMIN_USER_ID and secret == ADMIN_SECRET and ADMIN_SECRET:
         session["admin_unlocked"] = ADMIN_SECRET
         return redirect("/admin/analytics")
