@@ -7745,6 +7745,60 @@ def admin_analytics():
     )
 
 
+# --- FOUNDER/ADMIN PRO OVERRIDE ---
+# Grants Pro to a specific user without going through Stripe at all - for
+# founder/testing accounts only. Deliberately reuses the exact same
+# users.is_pro column and user_is_pro() read path every other Pro check in
+# the app already uses (routes, templates, sync_account_locks) rather than
+# a parallel "is this a founder account" check bolted on elsewhere - one
+# engine, same principle as everywhere else in this codebase. Never writes
+# stripe_customer_id, so no Stripe webhook (which only ever acts on a
+# matching stripe_customer_id) can revoke it later. Same admin gate as
+# /admin/analytics - requires the admin user to have already unlocked the
+# admin area this session via /admin/unlock.
+@app.get("/admin/grant-pro")
+@login_required
+@limiter.limit("30 per hour")
+def admin_grant_pro():
+    if current_user.id != ADMIN_USER_ID or session.get("admin_unlocked") != ADMIN_SECRET or not ADMIN_SECRET:
+        logger.warning(f"Blocked admin access attempt — user_id={current_user.id} ip={request.remote_addr}")
+        return render_template("404.html"), 404
+
+    email = (request.args.get("email") or "").strip().lower()
+    if not email:
+        return "Usage: /admin/grant-pro?email=someone@example.com", 400
+
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute("SELECT id FROM users WHERE LOWER(email) = %s", (email,))
+    else:
+        cursor.execute("SELECT id FROM users WHERE LOWER(email) = ?", (email,))
+    row = cursor.fetchone()
+    if not row:
+        cursor.close()
+        release_db(db)
+        return f"No user found with email {email}", 404
+    target_user_id = row[0] if USE_POSTGRES else row["id"]
+
+    if USE_POSTGRES:
+        cursor.execute("UPDATE users SET is_pro = 1 WHERE id = %s", (target_user_id,))
+    else:
+        cursor.execute("UPDATE users SET is_pro = 1 WHERE id = ?", (target_user_id,))
+    db.commit()
+    cursor.close()
+    release_db(db)
+
+    # Same unlock-everything step the real Stripe upgrade path triggers on
+    # checkout.session.completed - without this, any of the founder's
+    # accounts already locked from a prior Free-tier state would stay
+    # locked despite is_pro now being true.
+    sync_account_locks(target_user_id, True)
+
+    logger.info(f"Founder Pro override granted by admin user_id={current_user.id} to user_id={target_user_id} ({email})")
+    return f"Pro access granted to {email} (founder override — not tied to any Stripe subscription)."
+
+
 # --- DELETE ACCOUNT ---
 # Permanently deletes all user data and the account itself.
 # Requires the user to confirm by typing their email address.

@@ -270,6 +270,20 @@ Used to **block new activity** against a locked account — called in `bills_pay
 
 **Tests**: `tests/test_account_locking.py` (lock/unlock transitions, oldest-3-kept logic, webhook trigger paths), `tests/test_locked_account_exclusion.py` (exclusion from overview/forecast/snapshot/auto-apply).
 
+## Founder/admin Pro override — complete reference (August 2026)
+
+**Purpose**: grants Pro access to a specific account without going through Stripe at all — for founder/testing accounts only, never exposed or advertised to real users.
+
+**Route**: `GET /admin/grant-pro?email=someone@example.com` (`admin_grant_pro()`, app.py) — gated by the exact same admin check as `/admin/analytics`: `current_user.id == ADMIN_USER_ID` and `session.get("admin_unlocked") == ADMIN_SECRET` (set by first visiting `/admin/unlock?secret=...`). Looks up the user by email (case-insensitive), sets `users.is_pro = 1`, then calls the existing `sync_account_locks(user_id, True)` — the same unlock-everything step the real Stripe `checkout.session.completed` handler triggers, so any accounts already locked from a prior Free-tier state get unlocked too, not just the flag flipped.
+
+**Deliberately reuses the exact same `users.is_pro` column and `user_is_pro()` read path every other Pro check in the app already uses** — routes, templates, `sync_account_locks()` — rather than a parallel "is this a founder account" flag or allow-list bolted on elsewhere. One engine, same principle as everything else in this codebase: a founder-overridden account is indistinguishable from a real Pro subscriber to every consumer of `user_is_pro()`.
+
+**Never touches Stripe or `stripe_customer_id`** — no fake subscription or customer is created. Because every `is_pro = 0` write in the Stripe webhook handlers (`checkout.session.completed`/`customer.subscription.deleted`/`customer.subscription.updated`) is scoped by `WHERE stripe_customer_id = ...`, a founder-overridden account (whose `stripe_customer_id` stays `NULL`) can never be touched by a webhook — the grant persists until manually changed, immune to any real-world Stripe event.
+
+**No revoke route built** — out of scope for "a way to grant," and this is founder/testing-only; if ever needed, flip `is_pro` back directly.
+
+**Tests**: `tests/test_admin_grant_pro.py` (11 tests) — the admin gate (wrong user, secret not unlocked this session, `ADMIN_SECRET` unconfigured, mismatched session secret all 404), granting by email (case-insensitive), confirms `stripe_customer_id` is never written, unknown email 404s, missing `?email=` 400s, the downstream `user_is_pro()` check reflects the grant (not just a raw DB flag nobody reads), and previously-locked accounts get unlocked via `sync_account_locks()`.
+
 ## Employed / Self-employed income system — complete reference (August 2026)
 
 **Purpose**: self-employed users have irregular income with no fixed payday. Instead of forcing them into the existing fixed-payday income model, they get an **averaged** income figure (manual or automatically calculated from logged transactions) that can appear in their cycle either as one lump sum or spread evenly day-by-day.
@@ -635,6 +649,10 @@ The income modal (`id="incomeModal"`) is a full-screen overlay with scrollable c
 - `home()` future income — queries `SELECT *` (all columns), uses `income_engine.get_payment_dates()` for upcoming month income; also computes `spending_alerts` via `get_triggered_spending_alerts()` (August 2026)
 
 ## What was last worked on
+
+### August 2026 — Founder/admin Pro override
+- Added a way to grant Pro to a specific account without touching Stripe at all — founder/testing accounts only. Deliberately built as a thin extra route (`GET /admin/grant-pro?email=...`) rather than a parallel Pro-check system: it writes the exact same `users.is_pro` column and calls the exact same `sync_account_locks()` every real Stripe-driven upgrade already uses, so a founder-overridden account is indistinguishable from a real subscriber to every consumer of `user_is_pro()`. Reused the existing `/admin/analytics` admin-gate pattern (`ADMIN_USER_ID`/`ADMIN_SECRET`/session unlock) rather than inventing new auth. Never writes `stripe_customer_id`, so no Stripe webhook (all scoped by `WHERE stripe_customer_id = ...`) can ever revoke it. Full design in "Founder/admin Pro override" above. 11 new tests (`tests/test_admin_grant_pro.py`).
+- Test suite grew from 679 → 690 tests across this work, all passing.
 
 ### August 2026 — Goals card: bug fix, trust/clarity pass, polish
 - Investigated a reported £451 Safe to Spend mismatch on the goal slider with the user's real account/bill/income data (not assumed) and found no bug: the slider uses the exact same `calculate_financial_overview()` as everywhere else, and the "too high" figure was correct — 5 of 6 bills had already had their due date pass this cycle by the day the user checked. Reported this back before touching anything, per the brief's explicit "check in after Stage 1" instruction, since every later stage assumed the number was trustworthy. Went on to add clear "(without this commitment)" / "With this commitment" labelling distinguishing historical pace from the new slider's hypothetical projection, a new plain-language note explaining what a commitment actually does for each specific goal (surfacing a real, previously-invisible mechanism gap: a savings goal linked to a *current* account never gets its commitment wired to auto-show as progress, unlike one linked to a real savings account), confirmed the negative-Safe-to-Spend guardrail was already built and working (the screenshot just never breached it), visually separated "your commitment" from "the consequence" into a tinted box, added a light ahead-of-schedule signal, a `#goal-card-{id}` scroll+flash confirmation on save, thousand separators, a 44px slider touch target, a genuine pause/resume-without-deleting feature (new `savings_rules.is_paused` column), and a reset-to-suggested-pace control. Full design in "Goals card — bug fix, trust/clarity, and polish pass" above. 28 new tests (`tests/test_goal_card_trust_polish.py`), plus fixes to a handful of existing goal tests whose fixed-size HTML slice windows needed widening for the card's new markup.
