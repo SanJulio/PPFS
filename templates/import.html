@@ -231,7 +231,7 @@ document.querySelectorAll('form:not([onsubmit])').forEach(function(form) {
   });
 });
 </script>
-<script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/static/sw.js"); }</script>
+<script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/sw.js"); }</script>
 
 <!-- Profile Panel Button -->
 <button id="profileBtn" onclick="openProfilePanel()" style="position:fixed;top:14px;right:14px;z-index:1040;width:38px;height:38px;border-radius:50%;background:var(--brand,#5b5ef4);color:#fff;border:none;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;">{%- set _pn = current_user.display_name or current_user.email.split('@')[0] %}{%- set _pp = _pn.replace('.', ' ').replace('_', ' ').split() -%}{{ (_pp[0][0] + (_pp[1][0] if _pp|length > 1 else '')) | upper }}</button>

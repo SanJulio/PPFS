@@ -24,7 +24,7 @@ import math
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from flask import Flask, request, redirect, url_for, render_template, jsonify, Response
+from flask import Flask, request, redirect, url_for, render_template, jsonify, Response, send_from_directory
 from flask.sessions import SessionInterface, SessionMixin
 from werkzeug.datastructures import CallbackDict
 
@@ -1577,6 +1577,22 @@ def get_my_money_dot(user_id):
 # =============================================================================
 # ROUTES
 # =============================================================================
+
+# --- SERVICE WORKER (root scope) ---
+# Served at /sw.js rather than /static/sw.js so its default scope is the
+# whole site ('/') - a service worker's max allowed scope is the directory
+# containing the script it was registered from, and browsers won't extend
+# that past /static/ without extra Service-Worker-Allowed header handling.
+# Serving from the root sidesteps that entirely. No @login_required - the
+# public landing page registers it too. No explicit Cache-Control needed
+# here - the add_no_cache_headers() after_request hook below already
+# stamps every response (this one included) with no-store/no-cache, so
+# browsers always re-check for an updated worker script rather than
+# serving a stale cached copy.
+@app.get("/sw.js")
+def service_worker():
+    return send_from_directory(app.static_folder, "sw.js")
+
 
 # --- HOME / DASHBOARD ---
 # Shows the main dashboard: financial overview, account balances, monthly spending
