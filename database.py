@@ -3,6 +3,7 @@ import sqlite3
 import logging
 from pathlib import Path
 from dotenv import load_dotenv
+from flask import g
 
 # Set up logging so we can track database errors and info messages
 logging.basicConfig(level=logging.INFO)
@@ -26,27 +27,53 @@ DB_PATH = BASE_DIR / "ppfs.db"
 
 
 # --- DATABASE CONNECTION ---
-# Opens a fresh database connection for each request
-# Postgres on production (Render), SQLite locally
+# Opens (lazily, once) and shares ONE connection per request, stored on
+# Flask's request-scoped `g` - not a pool. There's no persistent structure
+# sitting between requests the way a pool has: a connection is opened on
+# the first get_db() call in a request and closed unconditionally by
+# close_db() (registered as app.teardown_appcontext in app.py) when that
+# same request ends, success or exception. This is Flask's own documented
+# pattern for per-request resources (g is thread-safe via Werkzeug's
+# context-local), not a bespoke reimplementation of the pooling that
+# previously caused connection exhaustion - see CLAUDE.md's "Sessions"
+# note for that history. Every one of get_db()'s 139 call sites keeps
+# working unchanged: same signature, same returned connection object.
+# Postgres on production (Render), SQLite locally.
 def get_db():
-    if USE_POSTGRES:
-        conn = psycopg2.connect(DATABASE_URL)
-        conn.autocommit = False
-        return conn
-    else:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        return conn
+    if "db" not in g:
+        if USE_POSTGRES:
+            conn = psycopg2.connect(DATABASE_URL)
+            conn.autocommit = False
+        else:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+        g.db = conn
+    return g.db
 
 
 # --- DATABASE RELEASE ---
-# Closes the connection after each request
-# We use direct connections (no pooling) to avoid connection exhaustion on Render free tier
+# No-op now - the shared connection is closed once, automatically, by
+# close_db() at request teardown, not by individual call sites. Kept as a
+# real (if empty) function, rather than removing it, so none of the 139
+# existing `release_db(db)` call sites need to change.
 def release_db(conn):
-    try:
-        conn.close()
-    except Exception as e:
-        logger.debug(f"Error closing database connection: {e}")
+    pass
+
+
+# --- DATABASE TEARDOWN ---
+# Registered via app.teardown_appcontext(database.close_db) in app.py.
+# Closes this request's shared connection, if one was ever opened - runs
+# unconditionally (Flask calls teardown handlers on every request, success
+# or exception), which also closes a real pre-existing gap: today's 139
+# get_db()/release_db() call sites have zero try/finally between them, so
+# a connection opened before an unhandled exception currently leaks.
+def close_db(exception=None):
+    db = g.pop("db", None)
+    if db is not None:
+        try:
+            db.close()
+        except Exception as e:
+            logger.debug(f"Error closing database connection: {e}")
 
 
 # --- DATABASE INITIALISATION ---

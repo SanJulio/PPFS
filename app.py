@@ -41,7 +41,7 @@ from models import (
     get_recent_transactions
 )
 
-from database import get_db, release_db
+from database import get_db, release_db, close_db
 
 from database import USE_POSTGRES
 
@@ -149,6 +149,12 @@ class PostgresSessionInterface(SessionInterface):
 
 # --- FLASK APP SETUP ---
 app = Flask(__name__)
+
+# Closes each request's shared database connection (see database.py's
+# get_db()/close_db() for the full per-request-g reasoning) - registered
+# here rather than inside database.py since database.py has no reference
+# to the Flask app instance itself.
+app.teardown_appcontext(close_db)
 
 @app.template_filter('dateformat')
 def dateformat_filter(value):

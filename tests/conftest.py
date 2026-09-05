@@ -259,12 +259,22 @@ def db_conn(app):
     Function-scoped SQLite connection in autocommit mode (isolation_level=None).
     Each statement commits immediately so this connection never holds write locks
     that would block Flask route connections.
+
+    Pushes an app context for the fixture's whole lifetime (database.py's
+    get_db() now shares one connection per request via flask.g, per the
+    August 2026 connection-per-call fix - see CLAUDE.md's "Database
+    connections" note) so any test that calls a DB-touching app.py helper
+    directly, without going through auth_client/client, still has a valid
+    context to store that connection on. Harmless for tests that don't
+    need it, and safely nests with whatever context auth_client/client
+    push internally for their own requests.
     """
-    conn = sqlite3.connect(str(app._test_db_path), timeout=15, isolation_level=None)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.row_factory = sqlite3.Row
-    yield conn
-    conn.close()
+    with app.app_context():
+        conn = sqlite3.connect(str(app._test_db_path), timeout=15, isolation_level=None)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.row_factory = sqlite3.Row
+        yield conn
+        conn.close()
 
 
 # ── HTTP CLIENTS ──────────────────────────────────────────────────────────────

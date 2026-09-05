@@ -365,7 +365,7 @@ class TestNoRealisticEstimateAvailable:
         assert pace is None
         assert is_estimate is False
 
-    def test_negative_safe_to_spend_daily_rate_clamped_not_negative_pace(self):
+    def test_negative_safe_to_spend_daily_rate_clamped_not_negative_pace(self, app):
         """calculate_financial_overview already floors safe_spending at 0,
         but the fallback logic must not propagate a negative value even if
         that ever changed - never suggest a pace going backwards."""
@@ -374,7 +374,7 @@ class TestNoRealisticEstimateAvailable:
         # negative daily rate to confirm the >0 guard, independent of how
         # Safe to Spend itself is computed.
         import unittest.mock as mock
-        with mock.patch.object(app_module, "_safe_to_spend_daily_rate", return_value=-50.0):
+        with app.app_context(), mock.patch.object(app_module, "_safe_to_spend_daily_rate", return_value=-50.0):
             goal = {"id": 1, "target_amount": 1000.0, "linked_account_id": None, "goal_type": "savings", "status": "active"}
             pace_map, fallback_count = app_module._compute_goal_pace_map([goal], 999999, accounts_by_id={})
             assert pace_map[1] == (None, False)
