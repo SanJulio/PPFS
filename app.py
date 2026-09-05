@@ -1600,6 +1600,18 @@ def service_worker():
     return send_from_directory(app.static_folder, "sw.js")
 
 
+# --- DIGITAL ASSET LINKS (Android TWA verification) ---
+# Must be served at exactly this path with Content-Type: application/json -
+# Google's Digital Asset Links verifier fetches this to confirm the
+# packaged Android app is allowed to open spendara.co.uk without browser
+# UI. No @login_required - it's fetched by Google's own crawler, not a
+# logged-in user. mimetype is set explicitly rather than left to
+# extension-based auto-detection, since the verifier is strict about it.
+@app.get("/.well-known/assetlinks.json")
+def asset_links():
+    return send_from_directory(app.static_folder, "assetlinks.json", mimetype="application/json")
+
+
 # --- HOME / DASHBOARD ---
 # Shows the main dashboard: financial overview, account balances, monthly spending
 # If the user has no accounts yet, triggers the onboarding modal

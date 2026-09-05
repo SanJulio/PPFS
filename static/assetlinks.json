@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "uk.co.spendara.twa",
+        "sha256_cert_fingerprints": ["67:36:24:EC:3F:20:0C:31:2B:FB:2E:65:2B:FC:14:A0:11:8F:B6:B8:58:85:54:1A:95:69:15:78:08:2E:EB:DC"]
+      }
+    }]

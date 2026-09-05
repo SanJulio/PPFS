@@ -318,6 +318,12 @@ Used to **block new activity** against a locked account — called in `bills_pay
 
 **Tests**: `tests/test_service_worker.py` (12 tests) — the route serves at `/sw.js` without requiring login, correct content-type, content matches the static file exactly; content-based checks (the same technique used elsewhere in this codebase for JS-only logic that can't be exercised from pytest) confirming the method/origin/path guard clauses are present in the shipped script, that `install`/`activate`/`fetch` handlers all exist, and that `PRECACHE_URLS` contains only `/static/*` paths; and registration checks across the landing page and all 9 app templates confirming each uses the new root-scoped `/sw.js` and none still reference the old `/static/sw.js`.
 
+### Digital Asset Links (Android TWA verification)
+
+`GET /.well-known/assetlinks.json` (`asset_links()`, app.py) serves `static/assetlinks.json` at exactly that path — same reasoning as `/sw.js`'s root-scope route above: the underlying spec requires the file live at a fixed, exact URL, not wherever Flask's default static route happens to mount it. Content-Type is set explicitly to `application/json` via `send_from_directory`'s `mimetype=` argument rather than left to extension-based auto-detection, since Google's Digital Asset Links verifier (fetched when a user opens the packaged Android app, built via PWABuilder) is strict about it. No `@login_required` — it's fetched by Google's crawler, not a logged-in user. Content is the exact package name/SHA-256 fingerprint pair PWABuilder generated for the Android package (`uk.co.spendara.twa`); if the app is ever re-signed with a different key or repackaged under a different package name, this file needs updating to match, not the other way round.
+
+**Tests**: `tests/test_asset_links.py` (4 tests) — serves at the exact path, correct content-type, accessible without login, content matches the static file exactly and parses as the expected JSON shape.
+
 ## Employed / Self-employed income system — complete reference (August 2026)
 
 **Purpose**: self-employed users have irregular income with no fixed payday. Instead of forcing them into the existing fixed-payday income model, they get an **averaged** income figure (manual or automatically calculated from logged transactions) that can appear in their cycle either as one lump sum or spread evenly day-by-day.
