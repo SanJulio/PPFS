@@ -1,9 +1,12 @@
 {
+  "id": "/",
   "name": "Spendara",
   "short_name": "Spendara",
   "description": "Track your money. Forecast your future.",
   "start_url": "/",
   "display": "standalone",
+  "orientation": "portrait",
+  "categories": ["finance"],
   "background_color": "#f2f4f7",
   "theme_color": "#111111",
   "icons": [
@@ -16,6 +19,29 @@
       "src": "/static/icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/static/screenshots/1-home.png",
+      "sizes": "412x915",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Home — Financial Overview at a glance"
+    },
+    {
+      "src": "/static/screenshots/2-forecast.png",
+      "sizes": "412x915",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Forecast — see 90 days ahead"
+    },
+    {
+      "src": "/static/screenshots/3-goals.png",
+      "sizes": "412x915",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Goals — track savings and debt payoff"
     }
   ]
 }
