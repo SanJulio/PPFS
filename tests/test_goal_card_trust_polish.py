@@ -130,15 +130,25 @@ class TestStage1RealScenarioRegression:
         import app as app_module
 
         today_day = datetime.date.today().day
-        if today_day >= 28:
+        if today_day <= 5 or today_day >= 26:
+            # Bill due dates go through shift_weekend_to_monday(), which
+            # can push a date up to 2 days forward (Sat->Mon, Sun->Mon).
+            # A "yesterday" bill day landing on a weekend was found to
+            # shift past today, flipping it from "already passed" to
+            # "still ahead" and corrupting this whole scenario (caught by
+            # CI running on a Sunday, where today-1 was a Saturday - not
+            # reproducible on every local run, hence not caught earlier).
+            # A >=5-day margin absorbs any possible weekend shift; the
+            # >=26 guard keeps the "ahead" day safely within the same
+            # month (see the original month-end reasoning below).
             # A bill "the day after today" would need to land in next
             # month to genuinely still be ahead this cycle - real, but
             # unrelated month-boundary complexity this test isn't trying
-            # to cover. Skipped on the ~4 days/month this would apply,
+            # to cover. Skipped on the days/month this would apply,
             # rather than adding cross-month bill-matching logic just for
             # this regression guard.
-            pytest.skip("bill-day arithmetic needs next-month handling this close to month-end")
-        passed_day = max(1, today_day - 1)
+            pytest.skip("bill-day arithmetic needs a safer margin from weekend-shifting and month-end this close to either edge")
+        passed_day = today_day - 5
         ahead_day = today_day + 1
 
         monzo = _add_account(db_conn, test_user["id"], "Monzo Current", balance=780.00)
