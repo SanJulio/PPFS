@@ -2918,6 +2918,127 @@ def api_balance_adjustments():
     return {"ok": True, "adjustments": result}
 
 
+# --- CALENDAR: SCHEDULED BILLS/INCOME (August 2026) ---
+# Read-only projection of scheduled bills, income and one-off future events
+# for a date range, keyed by ISO date. Deliberately no running balance/Safe
+# to Spend here (unlike /api/snapshot) — a calendar month has no single
+# "today" balance to walk forward from the way a 90-day snapshot does, and
+# the user confirmed a simple day-by-day list is what's wanted here. Mirrors
+# /api/snapshot's own recurrence rules exactly (income via
+# income_engine.get_payment_dates(), bills via the day/frequency +
+# shift_weekend_to_monday check, future_events via a direct date-range
+# query) so the two surfaces never disagree on which day something falls on.
+# `start_date` is exclusive, `end_date` inclusive — same today-exclusive
+# convention /api/snapshot uses, so a bill due "today" never shows here
+# (today's actual activity is already covered by the real transactions
+# query in calendar_view()/calendar_day()).
+def _get_scheduled_calendar_items(user_id, start_date, end_date):
+    if start_date >= end_date:
+        return {}
+
+    db = get_db()
+    cursor = db.cursor()
+
+    accounts_rows = get_active_accounts(user_id)
+    # Locked accounts are frozen/excluded from every other forecasting
+    # surface in the app — same exclusion here.
+    account_names = {r["name"] for r in accounts_rows if not r.get("is_locked")}
+
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = %s", (user_id,))
+    else:
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = ?", (user_id,))
+    cols = [d[0] for d in cursor.description]
+    scheduled = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    if USE_POSTGRES:
+        cursor.execute("SELECT * FROM income WHERE user_id = %s", (user_id,))
+    else:
+        cursor.execute("SELECT * FROM income WHERE user_id = ?", (user_id,))
+    cols = [d[0] for d in cursor.description]
+    income_rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+    income_rows = _resolve_income_rows(income_rows, user_id)
+
+    if USE_POSTGRES:
+        cursor.execute(
+            "SELECT * FROM future_events WHERE user_id = %s AND date > %s AND date <= %s",
+            (user_id, start_date.isoformat(), end_date.isoformat())
+        )
+    else:
+        cursor.execute(
+            "SELECT * FROM future_events WHERE user_id = ? AND date > ? AND date <= ?",
+            (user_id, start_date.isoformat(), end_date.isoformat())
+        )
+    cols = [d[0] for d in cursor.description]
+    future_events_raw = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    cursor.close()
+    release_db(db)
+
+    items_by_date: dict = {}
+
+    def _add(iso, entry):
+        items_by_date.setdefault(iso, []).append(entry)
+
+    # Income — skips spread-distribution self-employed rows, which accrue a
+    # flat daily amount with no discrete payment date (same exclusion
+    # /api/snapshot applies; there's no single day to point a calendar entry
+    # at for those).
+    for row in income_rows:
+        if row.get("_distribution") == "spread":
+            continue
+        acc = row.get("account", "")
+        if acc not in account_names:
+            continue
+        for d in income_engine.get_payment_dates(row, start_date + timedelta(days=1), end_date):
+            _add(d.isoformat(), {"type": "income", "name": row["name"], "account": acc, "amount": float(row["amount"])})
+
+    # Scheduled bills — same monthly/yearly + weekend-shift check /api/snapshot uses
+    day_cursor = start_date + timedelta(days=1)
+    while day_cursor <= end_date:
+        for expense in scheduled:
+            exp_day = expense.get("day")
+            if exp_day is None:
+                continue
+            acc = expense.get("account", "")
+            if acc not in account_names:
+                continue
+            freq = expense.get("frequency", "monthly")
+            applies = False
+            if freq == "monthly":
+                try:
+                    nominal = date(day_cursor.year, day_cursor.month, exp_day)
+                except ValueError:
+                    nominal = None
+                if nominal is not None and shift_weekend_to_monday(nominal) == day_cursor:
+                    applies = True
+            elif freq == "yearly":
+                exp_month = expense.get("month")
+                if exp_month == day_cursor.month:
+                    try:
+                        nominal = date(day_cursor.year, day_cursor.month, exp_day)
+                    except ValueError:
+                        nominal = None
+                    if nominal is not None and shift_weekend_to_monday(nominal) == day_cursor:
+                        applies = True
+            if applies:
+                _add(day_cursor.isoformat(), {"type": "bill", "name": expense["name"], "account": acc, "amount": float(expense["amount"])})
+        day_cursor += timedelta(days=1)
+
+    # One-off future events
+    for e in future_events_raw:
+        acc = e.get("account", "")
+        if acc not in account_names:
+            continue
+        try:
+            iso = date.fromisoformat(str(e["date"])).isoformat()
+        except ValueError:
+            continue
+        _add(iso, {"type": "event", "name": e["name"], "account": acc, "amount": float(e["amount"])})
+
+    return items_by_date
+
+
 # --- CALENDAR PAGE ---
 # Shows monthly transaction calendar — day totals rendered client-side, detail loaded via AJAX
 @app.get("/calendar")
@@ -3011,6 +3132,26 @@ def calendar_view():
     prev_month = f"{year-1}-12" if month == 1 else f"{year}-{month-1:02d}"
     next_month = f"{year+1}-01" if month == 12 else f"{year}-{month+1:02d}"
 
+    # Scheduled bills/income for this month — same 90-day horizon as
+    # Forecast/Future Balances elsewhere in the app. Only the overlap
+    # between "this displayed month" and "today+1 .. today+90" is
+    # computed; a month entirely outside that window (a past month, or a
+    # future one beyond the cap) just gets an empty dict, same as browsing
+    # beyond the forecast horizon anywhere else.
+    today_date = date.today()
+    horizon = today_date + timedelta(days=90)
+    sched_start_inclusive = max(first_day, today_date + timedelta(days=1))
+    sched_end_inclusive = min(last_day, horizon)
+    future_day_data = {}
+    if sched_start_inclusive <= sched_end_inclusive:
+        items_by_date = _get_scheduled_calendar_items(
+            current_user.id, sched_start_inclusive - timedelta(days=1), sched_end_inclusive
+        )
+        for iso, items in items_by_date.items():
+            bills = round(sum(i["amount"] for i in items if i["type"] in ("bill", "event")), 2)
+            income = round(sum(i["amount"] for i in items if i["type"] == "income"), 2)
+            future_day_data[iso] = {"bills": bills, "income": income, "count": len(items)}
+
     return render_template(
         "calendar.html",
         year=year,
@@ -3019,6 +3160,7 @@ def calendar_view():
         first_weekday=first_day.weekday(),
         days_in_month=calendar.monthrange(year, month)[1],
         day_data=json.dumps(day_data),
+        future_day_data=json.dumps(future_day_data),
         dow_labels=json.dumps(dow_labels),
         dow_avgs=json.dumps(dow_avgs),
         prev_month=prev_month,
@@ -3054,10 +3196,24 @@ def calendar_day():
     cursor.close()
     release_db(db)
 
-    return {"transactions": [
-        {"description": r["description"], "amount": float(r["amount"]), "account": r["account"], "category": r["category"] or "Other"}
-        for r in rows
-    ]}
+    # Scheduled bills/income — only meaningful for a future day within the
+    # same 90-day horizon used everywhere else; a past/today day (which can
+    # only ever have real transactions, matching calendar_view()'s
+    # today-exclusive convention) or a day beyond the horizon just gets an
+    # empty list.
+    scheduled = []
+    today_date = date.today()
+    if today_date < day <= today_date + timedelta(days=90):
+        items_by_date = _get_scheduled_calendar_items(current_user.id, day - timedelta(days=1), day)
+        scheduled = items_by_date.get(day.isoformat(), [])
+
+    return {
+        "transactions": [
+            {"description": r["description"], "amount": float(r["amount"]), "account": r["account"], "category": r["category"] or "Other"}
+            for r in rows
+        ],
+        "scheduled": scheduled
+    }
 
 
 # --- TRANSFER BETWEEN ACCOUNTS ---

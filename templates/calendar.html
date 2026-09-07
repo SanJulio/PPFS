@@ -62,6 +62,15 @@ body { background: #f2f4f7; padding-bottom: 110px; }
 .cal-spent { font-size: 10px; font-weight: 600; color: #ef4444; margin-top: 4px; line-height: 1.2; }
 .cal-income { font-size: 10px; font-weight: 600; color: #10b981; line-height: 1.2; }
 .cal-dot { width: 5px; height: 5px; border-radius: 50%; background: #ef4444; position: absolute; bottom: 5px; right: 5px; }
+/* Scheduled (not-yet-happened) bills/income — a muted amber tone rather
+   than the solid red/green used for real transactions, so a glance at the
+   grid can tell "this already happened" from "this is expected to happen".
+   Matches the amber treatment Forecast already uses for future events. */
+.cal-future-bill { font-size: 10px; font-weight: 600; color: #b45309; margin-top: 4px; line-height: 1.2; opacity: 0.85; }
+.cal-future-income { font-size: 10px; font-weight: 600; color: #b45309; line-height: 1.2; opacity: 0.85; }
+.cal-cell.active .cal-future-bill, .cal-cell.active .cal-future-income { color: #fcd34d; }
+.sched-row { display:flex; align-items:center; justify-content:space-between; padding: 9px 0; border-bottom: 1px solid #f0f0f0; gap:10px; }
+.sched-row:last-child { border-bottom: none; }
 
 #dayDetail { transition: opacity 0.15s; }
 .tx-row { display:flex; align-items:center; justify-content:space-between; padding: 9px 0; border-bottom: 1px solid #f0f0f0; gap:10px; }
@@ -183,6 +192,7 @@ body { background: #f2f4f7; padding-bottom: 110px; }
 
 <script>
 var DAY_DATA = {{ day_data|safe }};
+var FUTURE_DAY_DATA = {{ future_day_data|safe }};
 var DOW_LABELS = {{ dow_labels|safe }};
 var DOW_AVGS = {{ dow_avgs|safe }};
 var FIRST_WEEKDAY = {{ first_weekday }};  // 0=Mon
@@ -276,12 +286,21 @@ for (var d = 1; d <= DAYS_IN_MONTH; d++) {
   cell.className = 'cal-cell' + (isoDate === TODAY ? ' today' : '');
   cell.dataset.date = isoDate;
 
+  var fut = FUTURE_DAY_DATA[isoDate];
+
   var html = '<div class="cal-day-num">' + d + '</div>';
   if (data) {
     if (data.spent > 0) html += '<div class="cal-spent">-£' + data.spent.toFixed(data.spent >= 10 ? 0 : 2) + '</div>';
     if (data.income > 0) html += '<div class="cal-income">+£' + data.income.toFixed(data.income >= 10 ? 0 : 2) + '</div>';
-    html += '<div class="cal-dot"></div>';
   }
+  // Scheduled (not yet happened) bills/income — a day can carry both real
+  // data and scheduled data at once (e.g. one bill already logged today,
+  // another due tomorrow), so these stack rather than replace each other.
+  if (fut) {
+    if (fut.bills > 0) html += '<div class="cal-future-bill">📅 -£' + fut.bills.toFixed(fut.bills >= 10 ? 0 : 2) + '</div>';
+    if (fut.income > 0) html += '<div class="cal-future-income">📅 +£' + fut.income.toFixed(fut.income >= 10 ? 0 : 2) + '</div>';
+  }
+  if (data || fut) html += '<div class="cal-dot"></div>';
   cell.innerHTML = html;
   cell.addEventListener('click', function() { selectDay(this.dataset.date); });
   grid.appendChild(cell);
@@ -309,13 +328,35 @@ function selectDay(isoDate) {
   fetch('/calendar/day?date=' + isoDate)
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      var txs = data.transactions;
-      if (txs.length === 0) {
-        content.innerHTML = '<div class="fw-bold mb-2" style="font-size:15px;">📅 ' + dateStr + '</div><div class="text-muted small">No transactions on this day.</div>';
+      var txs = data.transactions || [];
+      var sched = data.scheduled || [];
+
+      if (txs.length === 0 && sched.length === 0) {
+        var emptyMsg = isoDate > TODAY ? 'Nothing scheduled on this day.' : 'No transactions on this day.';
+        content.innerHTML = '<div class="fw-bold mb-2" style="font-size:15px;">📅 ' + dateStr + '</div><div class="text-muted small">' + emptyMsg + '</div>';
         return;
       }
 
       var html = '<div class="fw-bold mb-3" style="font-size:15px;">📅 ' + dateStr + '</div>';
+
+      if (sched.length > 0) {
+        html += '<div class="small fw-bold text-muted mb-1" style="text-transform:uppercase; font-size:10px; letter-spacing:0.5px;">Scheduled</div>';
+        sched.forEach(function(item) {
+          var isBill = item.type === 'bill' || item.type === 'event';
+          var icon = item.type === 'income' ? '💰' : (item.type === 'event' ? '📌' : '📄');
+          html += '<div class="sched-row">' +
+            '<div style="flex:1; min-width:0;">' +
+              '<div class="fw-semibold" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + icon + ' ' + escHtml(item.name) + '</div>' +
+              '<div class="small text-muted">' + escHtml(item.account) + '</div>' +
+            '</div>' +
+            '<div class="fw-bold money flex-shrink-0" style="color:#b45309;">' +
+              (isBill ? '-' : '+') + '£' + Math.abs(item.amount).toFixed(2) +
+            '</div>' +
+          '</div>';
+        });
+        if (txs.length > 0) html += '<div class="small fw-bold text-muted mb-1 mt-3" style="text-transform:uppercase; font-size:10px; letter-spacing:0.5px;">Transactions</div>';
+      }
+
       txs.forEach(function(tx) {
         var isExpense = tx.amount < 0;
         html += '<div class="tx-row">' +
@@ -336,7 +377,7 @@ function selectDay(isoDate) {
       content.innerHTML = html;
     })
     .catch(function() {
-      content.innerHTML = '<div class="fw-bold mb-2">📅 ' + dateStr + '</div><div class="text-danger small">Could not load transactions.</div>';
+      content.innerHTML = '<div class="fw-bold mb-2">📅 ' + dateStr + '</div><div class="text-danger small">Could not load this day.</div>';
     });
 }
 
