@@ -349,7 +349,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             <tr{% if a.get('is_locked') %} style="opacity:0.55;"{% endif %}>
               <td>{{ a.name }}{% if a.get('is_locked') %} <span class="badge text-bg-secondary">🔒 Locked</span>{% endif %}</td>
               <td class="acc-col-type"><span class="badge {% if a.type == 'current' %}text-bg-primary{% elif a.type == 'savings' %}text-bg-success{% elif a.type == 'cash' %}text-bg-warning{% else %}text-bg-light{% endif %}">{{ a.type }}</span>{% if a.type == 'savings' and a.get('savings_type') == 'fixed' %}<span class="badge text-bg-secondary ms-1">Fixed</span>{% endif %}</td>
-              <td class="text-end money">£{{ "%.2f"|format(a.balance) }}</td>
+              <td class="text-end money">£{{ a.balance|moneyfmt }}</td>
               <td class="text-end">
                 {% if a.get('is_locked') %}
                 <a href="/billing/upgrade" class="btn btn-sm btn-outline-dark">⭐ Unlock</a>
@@ -418,7 +418,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <tfoot>
             <tr style="border-top:2px solid #dee2e6;">
               <td class="fw-bold small" colspan="2">Total balance</td>
-              <td class="text-end fw-bold money">£{{ "%.2f"|format(accounts|sum(attribute='balance')) }}</td>
+              <td class="text-end fw-bold money">£{{ accounts|sum(attribute='balance')|moneyfmt }}</td>
               <td></td>
             </tr>
           </tfoot>
@@ -457,14 +457,17 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             </tr>
           </thead>
           <tbody>
+            {% set weekday_names = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}
             {% for b in bills %}
             <tr>
               <td>{{ b.name }}</td>
-              <td class="text-end money">£{{ "%.2f"|format(b.amount) }}</td>
+              <td class="text-end money">£{{ b.amount|moneyfmt }}</td>
               <td class="text-end text-muted small">
                 {% if b.get('frequency') == 'yearly' %}
                   {% set month_names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
                   {{ month_names[(b.month or 1) - 1] }} {{ b.day }}
+                {% elif b.get('frequency') == 'weekly' %}
+                  Every {{ weekday_names[b.weekly_day] if b.weekly_day is not none else '—' }}
                 {% else %}
                   Day {{ b.day }}
                 {% endif %}
@@ -493,13 +496,21 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                       <input class="form-control form-control-sm" name="amount" value="{{ '%.2f'|format(b.amount) }}" placeholder="Amount" required>
                     </div>
                     <div class="col-6">
-                      <select class="form-select form-select-sm" name="frequency" onchange="toggleMonthField(this, 'edit-month-{{ b.id }}')">
+                      <select class="form-select form-select-sm" name="frequency" onchange="toggleBillFreqFields(this, 'edit-day-{{ b.id }}', 'edit-month-{{ b.id }}', 'edit-weekly-day-{{ b.id }}')">
                         <option value="monthly" {% if b.get('frequency','monthly') == 'monthly' %}selected{% endif %}>Monthly</option>
                         <option value="yearly" {% if b.get('frequency') == 'yearly' %}selected{% endif %}>Yearly</option>
+                        <option value="weekly" {% if b.get('frequency') == 'weekly' %}selected{% endif %}>Weekly</option>
                       </select>
                     </div>
-                    <div class="col-6">
-                      <input class="form-control form-control-sm" name="day" value="{{ b.day }}" placeholder="Day (1-31)" required>
+                    <div class="col-6" id="edit-day-{{ b.id }}" {% if b.get('frequency') == 'weekly' %}style="display:none"{% endif %}>
+                      <input class="form-control form-control-sm" name="day" value="{{ b.day }}" placeholder="Day (1-31)" {% if b.get('frequency') != 'weekly' %}required{% endif %}>
+                    </div>
+                    <div class="col-6" id="edit-weekly-day-{{ b.id }}" {% if b.get('frequency') != 'weekly' %}style="display:none"{% endif %}>
+                      <select class="form-select form-select-sm" name="weekly_day" {% if b.get('frequency') == 'weekly' %}required{% endif %}>
+                        {% for wn, wl in [('0','Monday'),('1','Tuesday'),('2','Wednesday'),('3','Thursday'),('4','Friday'),('5','Saturday'),('6','Sunday')] %}
+                          <option value="{{ wn }}" {% if b.get('weekly_day')|string == wn %}selected{% endif %}>{{ wl }}</option>
+                        {% endfor %}
+                      </select>
                     </div>
                     <div class="col-6" id="edit-month-{{ b.id }}" {% if b.get('frequency') != 'yearly' %}style="display:none"{% endif %}>
                       <select class="form-select form-select-sm" name="month">
@@ -536,12 +547,12 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           <tfoot>
             <tr style="border-top:2px solid #dee2e6;">
               <td class="fw-bold small">Total</td>
-              <td class="text-end fw-bold money">£{{ "%.2f"|format(bills|sum(attribute='amount')) }}</td>
+              <td class="text-end fw-bold money">£{{ bills|sum(attribute='amount')|moneyfmt }}</td>
               <td colspan="2" class="text-end text-muted small">per occurrence</td>
             </tr>
             <tr>
               <td colspan="4" class="text-end" style="font-size:13px;color:#6b7280;padding-top:2px;padding-bottom:4px;">
-                £{{ "%.2f"|format(bills_monthly_total) }} / month &nbsp;·&nbsp; £{{ "%.2f"|format(bills_annual_total) }} / year
+                £{{ bills_monthly_total|moneyfmt }} / month &nbsp;·&nbsp; £{{ bills_annual_total|moneyfmt }} / year
               </td>
             </tr>
           </tfoot>
@@ -586,7 +597,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                 <div>{{ i.name }}</div>
                 <div class="text-muted income-main-label" style="font-size:11px;{{ '' if i.is_primary else 'display:none;' }}">Main source</div>
               </td>
-              <td class="text-end money">£{{ "%.2f"|format(i.amount) }}</td>
+              <td class="text-end money">£{{ i.amount|moneyfmt }}</td>
               <td class="text-end"><span class="text-muted small">{{ i.description }}</span></td>
               <td class="text-end">
                 <div class="d-flex gap-3 justify-content-end manage-actions">
@@ -613,12 +624,12 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             <tr style="border-top:2px solid #dee2e6;">
               <td></td>
               <td class="fw-bold small">Total</td>
-              <td class="text-end fw-bold money">£{{ "%.2f"|format(income|sum(attribute='amount')) }}</td>
+              <td class="text-end fw-bold money">£{{ income|sum(attribute='amount')|moneyfmt }}</td>
               <td colspan="2" class="text-end text-muted small">per occurrence</td>
             </tr>
             <tr>
               <td colspan="5" class="text-end" style="font-size:13px;color:#6b7280;padding-top:2px;padding-bottom:4px;">
-                £{{ "%.2f"|format(income_monthly_total) }} / month &nbsp;·&nbsp; £{{ "%.2f"|format(income_annual_total) }} / year
+                £{{ income_monthly_total|moneyfmt }} / month &nbsp;·&nbsp; £{{ income_annual_total|moneyfmt }} / year
               </td>
             </tr>
           </tfoot>
@@ -678,7 +689,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             {% for r in savings_rules %}
             <tr>
               <td>{{ r.name }}</td>
-              <td class="text-end money">£{{ "%.2f"|format(r.amount) }}</td>
+              <td class="text-end money">£{{ r.amount|moneyfmt }}</td>
               <td class="text-end"><span class="badge text-bg-light">{{ r.frequency or 'monthly' }}</span></td>
               <td class="text-end">{{ r.day }}</td>
               <td class="text-end">
@@ -782,7 +793,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             <tr>
               <td>{{ e.name }}</td>
               <td>{{ e.date | dateformat }}</td>
-              <td class="text-end money">£{{ "%.2f"|format(e.amount) }}</td>
+              <td class="text-end money">£{{ e.amount|moneyfmt }}</td>
               <td class="text-end">
                 <div class="d-flex gap-2 justify-content-end flex-wrap">
                   <a href="/forecast?date={{ e.date }}" class="btn btn-sm btn-outline-secondary" title="See this event's impact on your forecast">📈 View</a>
@@ -867,7 +878,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
             <tr>
               <td>{{ i.name }}</td>
               <td><span class="badge text-bg-light">{{ i.type }}</span></td>
-              <td class="text-end money">£{{ "%.2f"|format(i.initial_amount) }}</td>
+              <td class="text-end money">£{{ i.initial_amount|moneyfmt }}</td>
               <td class="text-end small text-muted">{{ i.date | dateformat }}</td>
               <td class="text-end">
                 <form method="POST" action="/settings/delete-investment" onsubmit="return confirm('Delete {{ i.name }}?')">
@@ -1192,6 +1203,22 @@ function showTab(name, btn) {
 function toggleMonthField(select, targetId) {
   var el = document.getElementById(targetId);
   if (el) el.style.display = select.value === 'yearly' ? 'block' : 'none';
+}
+
+// Bill frequency toggle: day-of-month is shown (and required) for
+// monthly/yearly, hidden (and not required) for weekly, which shows a
+// day-of-week picker instead. Month picker stays yearly-only as before.
+function toggleBillFreqFields(select, dayId, monthId, weeklyDayId) {
+  var isWeekly = select.value === 'weekly';
+  var dayEl = document.getElementById(dayId);
+  var weeklyEl = document.getElementById(weeklyDayId);
+  var dayInput = dayEl ? dayEl.querySelector('input,select') : null;
+  var weeklyInput = weeklyEl ? weeklyEl.querySelector('select') : null;
+  if (dayEl) dayEl.style.display = isWeekly ? 'none' : 'block';
+  if (weeklyEl) weeklyEl.style.display = isWeekly ? 'block' : 'none';
+  if (dayInput) dayInput.required = !isWeekly;
+  if (weeklyInput) weeklyInput.required = isWeekly;
+  toggleMonthField(select, monthId);
 }
 
 // ── PRIMARY INCOME ────────────────────────────────────────────────────────────
@@ -1641,10 +1668,10 @@ function _doUpdateGoalPacePreview() {
     var pace = data.pace;
     if (!pace) { previewEl.style.display = 'none'; return; }
     if (pace.overdue) {
-      previewEl.innerHTML = '<span class="text-danger">Target date has passed — £' + pace.remaining_amount.toFixed(2) + ' still needed.</span>';
+      previewEl.innerHTML = '<span class="text-danger">Target date has passed — £' + _fmtGBP(pace.remaining_amount) + ' still needed.</span>';
       return;
     }
-    var html = 'Suggested pace: <strong>£' + pace.monthly_pace.toFixed(2) + '/month</strong> to hit this by ' + targetDate + '.';
+    var html = 'Suggested pace: <strong>£' + _fmtGBP(pace.monthly_pace) + '/month</strong> to hit this by ' + targetDate + '.';
     if (pace.warning) {
       html += '<div style="color:#b45309;margin-top:4px;">⚠️ ' + pace.warning + '</div>';
     }
@@ -1664,8 +1691,24 @@ function _fmtUKDate(iso) {
   return dd + '/' + mm + '/' + d.getFullYear();
 }
 
-function _fmtUKMoney(n) {
-  return (n < 0 ? '-' : '') + Math.abs(n).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Formats a number with thousand separators, no currency symbol (callers
+// prefix their own £) - the JS-side equivalent of the app-wide moneyfmt
+// Jinja filter (September 2026). No shared JS file exists in this
+// codebase (see "No shared base template" in CLAUDE.md), so this is
+// inlined per-template, same as the existing _fmtUKDate() precedent.
+// Was previously named _fmtUKMoney and only wired to one call site
+// (the goal commitment slider's preview) - renamed for consistency with
+// every other template's copy of this same helper, and now used
+// throughout this file rather than just that one spot.
+function _fmtGBP(value, decimals) {
+  decimals = (decimals === undefined || decimals === null) ? 2 : decimals;
+  var n = Number(value);
+  if (!isFinite(n)) n = 0;
+  var neg = n < 0;
+  n = Math.abs(n);
+  var parts = n.toFixed(decimals).split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (neg ? '-' : '') + parts.join('.');
 }
 
 function _snapGoalCommit(value) {
@@ -1720,7 +1763,7 @@ function _updateGoalCommitPreview(goalId, amount) {
     if (data.would_go_negative) {
       html += '<div style="color:#dc3545;font-weight:600;">⚠ This would push Safe to Spend negative</div>';
     }
-    html += 'Safe to Spend after: <strong style="color:' + color + ';">£' + _fmtUKMoney(data.resulting_safe_to_spend) + '</strong>';
+    html += 'Safe to Spend after: <strong style="color:' + color + ';">£' + _fmtGBP(data.resulting_safe_to_spend) + '</strong>';
     var p = data.projection;
     if (p.state === 'projected') {
       html += ' · With this commitment: <strong>' + _fmtUKDate(p.projected_date) + '</strong>';
@@ -1804,12 +1847,24 @@ if (window.location.hash && window.location.hash.indexOf('#goal-card-') === 0) {
       <div class="mb-2"><input class="form-control" name="name" placeholder="Bill name" required></div>
       <div class="mb-2"><input class="form-control" name="amount" inputmode="decimal" placeholder="Amount (£)" required></div>
       <div class="mb-2">
-        <select class="form-select" name="frequency" onchange="toggleMonthField(this, 'modal-bill-month')">
+        <select class="form-select" name="frequency" onchange="toggleBillFreqFields(this, 'modal-bill-day', 'modal-bill-month', 'modal-bill-weekly-day')">
           <option value="monthly">Monthly</option>
           <option value="yearly">Yearly (once a year)</option>
+          <option value="weekly">Weekly</option>
         </select>
       </div>
-      <div class="mb-2"><input class="form-control" name="day" inputmode="numeric" placeholder="Day of month (1-31)" required></div>
+      <div class="mb-2" id="modal-bill-day"><input class="form-control" name="day" inputmode="numeric" placeholder="Day of month (1-31)" required></div>
+      <div class="mb-2" id="modal-bill-weekly-day" style="display:none">
+        <select class="form-select" name="weekly_day">
+          <option value="0">Monday</option>
+          <option value="1">Tuesday</option>
+          <option value="2">Wednesday</option>
+          <option value="3">Thursday</option>
+          <option value="4">Friday</option>
+          <option value="5">Saturday</option>
+          <option value="6">Sunday</option>
+        </select>
+      </div>
       <div class="mb-2" id="modal-bill-month" style="display:none">
         <select class="form-select" name="month">
           <option value="1">January</option><option value="2">February</option><option value="3">March</option>

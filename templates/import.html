@@ -182,7 +182,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
                 </select>
               </td>
               <td class="text-end small fw-semibold {% if row.amount < 0 %}text-danger{% else %}text-success{% endif %} money">
-                {% if row.amount < 0 %}-£{{ "%.2f"|format(row.amount|abs) }}{% else %}+£{{ "%.2f"|format(row.amount) }}{% endif %}
+                {% if row.amount < 0 %}-£{{ row.amount|abs|moneyfmt }}{% else %}+£{{ row.amount|moneyfmt }}{% endif %}
               </td>
             </tr>
             {% endfor %}

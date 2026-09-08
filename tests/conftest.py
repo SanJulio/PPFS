@@ -101,6 +101,7 @@ def _create_test_schema(db_path: Path):
             account TEXT NOT NULL,
             frequency TEXT NOT NULL DEFAULT 'monthly',
             month INTEGER,
+            weekly_day INTEGER DEFAULT NULL,
             last_applied TEXT,
             user_id INTEGER NOT NULL
         )""",

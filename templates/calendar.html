@@ -225,11 +225,11 @@ var selectedDay = null;
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } },
-        tooltip: { callbacks: { label: function(c) { return ' ' + c.dataset.label + ': £' + c.parsed.y.toFixed(2); } } }
+        tooltip: { callbacks: { label: function(c) { return ' ' + c.dataset.label + ': £' + _fmtGBP(c.parsed.y); } } }
       },
       scales: {
         x: { ticks: { font: { size: 10 }, maxTicksLimit: 16 }, grid: { display: false } },
-        y: { ticks: { font: { size: 10 }, callback: function(v) { return '£' + v; } }, grid: { color: 'rgba(0,0,0,0.05)' } }
+        y: { ticks: { font: { size: 10 }, callback: function(v) { return '£' + _fmtGBP(v, 0); } }, grid: { color: 'rgba(0,0,0,0.05)' } }
       }
     }
   });
@@ -254,7 +254,7 @@ var selectedDay = null;
       '<div style="flex:1; background:#f0f0f0; border-radius:999px; height:10px; overflow:hidden;">' +
         '<div style="width:' + pct + '%; height:100%; background:' + (isMax ? '#ef4444' : '#111') + '; border-radius:999px; transition:width 0.4s;"></div>' +
       '</div>' +
-      '<div style="width:44px; text-align:right; font-size:12px; font-weight:600; color:' + (isMax ? '#ef4444' : '#333') + ';">£' + val.toFixed(0) + '</div>' +
+      '<div style="width:44px; text-align:right; font-size:12px; font-weight:600; color:' + (isMax ? '#ef4444' : '#333') + ';">£' + _fmtGBP(val, 0) + '</div>' +
     '</div>';
   });
   container.innerHTML = html;
@@ -266,8 +266,8 @@ Object.values(DAY_DATA).forEach(function(d) {
   totalSpent += d.spent;
   totalIncome += d.income;
 });
-document.getElementById('summarySpent').textContent = '£' + totalSpent.toFixed(2);
-document.getElementById('summaryIncome').textContent = '£' + totalIncome.toFixed(2);
+document.getElementById('summarySpent').textContent = '£' + _fmtGBP(totalSpent);
+document.getElementById('summaryIncome').textContent = '£' + _fmtGBP(totalIncome);
 
 // Build calendar grid
 var grid = document.getElementById('calGrid');
@@ -290,15 +290,15 @@ for (var d = 1; d <= DAYS_IN_MONTH; d++) {
 
   var html = '<div class="cal-day-num">' + d + '</div>';
   if (data) {
-    if (data.spent > 0) html += '<div class="cal-spent">-£' + data.spent.toFixed(data.spent >= 10 ? 0 : 2) + '</div>';
-    if (data.income > 0) html += '<div class="cal-income">+£' + data.income.toFixed(data.income >= 10 ? 0 : 2) + '</div>';
+    if (data.spent > 0) html += '<div class="cal-spent">-£' + _fmtGBP(data.spent, data.spent >= 10 ? 0 : 2) + '</div>';
+    if (data.income > 0) html += '<div class="cal-income">+£' + _fmtGBP(data.income, data.income >= 10 ? 0 : 2) + '</div>';
   }
   // Scheduled (not yet happened) bills/income — a day can carry both real
   // data and scheduled data at once (e.g. one bill already logged today,
   // another due tomorrow), so these stack rather than replace each other.
   if (fut) {
-    if (fut.bills > 0) html += '<div class="cal-future-bill">📅 -£' + fut.bills.toFixed(fut.bills >= 10 ? 0 : 2) + '</div>';
-    if (fut.income > 0) html += '<div class="cal-future-income">📅 +£' + fut.income.toFixed(fut.income >= 10 ? 0 : 2) + '</div>';
+    if (fut.bills > 0) html += '<div class="cal-future-bill">📅 -£' + _fmtGBP(fut.bills, fut.bills >= 10 ? 0 : 2) + '</div>';
+    if (fut.income > 0) html += '<div class="cal-future-income">📅 +£' + _fmtGBP(fut.income, fut.income >= 10 ? 0 : 2) + '</div>';
   }
   if (data || fut) html += '<div class="cal-dot"></div>';
   cell.innerHTML = html;
@@ -350,7 +350,7 @@ function selectDay(isoDate) {
               '<div class="small text-muted">' + escHtml(item.account) + '</div>' +
             '</div>' +
             '<div class="fw-bold money flex-shrink-0" style="color:#b45309;">' +
-              (isBill ? '-' : '+') + '£' + Math.abs(item.amount).toFixed(2) +
+              (isBill ? '-' : '+') + '£' + _fmtGBP(Math.abs(item.amount)) +
             '</div>' +
           '</div>';
         });
@@ -365,7 +365,7 @@ function selectDay(isoDate) {
             '<div class="small text-muted">' + escHtml(tx.account) + ' · ' + escHtml(tx.category) + '</div>' +
           '</div>' +
           '<div class="fw-bold money flex-shrink-0" style="color:' + (isExpense ? '#ef4444' : '#10b981') + ';">' +
-            (isExpense ? '-' : '+') + '£' + Math.abs(tx.amount).toFixed(2) +
+            (isExpense ? '-' : '+') + '£' + _fmtGBP(Math.abs(tx.amount)) +
           '</div>' +
         '</div>';
       });
@@ -387,6 +387,22 @@ function escHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// Formats a number with thousand separators, no currency symbol (callers
+// prefix their own £) - the JS-side equivalent of the app-wide moneyfmt
+// Jinja filter (September 2026). No shared JS file exists in this
+// codebase (see "No shared base template" in CLAUDE.md), so this is
+// inlined per-template, same as the existing _fmtUKDate() precedent.
+function _fmtGBP(value, decimals) {
+  decimals = (decimals === undefined || decimals === null) ? 2 : decimals;
+  var n = Number(value);
+  if (!isFinite(n)) n = 0;
+  var neg = n < 0;
+  n = Math.abs(n);
+  var parts = n.toFixed(decimals).split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (neg ? '-' : '') + parts.join('.');
 }
 </script>
 <script>if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/sw.js"); }</script>

@@ -166,14 +166,19 @@ def dateformat_filter(value):
         return value
 
 @app.template_filter('moneyfmt')
-def moneyfmt_filter(value):
-    """Formats a number with thousand separators and 2 decimal places
-    ('1234.5' -> '1,234.50') - no currency symbol, since every call site
-    already prefixes its own £. Not applied app-wide by default (that
-    would be a much bigger, separately-scoped sweep); introduced for the
-    Goals card, August 2026."""
+def moneyfmt_filter(value, decimals=2):
+    """Formats a number with thousand separators ('1234.5' -> '1,234.50')
+    - no currency symbol, since every call site already prefixes its own
+    £. Introduced for the Goals card (August 2026); now the app-wide
+    standard for every rendered currency figure (September 2026) - see
+    the JS-side _fmtGBP() helper (inlined per-template, no shared JS file
+    exists in this codebase) for the equivalent used in client-rendered
+    money. `decimals` defaults to 2 but accepts 0 for the handful of
+    compact displays (e.g. Home's Goals summary card) that were already
+    intentionally terser before this filter existed - only the missing
+    thousand separator was ever the gap there, not the decimal count."""
     try:
-        return f"{float(value):,.2f}"
+        return f"{float(value):,.{int(decimals)}f}"
     except (TypeError, ValueError):
         return value
 
@@ -329,10 +334,13 @@ def get_all_scheduled_expenses():
     from flask_login import current_user
     db = get_db()
     cursor = db.cursor()
+    # Weekly bills have no day-of-month (day is NULL) - COALESCE keeps
+    # them from all sorting to the very top ahead of every numbered day,
+    # which NULL-first ordering would otherwise do.
     if USE_POSTGRES:
-        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = %s ORDER BY day", (current_user.id,))
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = %s ORDER BY COALESCE(day, 100), weekly_day", (current_user.id,))
     else:
-        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = ? ORDER BY day", (current_user.id,))
+        cursor.execute("SELECT * FROM scheduled_expenses WHERE user_id = ? ORDER BY COALESCE(day, 100), weekly_day", (current_user.id,))
     cols = [d[0] for d in cursor.description]
     rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
     cursor.close()
@@ -467,6 +475,16 @@ def validate_day(day_raw):
     except (ValueError, TypeError):
         return None, "Day must be a valid number."
 
+def validate_weekly_day(weekly_day_raw):
+    """0=Monday ... 6=Sunday, same convention as income.weekly_day."""
+    try:
+        wd = int(weekly_day_raw)
+        if wd < 0 or wd > 6:
+            return None, "Please choose a day of the week."
+        return wd, None
+    except (ValueError, TypeError):
+        return None, "Please choose a day of the week."
+
 VALID_EVENTS = {
     'auth.register', 'auth.login',
     'page_view.dashboard', 'page_view.forecast', 'page_view.transactions',
@@ -533,13 +551,30 @@ def track_for_user(user_id: int, event: str):
 
 def _get_occurrences_between(item, start_date, end_date):
     """Return all dates a scheduled item fires between start_date and end_date (inclusive).
-    Handles monthly and yearly frequencies. Weekly is skipped (no fixed anchor date)."""
+    Handles monthly, yearly and weekly frequencies."""
     import calendar as _cal
-    from datetime import date as _date
+    from datetime import date as _date, timedelta as _td
 
     freq = item.get('frequency') or 'monthly'
-    day = int(item.get('day') or 1)
     results = []
+
+    if freq == 'weekly':
+        # weekly_day: 0=Monday ... 6=Sunday, same convention as income's
+        # weekly_day. No weekend-shift here (unlike monthly/yearly) - the
+        # chosen day of week IS the deliberate, fixed occurrence, not a
+        # calendar date that might incidentally land on a weekend.
+        wd = item.get('weekly_day')
+        if wd is None:
+            return results
+        wd = int(wd)
+        days_to = (wd - start_date.weekday()) % 7
+        d = start_date + _td(days=days_to)
+        while d <= end_date:
+            results.append(d)
+            d += _td(days=7)
+        return results
+
+    day = int(item.get('day') or 1)
 
     if freq == 'monthly':
         y, m = start_date.year, start_date.month
@@ -568,6 +603,19 @@ def _get_occurrences_between(item, start_date, end_date):
                 pass
 
     return results
+
+
+def _bill_has_valid_schedule(bill):
+    """True if a scheduled_expenses row has enough info to compute
+    occurrences: `day` (day-of-month) for monthly/yearly bills, or
+    `weekly_day` (day-of-week) for weekly ones. Replaces the old blanket
+    `bill.get('day') is None` guard used throughout the engine, which
+    would incorrectly skip every weekly bill (day is always NULL for
+    those - see the scheduled_expenses.weekly_day migration, September
+    2026)."""
+    if (bill.get('frequency') or 'monthly') == 'weekly':
+        return bill.get('weekly_day') is not None
+    return bill.get('day') is not None
 
 
 def run_auto_apply_backfill(user_id):
@@ -607,7 +655,7 @@ def run_auto_apply_backfill(user_id):
 
     # Use the shared helpers so we get the correct user_id scoping and no dependency on auto_generated
     for bill in bills:
-        if bill.get('day') is None:
+        if not _bill_has_valid_schedule(bill):
             continue
         for d in _get_occurrences_between(bill, backfill_start, yesterday):
             try:
@@ -686,7 +734,7 @@ def get_pending_auto_apply_items(user_id):
     pending = []
 
     for bill in bills:
-        if bill.get('day') is None:
+        if not _bill_has_valid_schedule(bill):
             continue
         if bill.get('account') in locked_names:
             continue
@@ -1027,7 +1075,7 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
             _fy = _fy if _fm > 1 else _fy + 1
 
     for expense in scheduled_expenses:
-        if expense["day"] is None:
+        if not _bill_has_valid_schedule(expense):
             continue
         freq = expense.get("frequency") or "monthly"
 
@@ -1049,21 +1097,21 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
                         due = shift_weekend_to_monday(date(_ey, _em, min(expense["day"], dim)))
                         if today_date < due <= period_end:
                             candidates.append(due)
-            else:
-                # weekly/fortnightly: single next-occurrence fallback
-                days_in_month = _cal2.monthrange(today_date.year, today_date.month)[1]
-                due_day = min(expense["day"], days_in_month)
-                next_due = date(today_date.year, today_date.month, due_day)
-                if next_due <= today_date:
-                    next_month = today_date.replace(day=1) + _rel(months=1)
-                    days_next = _cal2.monthrange(next_month.year, next_month.month)[1]
-                    next_due = next_month.replace(day=min(expense["day"], days_next))
-                next_due = shift_weekend_to_monday(next_due)
-                if today_date < next_due <= period_end:
-                    candidates.append(next_due)
+            elif freq == "weekly":
+                # Every matching weekday in (today, period_end] - a weekly
+                # bill can genuinely occur 4+ times in a typical cycle, so
+                # this collects every occurrence rather than just the next
+                # one (see _get_occurrences_between() for the same logic).
+                # start_date is today+1, matching every other branch's
+                # today_date < due convention (today's own bills are
+                # already-happened, not "future").
+                candidates.extend(_get_occurrences_between(expense, today_date + timedelta(days=1), period_end))
         else:
             # No period_end: legacy path — bill due later this calendar month
-            if expense["day"] > current_day:
+            if freq == "weekly":
+                month_end = date(today_date.year, today_date.month, _cal2.monthrange(today_date.year, today_date.month)[1])
+                candidates.extend(_get_occurrences_between(expense, today_date + timedelta(days=1), month_end))
+            elif expense["day"] > current_day:
                 dim = _cal2.monthrange(today_date.year, today_date.month)[1]
                 candidates.append(shift_weekend_to_monday(date(today_date.year, today_date.month, min(expense["day"], dim))))
 
@@ -1080,6 +1128,8 @@ def calculate_financial_overview(accounts, period_end=None, safe_boundary=None):
                 "name": expense["name"],
                 "amount": expense["amount"],
                 "day": expense["day"],
+                "weekly_day": expense.get("weekly_day"),
+                "frequency": freq,
                 "account": acc,
                 "due_date": due.isoformat(),
                 "type": "bill",
@@ -1410,7 +1460,7 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
         y = y if m > 1 else y + 1
 
     for expense in scheduled_expenses:
-        if expense["day"] is None:
+        if not _bill_has_valid_schedule(expense):
             continue
         freq = expense.get("frequency") or "monthly"
         candidates = []
@@ -1431,6 +1481,12 @@ def calculate_monthly_spending(cycle_start_date=None, cycle_end_date=None):
                 due = shift_weekend_to_monday(date(ey, em, min(expense["day"], dim)))
                 if cycle_start_date <= due <= today_cap:
                     candidates.append(due)
+        elif freq == "weekly":
+            # Every matching weekday in the cycle so far - a weekly bill
+            # can genuinely have fired 4+ times already this cycle, so
+            # every occurrence must show up in the itemised "Bills paid"
+            # list, not just one.
+            candidates.extend(_get_occurrences_between(expense, cycle_start_date, today_cap))
         for due in candidates:
             bill_amt = overrides.get(('bill', expense["id"], due.isoformat()), expense["amount"])
             scheduled += bill_amt
@@ -2040,14 +2096,33 @@ def mark_bill_paid():
         name = str(_req.json["name"])
         amount = float(_req.json["amount"])
         account = str(_req.json["account"])
-        day = int(_req.json["day"])
     except (KeyError, ValueError, TypeError):
         return {"error": "Invalid request"}, 400
 
     today = _date.today()
-    days_in_month = _cal.monthrange(today.year, today.month)[1]
-    due_day = min(day, days_in_month)
-    due_date_str = shift_weekend_to_monday(_date(today.year, today.month, due_day)).isoformat()
+
+    # Prefer the specific occurrence's own due_date, sent by the client
+    # from the row it's actually paying (every future_bills_list entry
+    # already carries this - see calculate_financial_overview()). Falls
+    # back to the old day-of-month computation only if a client doesn't
+    # send one (e.g. a stale cached page mid-deploy) - that fallback only
+    # works for monthly/yearly bills, since a weekly bill has no `day` to
+    # compute from at all, which is exactly why due_date is now preferred.
+    due_date_raw = _req.json.get("due_date")
+    due_date_str = None
+    if due_date_raw:
+        try:
+            due_date_str = _date.fromisoformat(str(due_date_raw)).isoformat()
+        except ValueError:
+            due_date_str = None
+    if due_date_str is None:
+        try:
+            day = int(_req.json["day"])
+        except (KeyError, ValueError, TypeError):
+            return {"error": "Invalid request"}, 400
+        days_in_month = _cal.monthrange(today.year, today.month)[1]
+        due_day = min(day, days_in_month)
+        due_date_str = shift_weekend_to_monday(_date(today.year, today.month, due_day)).isoformat()
 
     add_transaction(today.isoformat(), name, -abs(amount), account, current_user.id, type='bill', category='Bills')
     update_account_balance(account, -abs(amount), current_user.id)
@@ -2491,16 +2566,27 @@ def flow():
 
         # bills still to pay from this account this month
         _dim = calendar.monthrange(year, month)[1]
+        _month_end = date(year, month, _dim)
         acc_bills_to_pay = []
         for b in bills:
-            if b["account"] != acc_name or b["day"] is None:
+            if b["account"] != acc_name or not _bill_has_valid_schedule(b):
                 continue
-            try:
-                nominal_due = shift_weekend_to_monday(date(year, month, min(b["day"], _dim)))
-            except ValueError:
-                continue
-            if nominal_due > today:
-                acc_bills_to_pay.append(b)
+            freq = b.get("frequency") or "monthly"
+            if freq == "weekly":
+                # A weekly bill can have several occurrences left this
+                # month, not just one - one row per remaining occurrence,
+                # each carrying its own due_date (unlike a monthly/yearly
+                # bill, which has at most one occurrence per month to
+                # begin with, so a single generic row was always enough).
+                for due in _get_occurrences_between(b, today + timedelta(days=1), _month_end):
+                    acc_bills_to_pay.append({**b, "due_date": due.isoformat()})
+            else:
+                try:
+                    nominal_due = shift_weekend_to_monday(date(year, month, min(b["day"], _dim)))
+                except ValueError:
+                    continue
+                if nominal_due > today:
+                    acc_bills_to_pay.append({**b, "due_date": nominal_due.isoformat()})
 
         # income received to this account this month
         acc_income_received = [i for i in income_received_this_month if i["account"] == acc_name]
@@ -3040,13 +3126,13 @@ def _get_scheduled_calendar_items(user_id, start_date, end_date):
         for d in income_engine.get_payment_dates(row, start_date + timedelta(days=1), end_date):
             _add(d.isoformat(), {"type": "income", "name": row["name"], "account": acc, "amount": float(row["amount"])})
 
-    # Scheduled bills — same monthly/yearly + weekend-shift check /api/snapshot uses
+    # Scheduled bills — same monthly/yearly/weekly + weekend-shift check /api/snapshot uses
     day_cursor = start_date + timedelta(days=1)
     while day_cursor <= end_date:
         for expense in scheduled:
-            exp_day = expense.get("day")
-            if exp_day is None:
+            if not _bill_has_valid_schedule(expense):
                 continue
+            exp_day = expense.get("day")
             acc = expense.get("account", "")
             if acc not in account_names:
                 continue
@@ -3068,6 +3154,13 @@ def _get_scheduled_calendar_items(user_id, start_date, end_date):
                         nominal = None
                     if nominal is not None and shift_weekend_to_monday(nominal) == day_cursor:
                         applies = True
+            elif freq == "weekly":
+                # No weekend-shift for weekly bills - the chosen weekday
+                # IS the deliberate, fixed occurrence (see
+                # _get_occurrences_between()'s weekly branch for the same
+                # reasoning).
+                if day_cursor.weekday() == int(expense["weekly_day"]):
+                    applies = True
             if applies:
                 _add(day_cursor.isoformat(), {"type": "bill", "name": expense["name"], "account": acc, "amount": float(expense["amount"])})
         day_cursor += timedelta(days=1)
@@ -3694,9 +3787,9 @@ def api_snapshot():
 
         # Scheduled expenses
         for expense in scheduled:
-            exp_day = expense.get("day")
-            if exp_day is None:
+            if not _bill_has_valid_schedule(expense):
                 continue
+            exp_day = expense.get("day")
             freq = expense.get("frequency", "monthly")
             acc = expense.get("account", "")
             if acc not in simulated:
@@ -3719,6 +3812,9 @@ def api_snapshot():
                         nominal = None
                     if nominal is not None and shift_weekend_to_monday(nominal) == sim_day:
                         applies = True
+            elif freq == "weekly":
+                if sim_day.weekday() == int(expense["weekly_day"]):
+                    applies = True
             if applies:
                 bills_due.append({"name": expense["name"], "amount": amt, "date": day_str, "iso": sim_day.isoformat(), "account": acc, "item_id": expense.get("id"), "item_type": "bill"})
                 if acc in simulated:
@@ -5781,29 +5877,52 @@ def settings_edit_account():
 def settings_add_bill():
     name = (request.form.get("name") or "").strip()
     amount = (request.form.get("amount") or "").strip()
-    day = (request.form.get("day") or "").strip()
+    day_raw = (request.form.get("day") or "").strip()
     account = (request.form.get("account") or "").strip()
     frequency = (request.form.get("frequency") or "monthly").strip()
     month_raw = (request.form.get("month") or "").strip()
+    weekly_day_raw = (request.form.get("weekly_day") or "").strip()
 
-    if not name or not amount or not day or not account:
+    # A weekly bill has no day-of-month at all - `day` is only required
+    # for monthly/yearly. See scheduled_expenses.weekly_day (September
+    # 2026), mirroring the income table's exact day/weekly_day split.
+    if not name or not amount or not account:
+        return redirect(url_for("manage", msg="Missing fields.", tab="bills"))
+    if frequency == "weekly":
+        if not weekly_day_raw:
+            return redirect(url_for("manage", msg="Missing fields.", tab="bills"))
+    elif not day_raw:
         return redirect(url_for("manage", msg="Missing fields.", tab="bills"))
     if frequency == "yearly" and not month_raw:
         return redirect(url_for("manage", msg="Please select a month for yearly bills.", tab="bills"))
     amount, err = validate_amount(amount)
     if err:
         return redirect(url_for("manage", msg=err, tab="bills"))
-    day, err = validate_day(day)
-    if err:
-        return redirect(url_for("manage", msg=err, tab="bills"))
+
+    day = None
+    weekly_day = None
+    if frequency == "weekly":
+        weekly_day, err = validate_weekly_day(weekly_day_raw)
+        if err:
+            return redirect(url_for("manage", msg=err, tab="bills"))
+    else:
+        day, err = validate_day(day_raw)
+        if err:
+            return redirect(url_for("manage", msg=err, tab="bills"))
     bill_month = int(month_raw) if month_raw and frequency == "yearly" else None
 
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("INSERT INTO scheduled_expenses (name, amount, day, account, user_id, frequency, month) VALUES (%s, %s, %s, %s, %s, %s, %s)", (name, amount, day, account, current_user.id, frequency, bill_month))
+        cursor.execute(
+            "INSERT INTO scheduled_expenses (name, amount, day, account, user_id, frequency, month, weekly_day) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            (name, amount, day, account, current_user.id, frequency, bill_month, weekly_day),
+        )
     else:
-        cursor.execute("INSERT INTO scheduled_expenses (name, amount, day, account, user_id, frequency, month) VALUES (?, ?, ?, ?, ?, ?, ?)", (name, amount, day, account, current_user.id, frequency, bill_month))
+        cursor.execute(
+            "INSERT INTO scheduled_expenses (name, amount, day, account, user_id, frequency, month, weekly_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (name, amount, day, account, current_user.id, frequency, bill_month, weekly_day),
+        )
     db.commit()
     cursor.close()
     release_db(db)
@@ -5816,27 +5935,47 @@ def settings_edit_bill():
     bill_id = request.form.get("id")
     name = (request.form.get("name") or "").strip()
     amount = (request.form.get("amount") or "").strip()
-    day = (request.form.get("day") or "").strip()
+    day_raw = (request.form.get("day") or "").strip()
     account = (request.form.get("account") or "").strip()
     frequency = (request.form.get("frequency") or "monthly").strip()
     month_raw = (request.form.get("month") or "").strip()
+    weekly_day_raw = (request.form.get("weekly_day") or "").strip()
 
-    if not name or not amount or not day or not account:
+    if not name or not amount or not account:
+        return redirect(url_for("manage", msg="Missing fields.", tab="bills"))
+    if frequency == "weekly":
+        if not weekly_day_raw:
+            return redirect(url_for("manage", msg="Missing fields.", tab="bills"))
+    elif not day_raw:
         return redirect(url_for("manage", msg="Missing fields.", tab="bills"))
     amount, err = validate_amount(amount)
     if err:
         return redirect(url_for("manage", msg=err, tab="bills"))
-    day, err = validate_day(day)
-    if err:
-        return redirect(url_for("manage", msg=err, tab="bills"))
+
+    day = None
+    weekly_day = None
+    if frequency == "weekly":
+        weekly_day, err = validate_weekly_day(weekly_day_raw)
+        if err:
+            return redirect(url_for("manage", msg=err, tab="bills"))
+    else:
+        day, err = validate_day(day_raw)
+        if err:
+            return redirect(url_for("manage", msg=err, tab="bills"))
     bill_month = int(month_raw) if month_raw and frequency == "yearly" else None
 
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
-        cursor.execute("UPDATE scheduled_expenses SET name=%s, amount=%s, day=%s, account=%s, frequency=%s, month=%s WHERE id=%s AND user_id=%s", (name, amount, day, account, frequency, bill_month, bill_id, current_user.id))
+        cursor.execute(
+            "UPDATE scheduled_expenses SET name=%s, amount=%s, day=%s, account=%s, frequency=%s, month=%s, weekly_day=%s WHERE id=%s AND user_id=%s",
+            (name, amount, day, account, frequency, bill_month, weekly_day, bill_id, current_user.id),
+        )
     else:
-        cursor.execute("UPDATE scheduled_expenses SET name=?, amount=?, day=?, account=?, frequency=?, month=? WHERE id=? AND user_id=?", (name, amount, day, account, frequency, bill_month, bill_id, current_user.id))
+        cursor.execute(
+            "UPDATE scheduled_expenses SET name=?, amount=?, day=?, account=?, frequency=?, month=?, weekly_day=? WHERE id=? AND user_id=?",
+            (name, amount, day, account, frequency, bill_month, weekly_day, bill_id, current_user.id),
+        )
     db.commit()
     cursor.close()
     release_db(db)
@@ -6666,9 +6805,9 @@ def forecast():
                 simulated[acc] += amt
 
         for expense in scheduled:
-            exp_day = expense.get("day")
-            if exp_day is None:
+            if not _bill_has_valid_schedule(expense):
                 continue
+            exp_day = expense.get("day")
             freq = expense.get("frequency") or "monthly"
             if freq == "yearly":
                 # Fire once a year on the specific day+month, shifted off weekends
@@ -6679,6 +6818,12 @@ def forecast():
                         nominal = None
                     if nominal is not None and shift_weekend_to_monday(nominal) == sim_day and expense["account"] in simulated:
                         simulated[expense["account"]] -= float(expense["amount"])
+            elif freq == "weekly":
+                # Fire every matching weekday, no weekend-shift (the
+                # weekday IS the deliberate occurrence - see
+                # _get_occurrences_between()'s weekly branch).
+                if sim_day.weekday() == int(expense["weekly_day"]) and expense["account"] in simulated:
+                    simulated[expense["account"]] -= float(expense["amount"])
             else:
                 # Monthly: fire on the given day every month, shifted off weekends
                 try:
@@ -6735,7 +6880,7 @@ def forecast():
     end_date = today + timedelta(days=forecast_days)
 
     for bill in scheduled:
-        if bill.get("day") is None:
+        if not _bill_has_valid_schedule(bill):
             continue
         if bill.get("account") not in accounts:
             continue
@@ -6750,6 +6895,12 @@ def forecast():
                             upcoming_items.append({"date": d.isoformat(), "name": bill["name"], "amount": float(bill["amount"]), "account": bill["account"], "type": "bill", "id": bill["id"]})
                     except ValueError:
                         pass
+        elif freq == "weekly":
+            # Every matching weekday across the whole forecast window - a
+            # weekly bill can occur 10+ times over 90 days, unlike the
+            # monthly path's 4-months-forward scan.
+            for d in _get_occurrences_between(bill, today, end_date):
+                upcoming_items.append({"date": d.isoformat(), "name": bill["name"], "amount": float(bill["amount"]), "account": bill["account"], "type": "bill", "id": bill["id"]})
         else:
             m_year, m_month = today.year, today.month
             for _ in range(4):

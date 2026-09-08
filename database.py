@@ -1610,5 +1610,32 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: scheduled_expenses.weekly_day ---
+    # September 2026: adds a "weekly" bill frequency alongside the existing
+    # monthly/yearly options. Mirrors the income table's exact day/
+    # weekly_day split rather than overloading the existing `day` column
+    # (which is validated 1-31 as a day-of-month and would be ambiguous
+    # for a 0-6 day-of-week value). NULL for monthly/yearly bills, where
+    # `day` continues to mean day-of-month exactly as before. 0=Monday
+    # ... 6=Sunday, same convention as income.weekly_day.
+    try:
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name='scheduled_expenses' AND column_name='weekly_day'
+            """)
+            if not cursor.fetchone():
+                cursor.execute("ALTER TABLE scheduled_expenses ADD COLUMN weekly_day INTEGER DEFAULT NULL")
+                db.commit()
+        else:
+            cursor.execute("ALTER TABLE scheduled_expenses ADD COLUMN weekly_day INTEGER DEFAULT NULL")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Column migration error (scheduled_expenses.weekly_day): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)

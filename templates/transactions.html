@@ -175,7 +175,7 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
               <span class="tx-desc-sub">{{ t.account }}</span>
             </td>
             <td class="text-end money fw-semibold {% if t.amount < 0 %}text-danger{% else %}text-success{% endif %}">
-              {% if t.amount < 0 %}-£{{ "%.2f"|format(t.amount|abs) }}{% else %}+£{{ "%.2f"|format(t.amount) }}{% endif %}
+              {% if t.amount < 0 %}-£{{ t.amount|abs|moneyfmt }}{% else %}+£{{ t.amount|moneyfmt }}{% endif %}
             </td>
             <td class="tx-col-account"><span class="badge text-bg-light">{{ t.account }}</span></td>
             <td class="tx-col-category"><span class="badge text-bg-light">{{ cat_emojis.get(cat, '📦') }} {{ cat }}</span></td>
@@ -293,6 +293,22 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
 </nav>
 
 <script>
+// Formats a number with thousand separators, no currency symbol (callers
+// prefix their own £) - the JS-side equivalent of the app-wide moneyfmt
+// Jinja filter (September 2026). No shared JS file exists in this
+// codebase (see "No shared base template" in CLAUDE.md), so this is
+// inlined per-template, same as the existing _fmtUKDate() precedent.
+function _fmtGBP(value, decimals) {
+  decimals = (decimals === undefined || decimals === null) ? 2 : decimals;
+  var n = Number(value);
+  if (!isFinite(n)) n = 0;
+  var neg = n < 0;
+  n = Math.abs(n);
+  var parts = n.toFixed(decimals).split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (neg ? '-' : '') + parts.join('.');
+}
+
 // ── Monthly spending chart ──────────────────────────────────────────────────
 (function() {
   var monthTotals = {};
@@ -325,10 +341,10 @@ input.form-control-sm { border-radius: 10px; font-size: 13px; }
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { return '£' + ctx.raw.toFixed(2); } } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx) { return '£' + _fmtGBP(ctx.raw); } } } },
       scales: {
         x: { grid: { display: false }, ticks: { font: { size: 11 } } },
-        y: { ticks: { font: { size: 11 }, callback: function(v) { return '£' + v; } }, grid: { color: 'rgba(0,0,0,0.05)' } }
+        y: { ticks: { font: { size: 11 }, callback: function(v) { return '£' + _fmtGBP(v, 0); } }, grid: { color: 'rgba(0,0,0,0.05)' } }
       }
     }
   });
@@ -549,7 +565,7 @@ function filterTransactions() {
     if (row.style.display === 'none') return;
     total += Math.abs(parseFloat(row.dataset.amount || '0'));
   });
-  document.getElementById('countBadge').textContent = visible + ' transactions · £' + total.toFixed(2) + ' total';
+  document.getElementById('countBadge').textContent = visible + ' transactions · £' + _fmtGBP(total) + ' total';
   renderCategoryTotals();
 }
 
@@ -568,7 +584,7 @@ function renderCategoryTotals() {
   cats.sort(function(a,b) { return totals[b] - totals[a]; });
   box.style.display = '';
   box.innerHTML = '<div class="small fw-semibold text-muted mb-2">Spending by category</div><div style="display:flex;flex-wrap:wrap;gap:8px;">' +
-    cats.map(function(c) { return '<span style="background:#f0f0f0;border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;">' + c + ' <span style="color:#555;">£' + totals[c].toFixed(2) + '</span></span>'; }).join('') + '</div>';
+    cats.map(function(c) { return '<span style="background:#f0f0f0;border-radius:999px;padding:5px 12px;font-size:13px;font-weight:600;">' + c + ' <span style="color:#555;">£' + _fmtGBP(totals[c]) + '</span></span>'; }).join('') + '</div>';
 }
 
 function clearFilters() {
@@ -582,7 +598,7 @@ renderCategoryTotals();
   var total = 0;
   document.querySelectorAll('#txBody tr.tx-row').forEach(function(row) { total += Math.abs(parseFloat(row.dataset.amount || '0')); });
   var count = document.querySelectorAll('#txBody tr.tx-row').length;
-  document.getElementById('countBadge').textContent = count + ' transactions · £' + total.toFixed(2) + ' total';
+  document.getElementById('countBadge').textContent = count + ' transactions · £' + _fmtGBP(total) + ' total';
 })();
 
 if (window.location.search.includes('msg=')) {

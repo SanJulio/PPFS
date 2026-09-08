@@ -120,7 +120,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
       <span class="badge-soft">{{ bills|length }} expenses</span>
       {% set total = namespace(value=0) %}
       {% for b in bills %}{% set total.value = total.value + b.amount %}{% endfor %}
-      <span class="fw-bold">Total: £{{ "%.2f"|format(total.value) }}</span>
+      <span class="fw-bold">Total: £{{ total.value|moneyfmt }}</span>
     </div>
 
     <div class="card p-3">
@@ -150,7 +150,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
             <tr class="flow-row" data-id="b{{ b.id }}" onclick="toggleFlow('b{{ b.id }}')">
               <td><span id="arrow-b{{ b.id }}" class="fw-bold" style="font-size:13px;color:#111">+</span></td>
               <td>{{ b.name }}</td>
-              <td class="text-end money">£{{ "%.2f"|format(b.amount) }}</td>
+              <td class="text-end money">£{{ b.amount|moneyfmt }}</td>
               <td class="text-end">{{ b.day }}</td>
               <td class="text-end"><span class="badge text-bg-light">{{ b.account }}</span></td>
             </tr>
@@ -173,7 +173,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
             <tr class="fw-bold">
               <td></td>
               <td>Total</td>
-              <td class="text-end money">£{{ "%.2f"|format(total.value) }}</td>
+              <td class="text-end money">£{{ total.value|moneyfmt }}</td>
               <td></td>
               <td></td>
             </tr>
@@ -189,7 +189,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
       <span class="badge-soft">{{ income|length }} income sources</span>
       {% set total = namespace(value=0) %}
       {% for i in income %}{% set total.value = total.value + i.amount %}{% endfor %}
-      <span class="fw-bold text-success">Total: £{{ "%.2f"|format(total.value) }}</span>
+      <span class="fw-bold text-success">Total: £{{ total.value|moneyfmt }}</span>
     </div>
 
     <div class="card p-3">
@@ -219,7 +219,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
             <tr class="flow-row" data-id="i{{ i.id }}" onclick="toggleFlow('i{{ i.id }}')">
               <td><span id="arrow-i{{ i.id }}" class="fw-bold" style="font-size:13px;color:#111">+</span></td>
               <td>{{ i.name }}</td>
-              <td class="text-end money text-success">£{{ "%.2f"|format(i.amount) }}</td>
+              <td class="text-end money text-success">£{{ i.amount|moneyfmt }}</td>
               <td class="text-end">{{ i.frequency }}</td>
               <td class="text-end"><span class="badge text-bg-light">{{ i.account }}</span></td>
             </tr>
@@ -242,7 +242,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
             <tr class="fw-bold">
               <td></td>
               <td>Total</td>
-              <td class="text-end money text-success">£{{ "%.2f"|format(total.value) }}</td>
+              <td class="text-end money text-success">£{{ total.value|moneyfmt }}</td>
               <td></td>
               <td></td>
             </tr>
@@ -282,12 +282,12 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
             <span class="badge ms-2 {% if acc.type == 'current' %}text-bg-primary{% elif acc.type == 'savings' %}text-bg-success{% elif acc.type == 'cash' %}text-bg-warning{% else %}text-bg-light{% endif %}">{{ acc.type }}</span>
           </div>
           <div class="text-end">
-            <div class="fw-bold money">£{{ "%.2f"|format(acc.balance) }}</div>
+            <div class="fw-bold money">£{{ acc.balance|moneyfmt }}</div>
             <div class="small
               {% if acc.traffic == 'green' %}traffic-green
               {% elif acc.traffic == 'amber' %}traffic-amber
               {% else %}traffic-red{% endif %}">
-              ● Projected: £{{ "%.2f"|format(acc.projected) }}
+              ● Projected: £{{ acc.projected|moneyfmt }}
             </div>
           </div>
         </div>
@@ -304,7 +304,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
                 Bills paid this month ({{ acc.bills_paid|length }})
               </span>
               <span class="small text-danger fw-bold">
-                £{{ "%.2f"|format(acc.bills_paid|sum(attribute='amount')|abs) }}
+                £{{ acc.bills_paid|sum(attribute='amount')|abs|moneyfmt }}
               </span>
             </div>
           </div>
@@ -313,7 +313,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
               {% for b in acc.bills_paid %}
               <div class="d-flex justify-content-between small py-1 border-bottom">
                 <span>{{ b.description }}</span>
-                <span class="text-danger">£{{ "%.2f"|format(b.amount|abs) }}</span>
+                <span class="text-danger">£{{ b.amount|abs|moneyfmt }}</span>
               </div>
               {% endfor %}
             {% else %}
@@ -330,7 +330,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
                 Bills to pay this month ({{ acc.bills_to_pay|length }})
               </span>
               <span class="small text-danger fw-bold">
-                £{{ "%.2f"|format(acc.bills_to_pay|sum(attribute='amount')) }}
+                £{{ acc.bills_to_pay|sum(attribute='amount')|moneyfmt }}
               </span>
             </div>
           </div>
@@ -338,8 +338,8 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
             {% if acc.bills_to_pay %}
               {% for b in acc.bills_to_pay %}
               <div class="d-flex justify-content-between small py-1 border-bottom">
-                <span>{{ b.name }} <span class="text-muted">(day {{ b.day }})</span></span>
-                <span class="text-danger">£{{ "%.2f"|format(b.amount) }}</span>
+                <span>{{ b.name }} <span class="text-muted">({{ b.due_date | dateformat }})</span></span>
+                <span class="text-danger">£{{ b.amount|moneyfmt }}</span>
               </div>
               {% endfor %}
             {% else %}
@@ -356,7 +356,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
                 Income received this month ({{ acc.income_received|length }})
               </span>
               <span class="small text-success fw-bold">
-                £{{ "%.2f"|format(acc.income_received|sum(attribute='amount')) }}
+                £{{ acc.income_received|sum(attribute='amount')|moneyfmt }}
               </span>
             </div>
           </div>
@@ -365,7 +365,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
               {% for i in acc.income_received %}
               <div class="d-flex justify-content-between small py-1 border-bottom">
                 <span>{{ i.description }}</span>
-                <span class="text-success">£{{ "%.2f"|format(i.amount) }}</span>
+                <span class="text-success">£{{ i.amount|moneyfmt }}</span>
               </div>
               {% endfor %}
             {% else %}
@@ -382,7 +382,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
                 Income to receive ({{ acc.income_to_receive|length }})
               </span>
               <span class="small text-success fw-bold">
-                £{{ "%.2f"|format(acc.income_to_receive|sum(attribute='amount')) }}
+                £{{ acc.income_to_receive|sum(attribute='amount')|moneyfmt }}
               </span>
             </div>
           </div>
@@ -391,7 +391,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
               {% for i in acc.income_to_receive %}
               <div class="d-flex justify-content-between small py-1 border-bottom">
                 <span>{{ i.name }} <span class="text-muted">({{ i.frequency }})</span></span>
-                <span class="text-success">£{{ "%.2f"|format(i.amount) }}</span>
+                <span class="text-success">£{{ i.amount|moneyfmt }}</span>
               </div>
               {% endfor %}
             {% else %}
@@ -417,16 +417,16 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
       <div class="row g-3 text-center">
         <div class="col-4">
           <div class="text-muted small">Invested</div>
-          <div class="fw-bold">£{{ "%.2f"|format(total_invested) }}</div>
+          <div class="fw-bold">£{{ total_invested|moneyfmt }}</div>
         </div>
         <div class="col-4">
           <div class="text-muted small">Current</div>
-          <div class="fw-bold">£{{ "%.2f"|format(total_current) }}</div>
+          <div class="fw-bold">£{{ total_current|moneyfmt }}</div>
         </div>
         <div class="col-4">
           <div class="text-muted small">Total Gain</div>
           <div class="fw-bold {% if total_gain >= 0 %}text-success{% else %}text-danger{% endif %}">
-            {% if total_gain >= 0 %}+{% endif %}£{{ "%.2f"|format(total_gain) }}
+            {% if total_gain >= 0 %}+{% endif %}£{{ total_gain|moneyfmt }}
           </div>
         </div>
       </div>
@@ -445,9 +445,9 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
             <span class="badge text-bg-light ms-2">{{ inv.type }}</span>
           </div>
           <div class="text-end">
-            <div class="fw-bold money">£{{ "%.2f"|format(inv.current_value) }}</div>
+            <div class="fw-bold money">£{{ inv.current_value|moneyfmt }}</div>
             <div class="small {% if inv.gain >= 0 %}text-success{% else %}text-danger{% endif %}">
-              {% if inv.gain >= 0 %}+{% endif %}£{{ "%.2f"|format(inv.gain) }}
+              {% if inv.gain >= 0 %}+{% endif %}£{{ inv.gain|moneyfmt }}
               ({% if inv.gain_pct >= 0 %}+{% endif %}{{ "%.1f"|format(inv.gain_pct) }}%)
             </div>
           </div>
@@ -458,7 +458,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
 
           <div class="d-flex justify-content-between small text-muted py-1 border-bottom mb-2">
             <span>Initial investment</span>
-            <span>£{{ "%.2f"|format(inv.initial_amount) }} on {{ inv.date | dateformat }}</span>
+            <span>£{{ inv.initial_amount|moneyfmt }} on {{ inv.date | dateformat }}</span>
           </div>
 
           {% if inv.updates %}
@@ -468,7 +468,7 @@ tbody tr.flow-row:hover { background: #f8f9fa; }
             <span class="text-muted">{{ u.date | dateformat }}</span>
             <span class="fw-semibold 
               {% if u.value >= inv.initial_amount %}text-success{% else %}text-danger{% endif %}">
-              £{{ "%.2f"|format(u.value) }}
+              £{{ u.value|moneyfmt }}
             </span>
           </div>
           {% endfor %}

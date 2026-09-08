@@ -320,7 +320,7 @@ class TestSafeToSpend:
             resp = auth_client.get("/")
             assert resp.status_code == 200
             # balance=1000, future income=2000, bill=600 → safe = 2400
-            assert "2400.00" in resp.data.decode("utf-8")
+            assert "2,400.00" in resp.data.decode("utf-8")
         finally:
             cur = db_conn.cursor()
             cur.execute("DELETE FROM scheduled_expenses WHERE id = ?", (bill_id,))
@@ -353,7 +353,7 @@ class TestSafeToSpend:
             resp = auth_client.get("/")
             assert resp.status_code == 200
             # balance=1000, future income=2000, bill=600 → safe = 2400
-            assert "2400.00" in resp.data.decode("utf-8")
+            assert "2,400.00" in resp.data.decode("utf-8")
         finally:
             cur = db_conn.cursor()
             cur.execute("DELETE FROM income WHERE id = ?", (inc_id,))

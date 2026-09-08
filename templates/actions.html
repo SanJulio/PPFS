@@ -316,7 +316,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         <div class="text-muted" style="font-size:11px;">{{ t.account }} · {{ t.date | dateformat }}</div>
       </div>
       <span class="fw-semibold small {% if t.amount < 0 %}text-danger{% else %}text-success{% endif %}">
-        {% if t.amount < 0 %}-£{{ "%.2f"|format(t.amount|abs) }}{% else %}+£{{ "%.2f"|format(t.amount) }}{% endif %}
+        {% if t.amount < 0 %}-£{{ t.amount|abs|moneyfmt }}{% else %}+£{{ t.amount|moneyfmt }}{% endif %}
       </span>
     </div>
     {% endfor %}

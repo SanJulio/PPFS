@@ -513,7 +513,7 @@ class TestEmployedUsersUnaffected:
         resp = auth_client.get("/manage")
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
-        assert "2500.00" in html
+        assert "2,500.00" in html
 
     def test_snapshot_unaffected_for_employed_user(self, auth_client, test_user, test_account, db_conn):
         cycle_day = _safe_future_day()

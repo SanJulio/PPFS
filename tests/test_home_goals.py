@@ -84,7 +84,7 @@ class TestSingleGoalState:
         body = resp.get_data(as_text=True)
         assert "House deposit" in body
         assert "30.0%" in body
-        assert "3000" in body and "10000" in body
+        assert "3,000" in body and "10,000" in body
         assert '/manage?tab=goals' in body
 
     def test_debt_goal_renders_correctly_on_home(self, auth_client, db_conn, test_user):

@@ -28,13 +28,13 @@ def _unlock(db_conn, account_id):
 class TestHomeOverviewExcludesLockedBalance:
     def test_net_worth_includes_both_accounts_when_unlocked(self, auth_client, test_account, second_account):
         resp = auth_client.get("/")
-        assert b"\xc2\xa31500.00" in resp.data  # £1500.00 = 1000 (current) + 500 (savings)
+        assert "£1,500.00".encode("utf-8") in resp.data  # £1,500.00 = 1000 (current) + 500 (savings)
 
     def test_net_worth_excludes_locked_account_balance(self, auth_client, test_account, second_account, db_conn):
         _lock(db_conn, second_account["id"])
         resp = auth_client.get("/")
-        assert b"\xc2\xa31000.00" in resp.data  # only the unlocked Current account
-        assert b"\xc2\xa31500.00" not in resp.data
+        assert "£1,000.00".encode("utf-8") in resp.data  # only the unlocked Current account
+        assert "£1,500.00".encode("utf-8") not in resp.data
 
     def test_locked_note_appears_with_correct_count(self, auth_client, test_account, second_account, db_conn):
         _lock(db_conn, second_account["id"])
@@ -50,11 +50,11 @@ class TestHomeOverviewExcludesLockedBalance:
     def test_reupgrade_restores_locked_balance_to_net_worth(self, auth_client, test_account, second_account, db_conn):
         _lock(db_conn, second_account["id"])
         resp = auth_client.get("/")
-        assert b"\xc2\xa31000.00" in resp.data
+        assert "£1,000.00".encode("utf-8") in resp.data
 
         _unlock(db_conn, second_account["id"])
         resp = auth_client.get("/")
-        assert b"\xc2\xa31500.00" in resp.data
+        assert "£1,500.00".encode("utf-8") in resp.data
         assert "account locked" not in resp.data.decode()
 
 

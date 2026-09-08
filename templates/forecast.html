@@ -590,8 +590,8 @@ function showDayPanel(isoDate) {
           '<span class="text-muted small ms-2">adjusted at ' + timeStr + '</span>' +
         '</div>' +
         '<div style="text-align:right;">' +
-          '<div class="fw-bold money" style="color:' + (delta >= 0 ? '#059669' : '#dc3545') + ';">' + sign + '£' + Math.abs(delta).toFixed(2) + '</div>' +
-          '<div class="text-muted" style="font-size:11px;">£' + adj.old_balance.toFixed(2) + ' → £' + adj.new_balance.toFixed(2) + '</div>' +
+          '<div class="fw-bold money" style="color:' + (delta >= 0 ? '#059669' : '#dc3545') + ';">' + sign + '£' + _fmtGBP(Math.abs(delta)) + '</div>' +
+          '<div class="text-muted" style="font-size:11px;">£' + _fmtGBP(adj.old_balance) + ' → £' + _fmtGBP(adj.new_balance) + '</div>' +
         '</div>' +
       '</div>';
     });
@@ -616,7 +616,7 @@ function showDayPanel(isoDate) {
             '<span class="fw-semibold">' + escHtml(item.name) + '</span>' +
             '<span class="text-muted small ms-2">' + escHtml(item.account) + '</span>' +
           '</div>' +
-          '<span class="fw-bold money" style="font-size:14px;color:#ef4444;">-£' + item.amount.toFixed(2) + '</span>' +
+          '<span class="fw-bold money" style="font-size:14px;color:#ef4444;">-£' + _fmtGBP(item.amount) + '</span>' +
         '</div>';
         return;
       }
@@ -635,14 +635,14 @@ function showDayPanel(isoDate) {
           '<span class="text-muted small ms-2">' + escHtml(item.account) + '</span>' +
         '</div>' +
         '<div class="d-flex align-items-center gap-2 flex-shrink-0">' +
-          '<span id="amtlbl_' + uid + '" class="fw-bold money" style="font-size:14px;">' + (isBill ? '-' : '+') + '£' + item.amount.toFixed(2) + '</span>' +
-          '<button type="button" class="btn btn-outline-secondary btn-sm rounded-3 px-2" style="font-size:12px;" onclick="toggleFcstEdit(\'' + uid + '\',' + item.amount.toFixed(2) + ')" title="Edit amount">✏️</button>' +
+          '<span id="amtlbl_' + uid + '" class="fw-bold money" style="font-size:14px;">' + (isBill ? '-' : '+') + '£' + _fmtGBP(item.amount) + '</span>' +
+          '<button type="button" class="btn btn-outline-secondary btn-sm rounded-3 px-2" style="font-size:12px;" onclick="toggleFcstEdit(\'' + uid + '\',' + _fmtGBP(item.amount) + ')" title="Edit amount">✏️</button>' +
           '<form method="POST" action="' + action + '" style="margin:0;">' +
             '<input type="hidden" name="csrf_token" value="' + escHtml(CSRF_TOKEN) + '">' +
             '<input type="hidden" name="' + idField + '" value="' + item.id + '">' +
             '<input type="hidden" name="paid_date" value="' + item.date + '">' +
             '<input type="hidden" name="redirect_to" value="/forecast">' +
-            '<input type="number" id="amtinp_' + uid + '" name="amount_override" step="0.01" min="0.01" value="' + item.amount.toFixed(2) + '" style="display:none;width:80px;" class="form-control form-control-sm">' +
+            '<input type="number" id="amtinp_' + uid + '" name="amount_override" step="0.01" min="0.01" value="' + _fmtGBP(item.amount) + '" style="display:none;width:80px;" class="form-control form-control-sm">' +
             '<button type="submit" class="btn ' + btnClass + ' btn-sm rounded-3" style="font-size:12px; white-space:nowrap;">' + btnLabel + '</button>' +
           '</form>' +
         '</div>' +
@@ -663,6 +663,22 @@ function escHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// Formats a number with thousand separators, no currency symbol (callers
+// prefix their own £) - the JS-side equivalent of the app-wide moneyfmt
+// Jinja filter (September 2026). No shared JS file exists in this
+// codebase (see "No shared base template" in CLAUDE.md), so this is
+// inlined per-template, same as the existing _fmtUKDate() precedent.
+function _fmtGBP(value, decimals) {
+  decimals = (decimals === undefined || decimals === null) ? 2 : decimals;
+  var n = Number(value);
+  if (!isFinite(n)) n = 0;
+  var neg = n < 0;
+  n = Math.abs(n);
+  var parts = n.toFixed(decimals).split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (neg ? '-' : '') + parts.join('.');
 }
 
 function renderInsights() {
@@ -806,12 +822,12 @@ function renderWarnings() {
       var negDate = new Date(firstNeg.date);
       var daysUntil = Math.max(1, Math.round((negDate - today) / 86400000));
       var dateStr = negDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-      var dailyCut = (Math.abs(lowest) / daysUntil).toFixed(2);
+      var dailyCut = _fmtGBP((Math.abs(lowest) / daysUntil));
       var moveAmt = Math.ceil(Math.abs(lowest));
       issues.push(
         '<div class="mb-2">' +
-          '<strong>' + escHtml(acc) + '</strong> goes negative on ' + dateStr + ' (lowest: £' + lowest.toFixed(2) + ')<br>' +
-          '<span style="color:#666;font-size:12px;">→ Reduce spending by £' + dailyCut + '/day, or move £' + moveAmt + ' from savings to fix this</span>' +
+          '<strong>' + escHtml(acc) + '</strong> goes negative on ' + dateStr + ' (lowest: £' + _fmtGBP(lowest) + ')<br>' +
+          '<span style="color:#666;font-size:12px;">→ Reduce spending by £' + dailyCut + '/day, or move £' + _fmtGBP(moveAmt, 0) + ' from savings to fix this</span>' +
         '</div>'
       );
     }
@@ -856,7 +872,7 @@ function renderSummary() {
         eventRows += '<div class="d-flex justify-content-between small py-1 border-bottom">' +
           '<span class="text-muted">' + dateStr + '</span>' +
           '<span class="fw-semibold ' + (delta >= 0 ? 'text-success' : 'text-danger') + '">' +
-            (delta >= 0 ? '+' : '') + '£' + delta.toFixed(2) +
+            (delta >= 0 ? '+' : '') + '£' + _fmtGBP(delta) +
           '</span>' +
         '</div>';
       }
@@ -875,9 +891,9 @@ function renderSummary() {
         '<span class="badge-soft' + (isNeg ? ' text-danger' : '') + '">' + (isNeg ? '⚠️ Risk' : '✅ Safe') + '</span>' +
       '</div>' +
       '<div class="row g-2 text-center mb-2">' +
-        '<div class="col-4"><div class="small text-muted">End balance</div><div class="fw-bold money">£' + endVal.toFixed(2) + '</div></div>' +
-        '<div class="col-4"><div class="small text-muted">Change</div><div class="fw-bold money ' + (change >= 0 ? 'text-success' : 'text-danger') + '">' + (change >= 0 ? '+' : '') + '£' + change.toFixed(2) + '</div></div>' +
-        '<div class="col-4"><div class="small text-muted">Lowest</div><div class="fw-bold money' + (lowest < 0 ? ' text-danger' : '') + '">£' + lowest.toFixed(2) + '</div></div>' +
+        '<div class="col-4"><div class="small text-muted">End balance</div><div class="fw-bold money">£' + _fmtGBP(endVal) + '</div></div>' +
+        '<div class="col-4"><div class="small text-muted">Change</div><div class="fw-bold money ' + (change >= 0 ? 'text-success' : 'text-danger') + '">' + (change >= 0 ? '+' : '') + '£' + _fmtGBP(change) + '</div></div>' +
+        '<div class="col-4"><div class="small text-muted">Lowest</div><div class="fw-bold money' + (lowest < 0 ? ' text-danger' : '') + '">£' + _fmtGBP(lowest) + '</div></div>' +
       '</div>' +
       '<button type="button" onclick="toggleBreakdown(\'' + uid + '\', this)" ' +
         'style="width:100%;background:none;border:none;border-top:1px solid #eee;padding-top:8px;font-size:12px;color:#888;cursor:pointer;text-align:left;">' +
@@ -982,9 +998,9 @@ function showIntradayPanel(dates) {
         '<div style="flex:1;">' +
           '<div style="display:flex;justify-content:space-between;align-items:baseline;">' +
             '<span style="font-weight:600;color:#111;font-size:13px;">' + escHtml(adj.account) + '</span>' +
-            '<span style="font-weight:700;color:' + (delta >= 0 ? '#059669' : '#dc3545') + ';font-size:13px;">' + sign + '£' + Math.abs(delta).toFixed(2) + '</span>' +
+            '<span style="font-weight:700;color:' + (delta >= 0 ? '#059669' : '#dc3545') + ';font-size:13px;">' + sign + '£' + _fmtGBP(Math.abs(delta)) + '</span>' +
           '</div>' +
-          '<div style="color:#888;font-size:11px;">' + timeStr + ' &nbsp;·&nbsp; £' + adj.old_balance.toFixed(2) + ' → £' + adj.new_balance.toFixed(2) + '</div>' +
+          '<div style="color:#888;font-size:11px;">' + timeStr + ' &nbsp;·&nbsp; £' + _fmtGBP(adj.old_balance) + ' → £' + _fmtGBP(adj.new_balance) + '</div>' +
         '</div>' +
       '</div>';
     });
@@ -1039,14 +1055,14 @@ function renderSavingsGrowth() {
           '<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:' + color + ';"></span>' +
           '<span class="fw-semibold" style="font-size:14px;">' + escHtml(acc) + '</span>' +
           '<span class="ms-auto small ' + (growth90 >= 0 ? 'text-success' : 'text-danger') + ' fw-semibold">' +
-            (growth90 >= 0 ? '+' : '') + '£' + growth90.toFixed(2) + ' over 90 days' +
+            (growth90 >= 0 ? '+' : '') + '£' + _fmtGBP(growth90) + ' over 90 days' +
           '</span>' +
         '</div>' +
         '<div class="mb-2" style="font-size:12px;">' + interestNote + '</div>' +
         '<div class="row g-2 text-center">' +
-          '<div class="col-4"><div class="small text-muted">Now</div><div class="fw-bold">£' + now.toFixed(2) + '</div></div>' +
-          '<div class="col-4"><div class="small text-muted">30 days</div><div class="fw-bold">£' + v30.toFixed(2) + '</div></div>' +
-          '<div class="col-4"><div class="small text-muted">90 days</div><div class="fw-bold">£' + v90.toFixed(2) + '</div></div>' +
+          '<div class="col-4"><div class="small text-muted">Now</div><div class="fw-bold">£' + _fmtGBP(now) + '</div></div>' +
+          '<div class="col-4"><div class="small text-muted">30 days</div><div class="fw-bold">£' + _fmtGBP(v30) + '</div></div>' +
+          '<div class="col-4"><div class="small text-muted">90 days</div><div class="fw-bold">£' + _fmtGBP(v90) + '</div></div>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -1083,9 +1099,9 @@ function applyWhatIf() {
   renderSavingsGrowth();
 
   var periodLabel = periodDays === 1 ? 'day' : periodDays === 7 ? 'week' : 'month';
-  var saving90 = (dailySaving * 90).toFixed(2);
+  var saving90 = _fmtGBP((dailySaving * 90));
   document.getElementById('whatIfResult').innerHTML =
-    '<span style="color:#065f46; font-weight:600;">✅ Saving £' + amount.toFixed(2) + '/' + periodLabel + ' adds £' + saving90 + ' over 90 days</span>';
+    '<span style="color:#065f46; font-weight:600;">✅ Saving £' + _fmtGBP(amount) + '/' + periodLabel + ' adds £' + saving90 + ' over 90 days</span>';
   document.getElementById('whatIfResetBtn').style.display = '';
 }
 function resetWhatIf() {
@@ -1231,7 +1247,7 @@ function v2Init() {
       position: item.type === 'bill' ? 'aboveBar' : 'belowBar',
       color: item.type === 'bill' ? '#ef4444' : '#10b981',
       shape: item.type === 'bill' ? 'arrowDown' : 'arrowUp',
-      text: item.name + ' £' + item.amount.toFixed(0)
+      text: item.name + ' £' + _fmtGBP(item.amount, 0)
     });
   });
   // Use the first series for markers
@@ -1277,7 +1293,7 @@ function v2Init() {
       html += '<div style="border-top:1px solid #333;margin-top:6px;padding-top:6px;">';
       items.forEach(function(item) {
         var dot = '<span class="v2-event-dot" style="background:' + (item.type === 'bill' ? '#ef4444' : '#10b981') + '"></span>';
-        html += '<div style="font-size:11px;color:#ccc;margin-bottom:2px;">' + dot + escHtml(item.name) + ' <strong>' + (item.type === 'bill' ? '-' : '+') + '£' + item.amount.toFixed(2) + '</strong></div>';
+        html += '<div style="font-size:11px;color:#ccc;margin-bottom:2px;">' + dot + escHtml(item.name) + ' <strong>' + (item.type === 'bill' ? '-' : '+') + '£' + _fmtGBP(item.amount) + '</strong></div>';
       });
       html += '</div>';
     }
@@ -1377,7 +1393,7 @@ function v2ShowDayPanel(isoDate) {
       html += '<div class="day-item">' +
         '<div><span style="font-size:16px;margin-right:6px;">' + icon + '</span><span class="fw-semibold">' + escHtml(item.name) + '</span><span class="text-muted small ms-2">' + escHtml(item.account) + '</span></div>' +
         '<div class="d-flex align-items-center gap-2 flex-shrink-0">' +
-          '<span class="fw-bold money" style="font-size:14px;">' + (isBill ? '-' : '+') + '£' + item.amount.toFixed(2) + '</span>' +
+          '<span class="fw-bold money" style="font-size:14px;">' + (isBill ? '-' : '+') + '£' + _fmtGBP(item.amount) + '</span>' +
           '<form method="POST" action="' + action + '" style="margin:0;">' +
             '<input type="hidden" name="csrf_token" value="' + escHtml(CSRF_TOKEN) + '">' +
             '<input type="hidden" name="' + idField + '" value="' + item.id + '">' +
