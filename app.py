@@ -726,10 +726,48 @@ def get_pending_auto_apply_items(user_id):
     return sorted(pending, key=lambda x: (x['due_date'], x['name']))
 
 
+def _auto_apply_transaction_exists(user_id, due_date, name, amount, account):
+    """True if a transaction matching this exact auto-apply occurrence
+    (same user, date, name, amount, account) already exists. Used as a
+    defensive idempotency guard in apply_auto_items() — see its docstring
+    for why this is needed: last_applied is the *intended* guard against
+    re-applying the same occurrence, but it's a separate statement from the
+    transaction insert/balance update, so if it ever fails to commit (a
+    transient DB error, previously silently swallowed — see the try/except
+    around it below) the inserted transactions stay durable while
+    last_applied stays stale, and the next page load recomputes the exact
+    same occurrence as still-pending. This check makes duplicate insertion
+    impossible regardless of why last_applied lagged, rather than relying
+    on last_applied alone (August 2026 — found via a real report of Salary/
+    Rent/Car Insurance/Car Finance each appearing 3x on the same day)."""
+    db = get_db()
+    cursor = db.cursor()
+    if USE_POSTGRES:
+        cursor.execute(
+            "SELECT 1 FROM transactions WHERE user_id=%s AND date=%s AND description=%s AND amount=%s AND account=%s LIMIT 1",
+            (user_id, due_date, name, amount, account)
+        )
+    else:
+        cursor.execute(
+            "SELECT 1 FROM transactions WHERE user_id=? AND date=? AND description=? AND amount=? AND account=? LIMIT 1",
+            (user_id, due_date, name, amount, account)
+        )
+    row = cursor.fetchone()
+    cursor.close()
+    release_db(db)
+    return row is not None
+
+
 def apply_auto_items(user_id, items):
     """Apply a list of pending items: insert transactions, update balances, update last_applied.
-    Uses the shared add_transaction / update_account_balance helpers so each operation
-    is in its own committed connection — a failure on one item doesn't abort the rest."""
+
+    Note: add_transaction()/update_account_balance() both go through the
+    shared get_db(), which since the August 2026 per-request connection
+    fix returns the same connection for the whole request — each call
+    still commits individually though, so one item's failure can't roll
+    back an earlier item's already-committed insert. That's exactly why
+    the idempotency guard below matters: a later failure (e.g. the
+    last_applied update) can't undo an insert that already happened."""
     from datetime import date as _date
 
     today_str = _date.today().isoformat()
@@ -738,32 +776,41 @@ def apply_auto_items(user_id, items):
         try:
             tx_type = 'bill' if item['type'] == 'bill' else 'income'
             category = 'Bills' if item['type'] == 'bill' else 'Income'
+            if _auto_apply_transaction_exists(user_id, item['due_date'], item['name'], item['amount'], item['account']):
+                continue
             add_transaction(item['due_date'], item['name'], item['amount'], item['account'], user_id, type=tx_type, category=category)
             update_account_balance(item['account'], item['amount'], user_id)
         except Exception as e:
             logger.error(f"Auto-apply item error ({item.get('name')}): {e}")
 
-    # Update last_applied for each unique item_id — separate connections so a transaction
-    # error above doesn't block these from committing
+    # Update last_applied for each unique item_id — wrapped in its own
+    # try/except (rather than letting a failure here propagate out to
+    # home()'s broad debug-level catch, where it would vanish silently)
+    # so a real error is actually visible in logs, since a failure here is
+    # exactly the scenario the idempotency guard above exists to protect
+    # against on the next call.
     applied_bills = {i['item_id'] for i in items if i['type'] == 'bill'}
     applied_income = {i['item_id'] for i in items if i['type'] == 'income'}
 
     if applied_bills or applied_income:
-        db = get_db()
-        cursor = db.cursor()
-        for item_id in applied_bills:
-            if USE_POSTGRES:
-                cursor.execute("UPDATE scheduled_expenses SET last_applied = %s WHERE id = %s", (today_str, item_id))
-            else:
-                cursor.execute("UPDATE scheduled_expenses SET last_applied = ? WHERE id = ?", (today_str, item_id))
-        for item_id in applied_income:
-            if USE_POSTGRES:
-                cursor.execute("UPDATE income SET last_applied = %s WHERE id = %s", (today_str, item_id))
-            else:
-                cursor.execute("UPDATE income SET last_applied = ? WHERE id = ?", (today_str, item_id))
-        db.commit()
-        cursor.close()
-        release_db(db)
+        try:
+            db = get_db()
+            cursor = db.cursor()
+            for item_id in applied_bills:
+                if USE_POSTGRES:
+                    cursor.execute("UPDATE scheduled_expenses SET last_applied = %s WHERE id = %s", (today_str, item_id))
+                else:
+                    cursor.execute("UPDATE scheduled_expenses SET last_applied = ? WHERE id = ?", (today_str, item_id))
+            for item_id in applied_income:
+                if USE_POSTGRES:
+                    cursor.execute("UPDATE income SET last_applied = %s WHERE id = %s", (today_str, item_id))
+                else:
+                    cursor.execute("UPDATE income SET last_applied = ? WHERE id = ?", (today_str, item_id))
+            db.commit()
+            cursor.close()
+            release_db(db)
+        except Exception as e:
+            logger.error(f"Auto-apply last_applied update error (user {user_id}): {e}")
 
     bust_forecast_cache(user_id)
 
