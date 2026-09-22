@@ -21,7 +21,7 @@ import uuid
 import random
 import math
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import Flask, request, redirect, url_for, render_template, jsonify, Response, send_from_directory
@@ -222,6 +222,25 @@ if not secret_key:
 app.secret_key = secret_key
 ADMIN_USER_ID = int(os.environ.get("ADMIN_USER_ID", 0))
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
+
+# --- ENTITLEMENT CUTOVER FLAG (September 2026) ---
+# Gates the Legacy Free / Trial / Basic / Pro entitlement model. While
+# false, every authorization check and both signup routes behave exactly
+# as they do today (is_pro-based, old 3-account Free limit, no trial) -
+# the new columns exist (added by database.py's Expand-phase migration)
+# but are inert. Flipping this to true is the single "Activate" moment of
+# an expand/migrate/activate cutover: it must only happen after the
+# Legacy Free grandfathering backfill and the mandatory Stripe
+# reconciliation have both completed and been verified - see CLAUDE.md's
+# "Pricing/entitlement model" section for the full design, sequencing,
+# and why a plain code deploy alone is not sufficient. Read once at
+# process start (this app runs a single Gunicorn worker on Render - see
+# CLAUDE.md - so there is no steady-state window with two workers
+# disagreeing on this value, only the ordinary brief transition Render
+# already manages for any deploy/env-var change). If ever scaled beyond
+# one worker, this must move to a database- or Redis-backed flag checked
+# per-request instead of a static per-process env var.
+ENTITLEMENT_RESOLVER_ACTIVE = os.environ.get("ENTITLEMENT_RESOLVER_ACTIVE", "false").strip().lower() == "true"
 app.config["SESSION_COOKIE_SECURE"] = True
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
@@ -257,11 +276,16 @@ def unauthorized():
 # --- USER MODEL ---
 # Minimal User class required by Flask-Login — just stores id and email
 class User(UserMixin):
-    def __init__(self, id, email, display_name=None, avatar=None):
+    def __init__(self, id, email, display_name=None, avatar=None, entitlement=None):
         self.id = id
         self.email = email
         self.display_name = display_name
         self.avatar = avatar
+        # None while ENTITLEMENT_RESOLVER_ACTIVE is false (nothing reads
+        # it then); a resolved dict from get_entitlement() once active,
+        # computed once here per request and reused rather than
+        # re-queried by every gate that needs it - see CLAUDE.md.
+        self.entitlement = entitlement
 
 # Tells Flask-Login how to reload a user from their ID stored in the session
 @login_manager.user_loader
@@ -280,7 +304,17 @@ def load_user(user_id):
     release_db(db)
     if row:
         row = dict(zip(cols, row))
-        return User(row["id"], row["email"], row.get("display_name"), row.get("avatar"))
+        entitlement = None
+        if ENTITLEMENT_RESOLVER_ACTIVE:
+            # Lazy reconciliation runs here, on every authenticated
+            # request, before any route body executes - this is what
+            # guarantees an expired trial (or a paid cancellation whose
+            # terminal webhook hasn't arrived yet) stops contributing to
+            # Forecast/Safe to Spend within a single request, with no
+            # logout and no webhook dependency. See
+            # reconcile_and_get_entitlement()'s own docstring.
+            entitlement = reconcile_and_get_entitlement(row, row["id"])
+        return User(row["id"], row["email"], row.get("display_name"), row.get("avatar"), entitlement)
     return None
 
 # Run database migrations on startup — creates tables and adds any missing columns
@@ -3272,14 +3306,15 @@ def calendar_view():
     prev_month = f"{year-1}-12" if month == 1 else f"{year}-{month-1:02d}"
     next_month = f"{year+1}-01" if month == 12 else f"{year}-{month+1:02d}"
 
-    # Scheduled bills/income for this month — same 90-day horizon as
-    # Forecast/Future Balances elsewhere in the app. Only the overlap
-    # between "this displayed month" and "today+1 .. today+90" is
+    # Scheduled bills/income for this month — same forecast horizon as
+    # Forecast/Future Balances elsewhere in the app (90 days, or 30 for a
+    # Basic-tier user - see get_forecast_days()). Only the overlap
+    # between "this displayed month" and "today+1 .. today+horizon" is
     # computed; a month entirely outside that window (a past month, or a
     # future one beyond the cap) just gets an empty dict, same as browsing
     # beyond the forecast horizon anywhere else.
     today_date = date.today()
-    horizon = today_date + timedelta(days=90)
+    horizon = today_date + timedelta(days=get_forecast_days())
     sched_start_inclusive = max(first_day, today_date + timedelta(days=1))
     sched_end_inclusive = min(last_day, horizon)
     future_day_data = {}
@@ -3337,13 +3372,13 @@ def calendar_day():
     release_db(db)
 
     # Scheduled bills/income — only meaningful for a future day within the
-    # same 90-day horizon used everywhere else; a past/today day (which can
-    # only ever have real transactions, matching calendar_view()'s
+    # same forecast horizon used everywhere else; a past/today day (which
+    # can only ever have real transactions, matching calendar_view()'s
     # today-exclusive convention) or a day beyond the horizon just gets an
     # empty list.
     scheduled = []
     today_date = date.today()
-    if today_date < day <= today_date + timedelta(days=90):
+    if today_date < day <= today_date + timedelta(days=get_forecast_days()):
         items_by_date = _get_scheduled_calendar_items(current_user.id, day - timedelta(days=1), day)
         scheduled = items_by_date.get(day.isoformat(), [])
 
@@ -3667,7 +3702,7 @@ def api_snapshot():
         days = int(request.args.get('days', 30))
     except (ValueError, TypeError):
         days = 30
-    days = max(1, min(90, days))
+    days = max(1, min(get_forecast_days(), days))
 
     today = date.today()
     target = today + timedelta(days=days)
@@ -3982,7 +4017,7 @@ def profile_send_feedback():
 @login_required
 def settings():
     track('page_view.settings')
-    is_pro = user_is_pro()
+    entitlement = get_display_entitlement()
     auto_apply_enabled, auto_apply_confirm = get_auto_apply_settings(current_user.id)
     budget_cycle_start = get_budget_cycle_start(current_user.id)
     # Notification digest preference (column added on first save if missing)
@@ -4089,7 +4124,7 @@ def settings():
         pass
 
     return render_template("settings.html",
-        is_pro=is_pro,
+        entitlement=entitlement,
         message=request.args.get("msg", ""),
         auto_apply_enabled=auto_apply_enabled,
         auto_apply_confirm=auto_apply_confirm,
@@ -5113,7 +5148,7 @@ def manage():
     cursor.close()
     release_db(db)
 
-    is_pro = user_is_pro()
+    entitlement = get_display_entitlement()
 
     # Resolve self-employed averaged rows to their live amount (manual figure or
     # rolling transaction average) — the stored income.amount column goes stale
@@ -5217,7 +5252,7 @@ def manage():
         investments=investments,
         goals=goals,
         safe_to_spend_for_goals=safe_to_spend_for_goals,
-        is_pro=is_pro,
+        entitlement=entitlement,
         has_primary=has_primary,
         message=request.args.get("msg", ""),
         my_money_setup=get_my_money_setup(current_user.id),
@@ -5774,12 +5809,15 @@ def settings_add_account():
     savings_type_raw = (request.form.get("savings_type") or "").strip()
     savings_type = savings_type_raw if acc_type == "savings" and savings_type_raw in ("variable", "fixed") else None
 
-    # Free tier limit: max 3 accounts. Locked accounts (from a past downgrade)
-    # don't count against this — they're not usable, so they shouldn't eat
-    # into the allowance of usable accounts a Free user gets.
-    if not user_is_pro():
+    # Tier account limit (3 for Legacy Free, 1 for Basic, unlimited for
+    # trialing/Pro - see get_account_limit()). Locked accounts (from a
+    # past downgrade) don't count against this — they're not usable, so
+    # they shouldn't eat into the allowance of usable accounts a
+    # non-unlimited tier gets.
+    account_limit = get_account_limit()
+    if account_limit is not None:
         existing = [a for a in get_active_accounts(current_user.id) if not a.get("is_locked")]
-        if len(existing) >= 3:
+        if len(existing) >= account_limit:
             return redirect(url_for("manage", msg="FREE_LIMIT_ACCOUNTS"))
 
     db = get_db()
@@ -6656,7 +6694,7 @@ def forecast():
 
     track('page_view.forecast')
     today = date.today()
-    forecast_days = 90
+    forecast_days = get_forecast_days()
     cache_key = f"forecast_{current_user.id}_{today.isoformat()}_{forecast_days}"
     force_refresh = request.args.get("refresh") == "1"
 
@@ -7123,16 +7161,22 @@ def register_post():
 
     expires_at = (datetime.now() + timedelta(days=7)).isoformat()
 
+    fallback_entitlement, trial_started_at, trial_ends_at = new_signup_entitlement_fields()
+    trial_started_param = _entitlement_ts_param(trial_started_at)
+    trial_ends_param = _entitlement_ts_param(trial_ends_at)
+
     if USE_POSTGRES:
         cursor.execute(
-            "INSERT INTO users (email, password, display_name, created_at, verify_token, verify_token_expires_at, show_welcome_modal) VALUES (%s, %s, %s, %s, %s, %s, 1) RETURNING id",
-            (email, hashed, display_name, today_str, token, expires_at)
+            "INSERT INTO users (email, password, display_name, created_at, verify_token, verify_token_expires_at, show_welcome_modal, "
+            "fallback_entitlement, trial_started_at, trial_ends_at) VALUES (%s, %s, %s, %s, %s, %s, 1, %s, %s, %s) RETURNING id",
+            (email, hashed, display_name, today_str, token, expires_at, fallback_entitlement, trial_started_param, trial_ends_param)
         )
         user_id = cursor.fetchone()[0]
     else:
         cursor.execute(
-            "INSERT INTO users (email, password, display_name, created_at, verify_token, verify_token_expires_at, show_welcome_modal) VALUES (?, ?, ?, ?, ?, ?, 1)",
-            (email, hashed, display_name, today_str, token, expires_at)
+            "INSERT INTO users (email, password, display_name, created_at, verify_token, verify_token_expires_at, show_welcome_modal, "
+            "fallback_entitlement, trial_started_at, trial_ends_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)",
+            (email, hashed, display_name, today_str, token, expires_at, fallback_entitlement, trial_started_param, trial_ends_param)
         )
         user_id = cursor.lastrowid
 
@@ -7343,18 +7387,23 @@ def auth_google_callback():
 
     # 3. Brand-new user — create account (Google accounts are inherently verified)
     today_str = date.today().isoformat()
+    fallback_entitlement, trial_started_at, trial_ends_at = new_signup_entitlement_fields()
+    trial_started_param = _entitlement_ts_param(trial_started_at)
+    trial_ends_param = _entitlement_ts_param(trial_ends_at)
     if USE_POSTGRES:
         cursor.execute(
-            "INSERT INTO users (email, password, display_name, created_at, verified, google_id, show_welcome_modal) "
-            "VALUES (%s, NULL, %s, %s, 1, %s, 1) RETURNING id",
-            (email, display_name or None, today_str, google_sub),
+            "INSERT INTO users (email, password, display_name, created_at, verified, google_id, show_welcome_modal, "
+            "fallback_entitlement, trial_started_at, trial_ends_at) "
+            "VALUES (%s, NULL, %s, %s, 1, %s, 1, %s, %s, %s) RETURNING id",
+            (email, display_name or None, today_str, google_sub, fallback_entitlement, trial_started_param, trial_ends_param),
         )
         user_id = cursor.fetchone()[0]
     else:
         cursor.execute(
-            "INSERT INTO users (email, password, display_name, created_at, verified, google_id, show_welcome_modal) "
-            "VALUES (?, NULL, ?, ?, 1, ?, 1)",
-            (email, display_name or None, today_str, google_sub),
+            "INSERT INTO users (email, password, display_name, created_at, verified, google_id, show_welcome_modal, "
+            "fallback_entitlement, trial_started_at, trial_ends_at) "
+            "VALUES (?, NULL, ?, ?, 1, ?, 1, ?, ?, ?)",
+            (email, display_name or None, today_str, google_sub, fallback_entitlement, trial_started_param, trial_ends_param),
         )
         user_id = cursor.lastrowid
     db.commit()
@@ -7755,6 +7804,12 @@ import stripe
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
+# One reusable Billing Portal Configuration, set up once (Stripe Dashboard,
+# or a one-off script) with cancellation mode set to "at period end" - see
+# CLAUDE.md. billing_portal() passes this id on every session rather than
+# creating a new Configuration per request. None is a valid value (Stripe
+# falls back to the account's default configuration) until this is set.
+STRIPE_PORTAL_CONFIGURATION_ID = os.environ.get("STRIPE_PORTAL_CONFIGURATION_ID")
 
 # --- UPGRADE TO PRO ---
 # Creates a Stripe Checkout session and redirects the user to Stripe's hosted payment page
@@ -7835,10 +7890,10 @@ def billing_portal():
         return redirect(url_for("settings", msg="No billing account found."))
 
     try:
-        portal_session = stripe.billing_portal.Session.create(
-            customer=customer_id,
-            return_url="https://spendara.co.uk/settings",
-        )
+        session_kwargs = {"customer": customer_id, "return_url": "https://spendara.co.uk/settings"}
+        if STRIPE_PORTAL_CONFIGURATION_ID:
+            session_kwargs["configuration"] = STRIPE_PORTAL_CONFIGURATION_ID
+        portal_session = stripe.billing_portal.Session.create(**session_kwargs)
         return redirect(portal_session.url)
     except Exception as e:
         logger.error(f"Stripe portal error: {e}")
@@ -7846,13 +7901,26 @@ def billing_portal():
 
 
 # --- STRIPE WEBHOOK ---
-# Stripe calls this endpoint when subscription events happen
-# We verify the signature to make sure it's genuinely from Stripe (not a forged request)
-# checkout.session.completed → user paid → set is_pro=1, save stripe_customer_id
-# customer.subscription.deleted → user cancelled → set is_pro=0
-# customer.subscription.updated → status changed → is_pro=0 for past_due/unpaid/canceled,
-#   is_pro=1 for active/trialing (covers payment-retry recovery)
-# invoice.payment_failed → Stripe is still retrying, don't revoke access yet — just log/track
+# Stripe calls this endpoint when subscription events happen. Full design
+# in CLAUDE.md's "Pricing/entitlement model" section - condensed pointer:
+#
+# - Dual-write, unconditionally, regardless of ENTITLEMENT_RESOLVER_ACTIVE:
+#   the legacy is_pro cache (still the live authorization signal while the
+#   flag is off) AND the new stripe_* mirror fields, so the new fields are
+#   never stale by the time the flag eventually flips - they've been kept
+#   current in real time since the moment this code deployed, not just
+#   since activation.
+# - Out-of-order/same-timestamp-safe by construction: every subscription-
+#   state event (checkout completion, update, delete) retrieves the LIVE
+#   subscription object from Stripe and applies THAT, rather than trusting
+#   the event payload's own snapshot. Two events in any order, or sharing
+#   a timestamp, converge on the same result, because both end up asking
+#   Stripe "what's actually true right now."
+# - Atomic: dedup check, live-state apply, account-lock sync, and the
+#   processed-event record all happen on one connection with one commit
+#   at the end (or a full rollback + 5xx on any failure, deliberately
+#   triggering Stripe's own webhook retry - the event is never marked
+#   processed on failure, so the retry isn't blocked by dedup).
 @app.post("/stripe/webhook")
 def stripe_webhook():
     payload = request.get_data()
@@ -7864,117 +7932,341 @@ def stripe_webhook():
         logger.warning(f"Stripe webhook signature error: {e}")
         return "Invalid signature", 400
 
-    # Payment completed — activate Pro
-    if event["type"] == "checkout.session.completed":
-        # .to_dict() converts the StripeObject (and nested StripeObjects like
-        # metadata) into plain dicts — StripeObject itself has no .get(), only
-        # __getitem__/attribute access, so calling .get() directly on it raises
-        # AttributeError in live mode (this is exactly what crashed the webhook).
-        session_obj = event["data"]["object"].to_dict()
-        user_id = session_obj.get("metadata", {}).get("user_id")
-        customer_id = session_obj.get("customer")
+    event_type = event["type"]
+    if event_type not in (
+        "checkout.session.completed", "customer.subscription.updated",
+        "customer.subscription.deleted", "invoice.payment_failed",
+    ):
+        return "OK", 200
 
-        if user_id:
-            db = get_db()
-            cursor = db.cursor()
-            if USE_POSTGRES:
-                cursor.execute("UPDATE users SET is_pro = 1, stripe_customer_id = %s WHERE id = %s", (customer_id, user_id))
-            else:
-                cursor.execute("UPDATE users SET is_pro = 1, stripe_customer_id = ? WHERE id = ?", (customer_id, user_id))
-            db.commit()
-            cursor.close()
-            release_db(db)
-            logger.info(f"Pro activated for user_id={user_id}")
-            sync_account_locks(int(user_id), True)
-            track_for_user(int(user_id), 'billing.upgrade_complete')
-
-    # Subscription cancelled — deactivate Pro
-    elif event["type"] == "customer.subscription.deleted":
-        customer_id = event["data"]["object"].to_dict().get("customer")
-
-        if customer_id:
-            db = get_db()
-            cursor = db.cursor()
-            if USE_POSTGRES:
-                cursor.execute("SELECT id FROM users WHERE stripe_customer_id = %s", (customer_id,))
-            else:
-                cursor.execute("SELECT id FROM users WHERE stripe_customer_id = ?", (customer_id,))
-            uid_row = cursor.fetchone()
-            if USE_POSTGRES:
-                cursor.execute("UPDATE users SET is_pro = 0 WHERE stripe_customer_id = %s", (customer_id,))
-            else:
-                cursor.execute("UPDATE users SET is_pro = 0 WHERE stripe_customer_id = ?", (customer_id,))
-            db.commit()
-            cursor.close()
-            release_db(db)
-            logger.info(f"Pro deactivated for customer_id={customer_id}")
-            if uid_row:
-                sync_account_locks(uid_row[0], False)
-                track_for_user(uid_row[0], 'billing.cancel')
-
-    # Subscription status changed — keep is_pro in sync with the subscription's current
-    # status. Stripe sends this alongside subscription.deleted when a subscription is
-    # fully cancelled (both end up setting is_pro=0, so they agree rather than race),
-    # and it's also how we learn a subscription recovered after a failed-payment retry.
-    elif event["type"] == "customer.subscription.updated":
-        sub_obj = event["data"]["object"].to_dict()
-        customer_id = sub_obj.get("customer")
-        status = sub_obj.get("status")
-
-        if status in ("past_due", "unpaid", "canceled"):
-            new_is_pro = 0
-        elif status in ("active", "trialing"):
-            new_is_pro = 1
+    db = get_db()
+    cursor = db.cursor()
+    try:
+        if USE_POSTGRES:
+            cursor.execute("SELECT 1 FROM processed_stripe_events WHERE event_id = %s", (event["id"],))
         else:
-            new_is_pro = None
+            cursor.execute("SELECT 1 FROM processed_stripe_events WHERE event_id = ?", (event["id"],))
+        if cursor.fetchone():
+            db.rollback()
+            return "OK", 200
 
-        if customer_id and new_is_pro is not None:
-            db = get_db()
-            cursor = db.cursor()
-            if USE_POSTGRES:
-                cursor.execute("SELECT id FROM users WHERE stripe_customer_id = %s", (customer_id,))
-            else:
-                cursor.execute("SELECT id FROM users WHERE stripe_customer_id = ?", (customer_id,))
-            uid_row = cursor.fetchone()
-            if USE_POSTGRES:
-                cursor.execute("UPDATE users SET is_pro = %s WHERE stripe_customer_id = %s", (new_is_pro, customer_id))
-            else:
-                cursor.execute("UPDATE users SET is_pro = ? WHERE stripe_customer_id = ?", (new_is_pro, customer_id))
-            db.commit()
-            cursor.close()
-            release_db(db)
-            logger.info(f"Subscription status '{status}' for customer_id={customer_id} -> is_pro={new_is_pro}")
-            if uid_row:
-                sync_account_locks(uid_row[0], bool(new_is_pro))
-                track_for_user(uid_row[0], 'billing.subscription_recovered' if new_is_pro else 'billing.subscription_past_due')
+        if event_type == "checkout.session.completed":
+            # .to_dict() converts the StripeObject (and nested StripeObjects like
+            # metadata) into plain dicts — StripeObject itself has no .get(), only
+            # __getitem__/attribute access, so calling .get() directly on it raises
+            # AttributeError in live mode (this is exactly what crashed the webhook,
+            # historically).
+            session_obj = event["data"]["object"].to_dict()
+            user_id_raw = session_obj.get("metadata", {}).get("user_id")
+            subscription_id = session_obj.get("subscription")
+            customer_id = session_obj.get("customer")
+            if user_id_raw and subscription_id:
+                user_id = int(user_id_raw)
+                live_sub = stripe.Subscription.retrieve(subscription_id)
+                _apply_subscription_state(
+                    cursor, user_id=user_id, customer_id=customer_id,
+                    status=live_sub.status,
+                    cancel_at_period_end=live_sub.cancel_at_period_end,
+                    current_period_end=live_sub.current_period_end,
+                    allow_incomplete_write=True,
+                )
+                logger.info(f"Checkout completed for user_id={user_id}, live status={live_sub.status}")
+                track_for_user(user_id, 'billing.upgrade_complete')
 
-    # Payment failed — Stripe retries failed payments over a dunning cycle before the
-    # subscription actually lapses, so don't revoke access here. Just log it so at-risk
-    # subscriptions are visible; the real access change happens via the status update
-    # above (past_due/unpaid) or the eventual subscription.deleted.
-    elif event["type"] == "invoice.payment_failed":
-        invoice_obj = event["data"]["object"].to_dict()
-        customer_id = invoice_obj.get("customer")
-        logger.warning(f"Stripe payment failed for customer_id={customer_id}")
+        elif event_type in ("customer.subscription.updated", "customer.subscription.deleted"):
+            sub_obj = event["data"]["object"].to_dict()
+            customer_id = sub_obj.get("customer")
+            subscription_id = sub_obj.get("id")
+            if customer_id and subscription_id:
+                if USE_POSTGRES:
+                    cursor.execute("SELECT id FROM users WHERE stripe_customer_id = %s FOR UPDATE", (customer_id,))
+                else:
+                    cursor.execute("SELECT id FROM users WHERE stripe_customer_id = ?", (customer_id,))
+                uid_row = cursor.fetchone()
+                if uid_row:
+                    user_id = uid_row[0] if USE_POSTGRES else uid_row["id"]
+                    try:
+                        live_sub = stripe.Subscription.retrieve(subscription_id)
+                        status = live_sub.status
+                        cancel_at_end = live_sub.cancel_at_period_end
+                        period_end = live_sub.current_period_end
+                    except stripe.error.InvalidRequestError:
+                        # Subscription object genuinely gone (rare) - a
+                        # .deleted event with nothing left to retrieve is
+                        # itself the authoritative terminal signal.
+                        if event_type == "customer.subscription.deleted":
+                            status, cancel_at_end, period_end = "canceled", False, None
+                        else:
+                            raise
+                    _apply_subscription_state(
+                        cursor, user_id=user_id, customer_id=customer_id,
+                        status=status, cancel_at_period_end=cancel_at_end,
+                        current_period_end=period_end, allow_incomplete_write=False,
+                    )
+                    logger.info(f"Subscription {event_type} for customer_id={customer_id} -> live status={status}")
+                    if status in ACCESS_GRANTING_STATUSES:
+                        track_for_user(user_id, 'billing.subscription_recovered')
+                    elif status == "canceled":
+                        track_for_user(user_id, 'billing.cancel')
+                    else:
+                        track_for_user(user_id, 'billing.subscription_past_due')
 
-        if customer_id:
-            db = get_db()
-            cursor = db.cursor()
-            if USE_POSTGRES:
-                cursor.execute("SELECT id FROM users WHERE stripe_customer_id = %s", (customer_id,))
-            else:
-                cursor.execute("SELECT id FROM users WHERE stripe_customer_id = ?", (customer_id,))
-            uid_row = cursor.fetchone()
-            cursor.close()
-            release_db(db)
-            if uid_row:
-                track_for_user(uid_row[0], 'billing.payment_failed')
+        elif event_type == "invoice.payment_failed":
+            # Stripe retries failed payments over a dunning cycle before the
+            # subscription actually lapses, so don't revoke access here —
+            # just log/track. The real access change happens via the status
+            # update above (which now retains access through past_due too -
+            # see ACCESS_GRANTING_STATUSES) or the eventual terminal state.
+            invoice_obj = event["data"]["object"].to_dict()
+            customer_id = invoice_obj.get("customer")
+            logger.warning(f"Stripe payment failed for customer_id={customer_id}")
+            if customer_id:
+                if USE_POSTGRES:
+                    cursor.execute("SELECT id FROM users WHERE stripe_customer_id = %s", (customer_id,))
+                else:
+                    cursor.execute("SELECT id FROM users WHERE stripe_customer_id = ?", (customer_id,))
+                uid_row = cursor.fetchone()
+                if uid_row:
+                    track_for_user(uid_row[0] if USE_POSTGRES else uid_row["id"], 'billing.payment_failed')
 
+        if USE_POSTGRES:
+            cursor.execute(
+                "INSERT INTO processed_stripe_events (event_id, event_type, processed_at) VALUES (%s, %s, %s)",
+                (event["id"], event_type, _utcnow()),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO processed_stripe_events (event_id, event_type, processed_at) VALUES (?, ?, ?)",
+                (event["id"], event_type, _utcnow().isoformat()),
+            )
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Stripe webhook processing error ({event_type}, event_id={event.get('id')}): {e}")
+        cursor.close()
+        release_db(db)
+        # A non-2xx deliberately triggers Stripe's own retry - the event
+        # was never marked processed, so dedup won't block that retry.
+        return "Webhook processing error", 500
+
+    cursor.close()
+    release_db(db)
     return "OK", 200
 
 
-# --- HELPER: check if current user is Pro ---
-def user_is_pro():
+def _apply_subscription_state(cursor, user_id, customer_id, status, cancel_at_period_end, current_period_end, allow_incomplete_write):
+    """Writes the live Stripe facts for one user, on the caller's open
+    transaction/cursor (no commit here). Dual-writes both the legacy
+    is_pro cache (paid-Stripe-only semantics: 1 only for a genuine
+    access-granting status, never for our internal trial) and the new
+    stripe_* mirror fields unconditionally, regardless of
+    ENTITLEMENT_RESOLVER_ACTIVE.
+
+    'incomplete' is only ever written when allow_incomplete_write=True
+    (checkout completion on a brand-new subscription - nothing
+    pre-existing to protect there, e.g. pending 3DS/SCA). An update/delete
+    event reporting 'incomplete' on an existing subscription is logged
+    and otherwise ignored rather than overwriting whatever state was
+    already stored - Stripe's state machine doesn't really transition an
+    established subscription back to 'incomplete' through normal
+    operation, so any such event is treated as anomalous."""
+    if status == "incomplete" and not allow_incomplete_write:
+        logger.warning(f"Ignoring anomalous 'incomplete' status on existing subscription for user_id={user_id}")
+        return
+
+    is_pro_cache = 1 if status in ACCESS_GRANTING_STATUSES else 0
+    period_end_dt = datetime.fromtimestamp(current_period_end, tz=timezone.utc).replace(tzinfo=None) if current_period_end else None
+    period_end_val = period_end_dt if USE_POSTGRES else (period_end_dt.isoformat() if period_end_dt else None)
+
+    if USE_POSTGRES:
+        cursor.execute(
+            "UPDATE users SET is_pro=%s, stripe_customer_id=%s, stripe_subscription_status=%s, "
+            "stripe_cancel_at_period_end=%s, stripe_current_period_end=%s WHERE id=%s",
+            (is_pro_cache, customer_id, status, int(bool(cancel_at_period_end)), period_end_val, user_id),
+        )
+    else:
+        cursor.execute(
+            "UPDATE users SET is_pro=?, stripe_customer_id=?, stripe_subscription_status=?, "
+            "stripe_cancel_at_period_end=?, stripe_current_period_end=? WHERE id=?",
+            (is_pro_cache, customer_id, status, int(bool(cancel_at_period_end)), period_end_val, user_id),
+        )
+
+    # Account-lock sync: while the resolver is inactive, preserve today's
+    # exact behaviour (unlimited vs the old 3-account Free limit) driven
+    # by the is_pro cache just written above - NOT by the new stripe_*
+    # fields, which aren't authorising anything yet. Once active, use the
+    # real resolved limit (which correctly reflects e.g. a Legacy Free
+    # fallback rather than assuming 3 for every non-Pro user).
+    if ENTITLEMENT_RESOLVER_ACTIVE:
+        if USE_POSTGRES:
+            cursor.execute("SELECT * FROM users WHERE id=%s", (user_id,))
+        else:
+            cursor.execute("SELECT * FROM users WHERE id=?", (user_id,))
+        cols = [d[0] for d in cursor.description]
+        fresh_row = dict(zip(cols, cursor.fetchone()))
+        account_limit = get_entitlement(fresh_row)["account_limit"]
+    else:
+        account_limit = None if is_pro_cache else 3
+    sync_account_locks(user_id, account_limit, cursor=cursor)
+
+
+# =============================================================================
+# ENTITLEMENT SYSTEM (September 2026)
+# =============================================================================
+# Replaces the old permanent Free/Pro split with four tiers: legacy_free
+# (grandfathered pre-cutover users, 3 accounts/90-day forecast, no
+# Pro-only features - matches what Free always was), trialing (a 30-day
+# internal trial for new signups, full Pro feature access, no Stripe
+# involvement), basic (post-trial fallback for new-model users, 1
+# account/30-day forecast, no Pro-only features), and pro (real paying
+# Stripe subscriber, unlimited/90 days). Full design, the expand/migrate/
+# activate cutover sequence, and the reasoning behind every choice below
+# is documented in CLAUDE.md's "Pricing/entitlement model" section - this
+# is a condensed pointer, not a restatement.
+#
+# get_entitlement() is a pure function: the ONE place the effective tier
+# is computed, from already-loaded raw facts, never from another derived/
+# cached field. is_pro is retired from every authorization decision -
+# see user_is_pro_legacy() below for its sole remaining purpose.
+
+ACCESS_GRANTING_STATUSES = {"active", "trialing", "past_due", "paused"}
+TRIAL_DAYS = 30
+
+
+def new_signup_entitlement_fields():
+    """Called by both signup routes (email/password and Google OAuth) at
+    the moment a new users row is created. Explicitly returns
+    (fallback_entitlement, trial_started_at, trial_ends_at) rather than
+    letting the row fall through to the bare column DEFAULT - this closes
+    the cutover-race gap where a user registering after the Legacy Free
+    backfill has run, but before ENTITLEMENT_RESOLVER_ACTIVE flips to
+    true, would otherwise land with fallback_entitlement='basic' (the
+    schema default) and no trial at all: neither a genuine pre-cutover
+    Legacy Free user nor a genuine new-model trial signup. While the flag
+    is off, every new signup is explicitly legacy_free (matching "signed
+    up before the pricing model activated") with no trial fields; once
+    on, every new signup is explicitly basic with a real 30-day trial.
+    Every row, at every point in the cutover, lands in exactly one
+    cohort - see CLAUDE.md."""
+    if not ENTITLEMENT_RESOLVER_ACTIVE:
+        return "legacy_free", None, None
+    started = _utcnow()
+    return "basic", started, started + timedelta(days=TRIAL_DAYS)
+
+
+def _utcnow():
+    """The single source of 'now' for every entitlement timestamp write
+    and comparison: explicit UTC, immediately stripped to naive so it
+    matches the naive TIMESTAMP (Postgres)/TEXT (SQLite) columns it's
+    compared against - deliberately never NOW()/CURRENT_TIMESTAMP, whose
+    timezone depends on the DB session and isn't verified. See CLAUDE.md."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _parse_entitlement_dt(value):
+    """Normalizes a users.* entitlement timestamp column read-back (a
+    native datetime on Postgres, an ISO string on SQLite) into a naive
+    UTC datetime for comparison. Every such column is always written via
+    _utcnow(), never a SQL default, so there's no timezone ambiguity to
+    resolve here - just a type normalization between the two DB drivers."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None) if value.tzinfo else value
+    return datetime.fromisoformat(str(value))
+
+
+def _entitlement_ts_param(dt):
+    """Converts a naive UTC datetime (or None) into the right bind-param
+    shape for whichever engine is active: psycopg2 accepts a Python
+    datetime directly for a TIMESTAMP column; sqlite3 needs a string for
+    its TEXT column."""
+    if dt is None:
+        return None
+    return dt if USE_POSTGRES else dt.isoformat()
+
+
+def get_entitlement(user_row):
+    """Pure resolver - the single source of truth for a user's effective
+    tier. Takes an already-loaded users row (dict-like); never queries
+    the DB and never writes anything. See reconcile_and_get_entitlement()
+    for the side-effecting counterpart that keeps accounts.is_locked in
+    sync with whatever this resolves to."""
+    now = _utcnow()
+    status = user_row.get("stripe_subscription_status")
+
+    if status in ACCESS_GRANTING_STATUSES:
+        cancel_at_end = bool(user_row.get("stripe_cancel_at_period_end"))
+        period_end = _parse_entitlement_dt(user_row.get("stripe_current_period_end"))
+        if cancel_at_end and period_end and now >= period_end:
+            # Scheduled cancellation has actually completed. An ordinary
+            # renewal never sets cancel_at_period_end, so this branch can
+            # never fire for a normally-renewing subscriber no matter how
+            # far stripe_current_period_end has drifted into the past -
+            # this is a structural guarantee, not a date check that has
+            # to be remembered to scope correctly.
+            tier = _fallback_tier(user_row)
+        else:
+            tier = "pro"
+    else:
+        trial_ends_at = _parse_entitlement_dt(user_row.get("trial_ends_at"))
+        if trial_ends_at and now < trial_ends_at:
+            tier = "trialing"
+        else:
+            tier = _fallback_tier(user_row)
+
+    pro_features = tier in ("pro", "trialing")
+    account_limit, forecast_days = {
+        "pro": (None, 90),
+        "trialing": (None, 90),
+        "legacy_free": (3, 90),
+        "basic": (1, 30),
+    }[tier]
+    trial_days_remaining = None
+    if tier == "trialing":
+        trial_ends_at = _parse_entitlement_dt(user_row.get("trial_ends_at"))
+        # Display-only, rounded up so "a few hours left" still reads as
+        # "1 day left" rather than "0 days left" - never used for the
+        # actual expiry decision above, which compares real datetimes.
+        trial_days_remaining = max(1, -(-(trial_ends_at - now).total_seconds() // 86400))
+        trial_days_remaining = int(trial_days_remaining)
+    return {
+        "tier": tier, "pro_features": pro_features, "account_limit": account_limit,
+        "forecast_days": forecast_days, "trial_days_remaining": trial_days_remaining,
+    }
+
+
+def _fallback_tier(user_row):
+    return "legacy_free" if user_row.get("fallback_entitlement") == "legacy_free" else "basic"
+
+
+def reconcile_and_get_entitlement(user_row, user_id):
+    """Called once per request from load_user() once the resolver is
+    active. Compares the resolver's account_limit against
+    reconciled_account_limit (last known enforced state); on a mismatch,
+    reconciles immediately - in this same request, before the route body
+    runs. This generalizes across every lazily-detectable transition
+    (trial expiry, a feedback extension re-arming a later expiry, and a
+    paid subscription's scheduled cancellation reaching
+    current_period_end before its terminal webhook arrives) rather than
+    one enumerated case. Transitions that already have a synchronous
+    trigger (the webhook, the trial-extension admin route) call
+    sync_account_locks() directly at that moment too, so the common case
+    here is a single cheap field comparison with no extra query."""
+    entitlement = get_entitlement(user_row)
+    if user_row.get("reconciled_account_limit") != entitlement["account_limit"]:
+        sync_account_locks(user_id, entitlement["account_limit"])
+    return entitlement
+
+
+def user_is_pro_legacy():
+    """The pre-September-2026 Pro check, unchanged. This is the live
+    authorization path while ENTITLEMENT_RESOLVER_ACTIVE is false, and
+    has zero remaining callers once it's true - every gate goes through
+    user_has_pro_features()/current_user.entitlement instead. Kept as its
+    own function (not deleted) because it's also what the rollback
+    reconciliation script re-derives account locks from if the cutover
+    is ever rolled back."""
     db = get_db()
     cursor = db.cursor()
     if USE_POSTGRES:
@@ -7987,17 +8279,83 @@ def user_is_pro():
     return bool(row[0] if USE_POSTGRES else row["is_pro"]) if row else False
 
 
-# --- HELPER: lock/unlock accounts on Pro <-> Free transitions ---
-# Free tier allows 3 accounts. A user who was ever Pro can have more than
-# that; downgrading shouldn't delete anything, but accounts beyond the
-# oldest 3 (by id, i.e. creation order — accounts has no created_at column)
-# become locked: visible with data intact, but read-only until they
-# re-upgrade, at which point everything unlocks exactly as it was.
-def sync_account_locks(user_id, is_pro):
-    db = get_db()
-    cursor = db.cursor()
+def user_has_pro_features():
+    """Replaces every old user_is_pro() call site. While the resolver is
+    inactive, behaves identically to the old check (legacy_free/basic
+    don't exist yet, so this is just is_pro). Once active, true for both
+    'pro' and 'trialing' - the 30-day trial is a complete Pro product
+    experience, not a separate capability tier - and false for
+    legacy_free/basic, so a future Pro-only feature added after this
+    point automatically excludes Legacy Free without needing to remember
+    to add it to an exclusion list."""
+    if not ENTITLEMENT_RESOLVER_ACTIVE:
+        return user_is_pro_legacy()
+    ent = getattr(current_user, "entitlement", None)
+    return bool(ent and ent["pro_features"])
+
+
+def get_account_limit():
+    """None means unlimited accounts."""
+    if not ENTITLEMENT_RESOLVER_ACTIVE:
+        return None if user_is_pro_legacy() else 3
+    ent = getattr(current_user, "entitlement", None)
+    return ent["account_limit"] if ent else 3
+
+
+def get_forecast_days():
+    if not ENTITLEMENT_RESOLVER_ACTIVE:
+        return 90
+    ent = getattr(current_user, "entitlement", None)
+    return ent["forecast_days"] if ent else 90
+
+
+# Back-compat alias: every pre-existing call site (`if not user_is_pro():`)
+# keeps working unchanged, now routed through the flag-aware check above.
+def user_is_pro():
+    return user_has_pro_features()
+
+
+def get_display_entitlement():
+    """The one thing templates read for Plan-tab/billing display - never
+    is_pro directly (see CLAUDE.md: is_pro has zero authorization readers
+    once the resolver is active, and this function is the reason it also
+    has no *display* readers left in any template, at any point in the
+    cutover). While the resolver is inactive, mirrors today's plain
+    Free/Pro display exactly - 'today_free' is a display-only label
+    distinct from 'legacy_free'/'basic' so old-model pages never
+    accidentally render new-model copy before Activation. Once active,
+    returns the real 4-tier entitlement."""
+    if ENTITLEMENT_RESOLVER_ACTIVE:
+        ent = getattr(current_user, "entitlement", None)
+        if ent:
+            return ent
+        return {"tier": "basic", "pro_features": False, "account_limit": 1, "forecast_days": 30, "trial_days_remaining": None}
+    if user_is_pro_legacy():
+        return {"tier": "pro", "pro_features": True, "account_limit": None, "forecast_days": 90, "trial_days_remaining": None}
+    return {"tier": "today_free", "pro_features": False, "account_limit": 3, "forecast_days": 90, "trial_days_remaining": None}
+
+
+# --- HELPER: lock/unlock accounts beyond a tier's account limit ---
+# account_limit=None unlocks everything; an int locks every active
+# account beyond the oldest `account_limit` (by id, i.e. creation order -
+# accounts has no created_at column), visible with data intact but
+# read-only until the limit is raised again, at which point everything
+# unlocks exactly as it was. Also writes reconciled_account_limit, so
+# every caller (webhook, admin routes, the lazy reconciliation path
+# above) keeps that bookkeeping field correct just by calling this
+# function - no separate step to remember.
+#
+# Pass `cursor` to run as part of an already-open transaction the caller
+# owns (not committed or closed here - the webhook handler uses this for
+# full atomicity); omit it to open and commit a connection of its own, as
+# every other call site does.
+def sync_account_locks(user_id, account_limit, cursor=None):
+    owns_connection = cursor is None
+    if owns_connection:
+        db = get_db()
+        cursor = db.cursor()
     try:
-        if is_pro:
+        if account_limit is None:
             if USE_POSTGRES:
                 cursor.execute("UPDATE accounts SET is_locked = 0 WHERE user_id = %s", (user_id,))
             else:
@@ -8008,20 +8366,27 @@ def sync_account_locks(user_id, is_pro):
             else:
                 cursor.execute("SELECT id FROM accounts WHERE user_id = ? AND active = 1 ORDER BY id ASC", (user_id,))
             active_ids = [row[0] for row in cursor.fetchall()]
-            keep_ids = set(active_ids[:3])
+            keep_ids = set(active_ids[:account_limit])
             for acc_id in active_ids:
                 lock_value = 0 if acc_id in keep_ids else 1
                 if USE_POSTGRES:
                     cursor.execute("UPDATE accounts SET is_locked = %s WHERE id = %s", (lock_value, acc_id))
                 else:
                     cursor.execute("UPDATE accounts SET is_locked = ? WHERE id = ?", (lock_value, acc_id))
-        db.commit()
+        if USE_POSTGRES:
+            cursor.execute("UPDATE users SET reconciled_account_limit = %s WHERE id = %s", (account_limit, user_id))
+        else:
+            cursor.execute("UPDATE users SET reconciled_account_limit = ? WHERE id = ?", (account_limit, user_id))
+        if owns_connection:
+            db.commit()
     finally:
-        cursor.close()
-        release_db(db)
+        if owns_connection:
+            cursor.close()
+            release_db(db)
     # A cached forecast computed before this lock/unlock transition would show
     # the wrong set of accounts for up to FORECAST_CACHE_TTL - bust it so the
-    # next load reflects the new lock state immediately.
+    # next load reflects the new lock state immediately. Pure in-memory, safe
+    # to call regardless of whether the caller's transaction has committed yet.
     bust_forecast_cache(user_id)
 
 
@@ -8133,58 +8498,108 @@ def admin_analytics():
     )
 
 
-# --- FOUNDER/ADMIN PRO OVERRIDE ---
-# Grants Pro to a specific user without going through Stripe at all - for
-# founder/testing accounts only. Deliberately reuses the exact same
-# users.is_pro column and user_is_pro() read path every other Pro check in
-# the app already uses (routes, templates, sync_account_locks) rather than
-# a parallel "is this a founder account" check bolted on elsewhere - one
-# engine, same principle as everywhere else in this codebase. Never writes
-# stripe_customer_id, so no Stripe webhook (which only ever acts on a
-# matching stripe_customer_id) can revoke it later. Same admin gate as
-# /admin/analytics - requires the admin user to have already unlocked the
-# admin area this session via /admin/unlock.
-@app.get("/admin/grant-pro")
+# --- /admin/grant-pro: RETIRED (September 2026) ---
+# Used to grant permanent Pro by writing is_pro=1 directly, with no real
+# Stripe subscription behind it. Retired rather than redesigned: under the
+# entitlement system, is_pro is meant to mirror genuine Stripe state only
+# (see CLAUDE.md - "is_pro cache semantics") - writing it for a non-Stripe
+# grant would be fabricating exactly the kind of fact that column exists
+# to report honestly, and would no longer even grant anything once the
+# resolver is active (nothing reads is_pro for authorization any more).
+# Founder/testing Pro access should go through a real Stripe test-mode
+# subscription instead, which exercises the actual paid code path.
+#
+# Historical is_pro=1 users with no stripe_customer_id (i.e. accounts that
+# used this route before retirement) are explicitly enumerated and logged
+# during the Migrate phase of the cutover and land on Legacy Free via the
+# same grandfathering backfill as every other pre-cutover user - see
+# CLAUDE.md and scripts/reconcile_stripe_subscribers.py. No user was ever
+# charged for a grant made this way, so this isn't downgrading a paying
+# customer.
+
+
+# --- FEEDBACK-BASED TRIAL EXTENSION (September 2026) ---
+# Grants exactly one additional 30-day extension to a user's trial, for
+# genuinely useful feedback, manually approved. Same admin gate as
+# /admin/analytics and the old /admin/grant-pro. Concurrency-safe via a
+# conditional UPDATE (WHERE feedback_extension_granted_at IS NULL) rather
+# than a read-then-write check - two simultaneous requests for the same
+# user can't both succeed, since only one UPDATE can match the still-NULL
+# row; the loser's rowcount is 0 and it applies nothing. Anchors the new
+# expiry at max(existing trial_ends_at, now) + 30 days, so an extension
+# approved after the trial has already lapsed still provides a genuine
+# month (anchoring to the old, already-past trial_ends_at instead would
+# land in the past). Unlocks accounts immediately, synchronously, in the
+# same transaction - not left to the next request's lazy reconciliation.
+@app.get("/admin/extend-trial")
 @login_required
 @limiter.limit("30 per hour")
-def admin_grant_pro():
+def admin_extend_trial():
     if current_user.id != ADMIN_USER_ID or session.get("admin_unlocked") != ADMIN_SECRET or not ADMIN_SECRET:
         logger.warning(f"Blocked admin access attempt — user_id={current_user.id} ip={request.remote_addr}")
         return render_template("404.html"), 404
 
     email = (request.args.get("email") or "").strip().lower()
     if not email:
-        return "Usage: /admin/grant-pro?email=someone@example.com", 400
+        return "Usage: /admin/extend-trial?email=someone@example.com", 400
 
     db = get_db()
     cursor = db.cursor()
-    if USE_POSTGRES:
-        cursor.execute("SELECT id FROM users WHERE LOWER(email) = %s", (email,))
-    else:
-        cursor.execute("SELECT id FROM users WHERE LOWER(email) = ?", (email,))
-    row = cursor.fetchone()
-    if not row:
+    try:
+        if USE_POSTGRES:
+            cursor.execute("SELECT id, trial_ends_at FROM users WHERE LOWER(email) = %s", (email,))
+        else:
+            cursor.execute("SELECT id, trial_ends_at FROM users WHERE LOWER(email) = ?", (email,))
+        row = cursor.fetchone()
+        if not row:
+            db.rollback()
+            cursor.close()
+            release_db(db)
+            return f"No user found with email {email}", 404
+        target_user_id = row[0] if USE_POSTGRES else row["id"]
+        existing_trial_ends_at = _parse_entitlement_dt(row[1] if USE_POSTGRES else row["trial_ends_at"])
+
+        now = _utcnow()
+        anchor = max(existing_trial_ends_at or now, now)
+        new_trial_ends_at = anchor + timedelta(days=TRIAL_DAYS)
+        new_trial_ends_param = _entitlement_ts_param(new_trial_ends_at)
+
+        if USE_POSTGRES:
+            cursor.execute(
+                "UPDATE users SET trial_ends_at=%s, feedback_extension_granted_at=%s, feedback_extension_granted_by=%s "
+                "WHERE id=%s AND feedback_extension_granted_at IS NULL",
+                (new_trial_ends_param, _entitlement_ts_param(now), current_user.id, target_user_id),
+            )
+        else:
+            cursor.execute(
+                "UPDATE users SET trial_ends_at=?, feedback_extension_granted_at=?, feedback_extension_granted_by=? "
+                "WHERE id=? AND feedback_extension_granted_at IS NULL",
+                (new_trial_ends_param, _entitlement_ts_param(now), current_user.id, target_user_id),
+            )
+
+        if cursor.rowcount != 1:
+            db.rollback()
+            cursor.close()
+            release_db(db)
+            return f"{email} has already received their one-time feedback extension.", 400
+
+        # Immediate, synchronous unlock - full trial access restored now,
+        # not left to the next request's lazy reconciliation. Same
+        # transaction as the update above.
+        sync_account_locks(target_user_id, None, cursor=cursor)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"admin_extend_trial error for {email}: {e}")
         cursor.close()
         release_db(db)
-        return f"No user found with email {email}", 404
-    target_user_id = row[0] if USE_POSTGRES else row["id"]
+        return "Could not extend trial. Please try again.", 500
 
-    if USE_POSTGRES:
-        cursor.execute("UPDATE users SET is_pro = 1 WHERE id = %s", (target_user_id,))
-    else:
-        cursor.execute("UPDATE users SET is_pro = 1 WHERE id = ?", (target_user_id,))
-    db.commit()
     cursor.close()
     release_db(db)
 
-    # Same unlock-everything step the real Stripe upgrade path triggers on
-    # checkout.session.completed - without this, any of the founder's
-    # accounts already locked from a prior Free-tier state would stay
-    # locked despite is_pro now being true.
-    sync_account_locks(target_user_id, True)
-
-    logger.info(f"Founder Pro override granted by admin user_id={current_user.id} to user_id={target_user_id} ({email})")
-    return f"Pro access granted to {email} (founder override — not tied to any Stripe subscription)."
+    logger.info(f"Feedback trial extension granted by admin user_id={current_user.id} to user_id={target_user_id} ({email}), new trial_ends_at={new_trial_ends_at.isoformat()}")
+    return f"Trial extended for {email} — new expiry {new_trial_ends_at.isoformat()} UTC."
 
 
 # --- DELETE ACCOUNT ---

@@ -41,7 +41,7 @@ def five_accounts(db_conn, test_user):
 class TestSyncAccountLocksHelper:
     def test_downgrade_locks_all_but_oldest_three(self, app, test_user, five_accounts, db_conn):
         import app as app_module
-        app_module.sync_account_locks(test_user["id"], False)
+        app_module.sync_account_locks(test_user["id"], 3)
 
         rows = [_account_row(db_conn, acc_id) for acc_id in five_accounts]
         locked = [r["is_locked"] for r in rows]
@@ -49,8 +49,8 @@ class TestSyncAccountLocksHelper:
 
     def test_upgrade_unlocks_everything(self, app, test_user, five_accounts, db_conn):
         import app as app_module
-        app_module.sync_account_locks(test_user["id"], False)
-        app_module.sync_account_locks(test_user["id"], True)
+        app_module.sync_account_locks(test_user["id"], 3)
+        app_module.sync_account_locks(test_user["id"], None)
 
         rows = [_account_row(db_conn, acc_id) for acc_id in five_accounts]
         assert all(r["is_locked"] == 0 for r in rows)
@@ -59,7 +59,7 @@ class TestSyncAccountLocksHelper:
         """Locking must never delete or zero out account data."""
         import app as app_module
         before = [_account_row(db_conn, acc_id) for acc_id in five_accounts]
-        app_module.sync_account_locks(test_user["id"], False)
+        app_module.sync_account_locks(test_user["id"], 3)
         after = [_account_row(db_conn, acc_id) for acc_id in five_accounts]
 
         for b, a in zip(before, after):
@@ -70,27 +70,33 @@ class TestSyncAccountLocksHelper:
     def test_three_or_fewer_accounts_unaffected_by_downgrade(self, db_conn, test_user):
         import app as app_module
         ids = [_add_account(db_conn, test_user["id"], f"Acc {i}") for i in range(3)]
-        app_module.sync_account_locks(test_user["id"], False)
+        app_module.sync_account_locks(test_user["id"], 3)
         rows = [_account_row(db_conn, acc_id) for acc_id in ids]
         assert all(r["is_locked"] == 0 for r in rows)
 
 
 class TestWebhookTriggersLocking:
     def test_subscription_deleted_locks_excess_accounts(self, client, db_conn, test_user, five_accounts):
+        from tests.test_stripe_webhook import _FakeSub
         resp = _post_event(
             client,
             "customer.subscription.deleted",
-            {"object": "subscription", "customer": "cus_locktest"},
+            {"object": "subscription", "id": "sub_locktest", "customer": "cus_locktest"},
+            live_sub=_FakeSub("canceled"),
         )
         assert resp.status_code == 200
         rows = [_account_row(db_conn, acc_id) for acc_id in five_accounts]
         assert [r["is_locked"] for r in rows] == [0, 0, 0, 1, 1]
 
-    def test_subscription_updated_past_due_locks_excess_accounts(self, client, db_conn, test_user, five_accounts):
+    def test_subscription_updated_unpaid_locks_excess_accounts(self, client, db_conn, test_user, five_accounts):
+        """past_due deliberately retains access now (see CLAUDE.md) - use
+        a genuinely terminal status to exercise the locking path here."""
+        from tests.test_stripe_webhook import _FakeSub
         resp = _post_event(
             client,
             "customer.subscription.updated",
-            {"object": "subscription", "customer": "cus_locktest", "status": "past_due"},
+            {"object": "subscription", "id": "sub_locktest", "customer": "cus_locktest"},
+            live_sub=_FakeSub("unpaid"),
         )
         assert resp.status_code == 200
         rows = [_account_row(db_conn, acc_id) for acc_id in five_accounts]
@@ -100,10 +106,15 @@ class TestWebhookTriggersLocking:
         """The exact scenario from the brief: 5 accounts while Pro, downgrade,
         confirm oldest 3 active + newest 2 locked, then resubscribe and confirm
         all 5 active again with data intact."""
+        from tests.test_stripe_webhook import _FakeSub
         original = [_account_row(db_conn, acc_id) for acc_id in five_accounts]
 
         # Downgrade
-        r1 = _post_event(client, "customer.subscription.deleted", {"object": "subscription", "customer": "cus_locktest"})
+        r1 = _post_event(
+            client, "customer.subscription.deleted",
+            {"object": "subscription", "id": "sub_locktest", "customer": "cus_locktest"},
+            live_sub=_FakeSub("canceled"),
+        )
         assert r1.status_code == 200
         mid = [_account_row(db_conn, acc_id) for acc_id in five_accounts]
         assert [r["is_locked"] for r in mid] == [0, 0, 0, 1, 1]
@@ -112,7 +123,8 @@ class TestWebhookTriggersLocking:
         r2 = _post_event(
             client,
             "customer.subscription.updated",
-            {"object": "subscription", "customer": "cus_locktest", "status": "active"},
+            {"object": "subscription", "id": "sub_locktest", "customer": "cus_locktest"},
+            live_sub=_FakeSub("active"),
         )
         assert r2.status_code == 200
         final = [_account_row(db_conn, acc_id) for acc_id in five_accounts]
@@ -123,14 +135,17 @@ class TestWebhookTriggersLocking:
 
     def test_checkout_completed_also_unlocks(self, client, db_conn, test_user, five_accounts):
         """A fresh checkout (not just subscription recovery) should also unlock."""
+        from tests.test_stripe_webhook import _FakeSub
         import app as app_module
-        app_module.sync_account_locks(test_user["id"], False)
+        app_module.sync_account_locks(test_user["id"], 3)
         assert _account_row(db_conn, five_accounts[4])["is_locked"] == 1
 
         resp = _post_event(
             client,
             "checkout.session.completed",
-            {"object": "checkout.session", "metadata": {"user_id": str(test_user["id"])}, "customer": "cus_locktest_new"},
+            {"object": "checkout.session", "metadata": {"user_id": str(test_user["id"])},
+             "customer": "cus_locktest_new", "subscription": "sub_locktest_new"},
+            live_sub=_FakeSub("active"),
         )
         assert resp.status_code == 200
         assert _account_row(db_conn, five_accounts[4])["is_locked"] == 0
@@ -142,7 +157,7 @@ class TestEnforcementBlocksLockedAccounts:
 
     def test_add_expense_rejected_for_locked_account(self, auth_client, test_user, five_accounts, db_conn):
         import app as app_module
-        app_module.sync_account_locks(test_user["id"], False)
+        app_module.sync_account_locks(test_user["id"], 3)
         locked_name = db_conn.execute("SELECT name FROM accounts WHERE id = ?", (five_accounts[4],)).fetchone()["name"]
         before_balance = _account_row(db_conn, five_accounts[4])["balance"]
 
@@ -162,7 +177,7 @@ class TestEnforcementBlocksLockedAccounts:
 
     def test_add_income_rejected_for_locked_account(self, auth_client, test_user, five_accounts, db_conn):
         import app as app_module
-        app_module.sync_account_locks(test_user["id"], False)
+        app_module.sync_account_locks(test_user["id"], 3)
         locked_name = db_conn.execute("SELECT name FROM accounts WHERE id = ?", (five_accounts[3],)).fetchone()["name"]
         before_balance = _account_row(db_conn, five_accounts[3])["balance"]
 
@@ -174,7 +189,7 @@ class TestEnforcementBlocksLockedAccounts:
 
     def test_quick_add_rejected_for_locked_account(self, auth_client, test_user, five_accounts, db_conn):
         import app as app_module
-        app_module.sync_account_locks(test_user["id"], False)
+        app_module.sync_account_locks(test_user["id"], 3)
         locked_name = db_conn.execute("SELECT name FROM accounts WHERE id = ?", (five_accounts[4],)).fetchone()["name"]
 
         resp = auth_client.post(
@@ -186,7 +201,7 @@ class TestEnforcementBlocksLockedAccounts:
 
     def test_quick_adjust_rejected_for_locked_account(self, auth_client, test_user, five_accounts, db_conn):
         import app as app_module
-        app_module.sync_account_locks(test_user["id"], False)
+        app_module.sync_account_locks(test_user["id"], 3)
         locked_name = db_conn.execute("SELECT name FROM accounts WHERE id = ?", (five_accounts[4],)).fetchone()["name"]
 
         resp = auth_client.post(
@@ -198,7 +213,7 @@ class TestEnforcementBlocksLockedAccounts:
 
     def test_transfer_rejected_when_either_side_locked(self, auth_client, test_user, five_accounts, db_conn):
         import app as app_module
-        app_module.sync_account_locks(test_user["id"], False)
+        app_module.sync_account_locks(test_user["id"], 3)
         locked_name = db_conn.execute("SELECT name FROM accounts WHERE id = ?", (five_accounts[4],)).fetchone()["name"]
         unlocked_name = db_conn.execute("SELECT name FROM accounts WHERE id = ?", (five_accounts[0],)).fetchone()["name"]
         before = _account_row(db_conn, five_accounts[0])["balance"]
@@ -211,7 +226,7 @@ class TestEnforcementBlocksLockedAccounts:
 
     def test_edit_account_rejected_for_locked_account(self, auth_client, test_user, five_accounts, db_conn):
         import app as app_module
-        app_module.sync_account_locks(test_user["id"], False)
+        app_module.sync_account_locks(test_user["id"], 3)
         locked_id = five_accounts[4]
         before_name = _account_row(db_conn, locked_id)["name"]
 
@@ -224,7 +239,7 @@ class TestEnforcementBlocksLockedAccounts:
     def test_unlocked_accounts_still_fully_usable(self, auth_client, test_user, five_accounts, db_conn):
         """Sanity check: locking excess accounts must not break the ones that stay active."""
         import app as app_module
-        app_module.sync_account_locks(test_user["id"], False)
+        app_module.sync_account_locks(test_user["id"], 3)
         unlocked_name = db_conn.execute("SELECT name FROM accounts WHERE id = ?", (five_accounts[0],)).fetchone()["name"]
         before_balance = _account_row(db_conn, five_accounts[0])["balance"]
 
@@ -244,7 +259,7 @@ class TestFreeLimitIgnoresLockedAccounts:
         import app as app_module
         ids = [_add_account(db_conn, test_user["id"], f"Acc {i}") for i in range(5)]
         db_conn.execute("UPDATE users SET is_pro = 0 WHERE id = ?", (test_user["id"],))
-        app_module.sync_account_locks(test_user["id"], False)
+        app_module.sync_account_locks(test_user["id"], 3)
 
         resp = auth_client.post(
             "/settings/add-account",
@@ -258,7 +273,7 @@ class TestFreeLimitIgnoresLockedAccounts:
     def test_locked_accounts_still_visible_in_get_active_accounts(self, test_user, five_accounts, db_conn):
         import app as app_module
         from models import get_active_accounts
-        app_module.sync_account_locks(test_user["id"], False)
+        app_module.sync_account_locks(test_user["id"], 3)
 
         accounts = get_active_accounts(test_user["id"])
         assert len(accounts) == 5, "locked accounts must remain visible, not hidden/excluded"

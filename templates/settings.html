@@ -149,8 +149,8 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   <div class="tab-section active" id="tab-billing">
     <div class="card p-4 mb-4">
 
-      {% if is_pro %}
-        <!-- Pro user -->
+      {% if entitlement.tier == 'pro' %}
+        <!-- Pro (real paying subscriber) -->
         <div class="d-flex align-items-center gap-2 mb-3">
           <h5 class="mb-0">Your Plan</h5>
           <span class="badge text-bg-dark">Pro</span>
@@ -158,8 +158,73 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
         <p class="text-muted small mb-4">You're on Spendara Pro — unlimited accounts and full access to everything.</p>
         <a href="/billing/portal" class="btn btn-outline-dark w-100 py-3 mb-4">Manage subscription →</a>
 
+      {% elif entitlement.tier == 'trialing' %}
+        <!-- 30-day internal trial: full Pro access, no card, no Stripe subscription -->
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <h5 class="mb-0">Your Plan</h5>
+          <span class="badge" style="background:var(--brand);color:#fff;">Trial</span>
+        </div>
+        <p class="text-muted small mb-4">You're on your 30-day trial — full Pro access, unlimited accounts, no card needed. {{ entitlement.trial_days_remaining }} day{{ 's' if entitlement.trial_days_remaining != 1 else '' }} left.</p>
+
+        <div class="rounded-4 p-4 mb-4" style="background: #111; color: white;">
+          <div class="fw-bold mb-1" style="font-size:18px;">Keep Pro after your trial</div>
+          <div style="font-size:28px; font-weight:700; margin-bottom:4px;">£4.99<span style="font-size:14px; font-weight:400;">/month</span></div>
+          <ul class="small mb-4" style="color: rgba(255,255,255,0.8); padding-left: 18px;">
+            <li>Unlimited accounts</li>
+            <li>Savings rules & automation</li>
+            <li>Future events planner</li>
+            <li>Investments tracker</li>
+            <li>Priority support</li>
+            <li>Cancel any time</li>
+          </ul>
+          <a href="/billing/upgrade" class="btn btn-light w-100 py-3 fw-bold">Subscribe to Pro</a>
+        </div>
+        <div class="text-muted small text-center mb-4">When your trial ends, you'll move to Basic (1 account, 30-day forecast) unless you subscribe.</div>
+
+      {% elif entitlement.tier == 'legacy_free' %}
+        <!-- Grandfathered pre-cutover user: permanent 3-account/90-day plan -->
+        <h5 class="mb-1">Your Plan</h5>
+        <p class="text-muted small mb-4">You're on Legacy Free — 3 accounts and a full 90-day forecast, permanently, as an existing Spendara user.</p>
+
+        <div class="rounded-4 p-4 mb-4" style="background: #111; color: white;">
+          <div class="fw-bold mb-1" style="font-size:18px;">Spendara Pro</div>
+          <div style="font-size:28px; font-weight:700; margin-bottom:4px;">£4.99<span style="font-size:14px; font-weight:400;">/month</span></div>
+          <ul class="small mb-4" style="color: rgba(255,255,255,0.8); padding-left: 18px;">
+            <li>Unlimited accounts</li>
+            <li>Savings rules & automation</li>
+            <li>Future events planner</li>
+            <li>Investments tracker</li>
+            <li>Priority support</li>
+            <li>Cancel any time</li>
+          </ul>
+          <a href="/billing/upgrade" class="btn btn-light w-100 py-3 fw-bold">Upgrade to Pro</a>
+        </div>
+        <div class="text-muted small text-center mb-4">Secure payment via Stripe. Cancel any time from your billing portal.</div>
+
+      {% elif entitlement.tier == 'basic' %}
+        <!-- Post-trial fallback for new-model users -->
+        <h5 class="mb-1">Your Plan</h5>
+        <p class="text-muted small mb-4">You're on Basic — 1 account, 30-day forecast, manual tracking. All your data is kept.</p>
+
+        <div class="rounded-4 p-4 mb-4" style="background: #111; color: white;">
+          <div class="fw-bold mb-1" style="font-size:18px;">Spendara Pro</div>
+          <div style="font-size:28px; font-weight:700; margin-bottom:4px;">£4.99<span style="font-size:14px; font-weight:400;">/month</span></div>
+          <ul class="small mb-4" style="color: rgba(255,255,255,0.8); padding-left: 18px;">
+            <li>Unlimited accounts</li>
+            <li>Savings rules & automation</li>
+            <li>Future events planner</li>
+            <li>Investments tracker</li>
+            <li>Priority support</li>
+            <li>Cancel any time</li>
+          </ul>
+          <a href="/billing/upgrade" class="btn btn-light w-100 py-3 fw-bold">Upgrade to Pro</a>
+        </div>
+        <div class="text-muted small text-center mb-4">Secure payment via Stripe. Cancel any time from your billing portal.</div>
+
       {% else %}
-        <!-- Free user -->
+        <!-- 'today_free' - display-only label used only while the
+             resolver is inactive, so this page reads byte-identically to
+             before the entitlement cutover until Activation. -->
         <h5 class="mb-1">Your Plan</h5>
         <p class="text-muted small mb-4">You're on the free plan — 3 accounts max.</p>
 
@@ -185,13 +250,12 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
       <div class="rounded-4 overflow-hidden" style="border:1px solid #e5e7eb;">
         <div class="row g-0 text-center" style="background:#f9fafb; border-bottom:1px solid #e5e7eb;">
           <div class="col-6 py-2 fw-semibold small">Feature</div>
-          <div class="col-3 py-2 fw-semibold small text-muted">Free</div>
+          <div class="col-3 py-2 fw-semibold small text-muted">{{ 'Basic' if entitlement.tier in ('basic', 'trialing') else 'Free' }}</div>
           <div class="col-3 py-2 fw-semibold small" style="color:var(--brand);">Pro</div>
         </div>
-        {% set open_banking_status = '✓' if truelayer_live else 'Coming soon' %}
         {% set features = [
-          ('Accounts', '3 max', 'Unlimited'),
-          ('Forecast horizon', '90 days', '90 days'),
+          ('Accounts', '3 max' if entitlement.tier != 'basic' else '1', 'Unlimited'),
+          ('Forecast horizon', '90 days' if entitlement.tier != 'basic' else '30 days', '90 days'),
           ('Transaction history', '✓', '✓'),
           ('Bills & income tracking', '✓', '✓'),
           ('CSV import', '✓', '✓'),
@@ -199,7 +263,6 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
           ('Savings rules', '—', '✓'),
           ('Future events', '—', '✓'),
           ('Investments tracker', '—', '✓'),
-          ('Open banking', open_banking_status, open_banking_status),
           ('Priority support', '—', '✓'),
         ] %}
         {% for feat, free_val, pro_val in features %}

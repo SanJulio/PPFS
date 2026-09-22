@@ -64,7 +64,17 @@ def _create_test_schema(db_path: Path):
             setup_dismissed INTEGER NOT NULL DEFAULT 0,
             employment_type TEXT NOT NULL DEFAULT 'employed',
             alert_mode TEXT DEFAULT NULL,
-            alert_overall_threshold REAL DEFAULT NULL
+            alert_overall_threshold REAL DEFAULT NULL,
+            fallback_entitlement TEXT NOT NULL DEFAULT 'basic',
+            trial_started_at TEXT,
+            trial_ends_at TEXT,
+            reconciled_account_limit INTEGER,
+            feedback_extension_granted_at TEXT,
+            feedback_extension_granted_by INTEGER,
+            stripe_subscription_status TEXT,
+            stripe_cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
+            stripe_current_period_end TEXT,
+            stripe_last_event_created_at INTEGER
         )""",
         """CREATE TABLE IF NOT EXISTS accounts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -217,6 +227,15 @@ def _create_test_schema(db_path: Path):
             amount REAL NOT NULL,
             date TEXT NOT NULL,
             note TEXT
+        )""",
+        """CREATE TABLE IF NOT EXISTS processed_stripe_events (
+            event_id TEXT PRIMARY KEY,
+            event_type TEXT NOT NULL,
+            processed_at TEXT
+        )""",
+        """CREATE TABLE IF NOT EXISTS schema_migrations (
+            version TEXT PRIMARY KEY,
+            applied_at TEXT
         )""",
     ]
 

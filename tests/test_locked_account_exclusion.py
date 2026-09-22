@@ -113,7 +113,7 @@ class TestForecastExcludesLockedAccount:
         resp = auth_client.get("/forecast?refresh=1")
         assert second_account["name"] not in _account_names(resp)
 
-        app_module.sync_account_locks(test_account["user_id"], True)
+        app_module.sync_account_locks(test_account["user_id"], None)
         resp = auth_client.get("/forecast?refresh=1")
         assert second_account["name"] in _account_names(resp)
         assert "account locked" not in resp.data.decode()

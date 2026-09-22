@@ -1637,5 +1637,100 @@ def init_db():
         except Exception as rb_error:
             logger.debug(f"Rollback error: {rb_error}")
 
+    # --- MIGRATION: entitlement system (September 2026) ---
+    # "Expand" phase of an expand/migrate/activate cutover (see
+    # CLAUDE.md's "Pricing/entitlement model" section for the full design
+    # and reasoning) - purely additive, inert columns/tables. Nothing in
+    # the app reads or writes any of these until ENTITLEMENT_RESOLVER_
+    # ACTIVE=true, except the Stripe webhook, which dual-writes the raw
+    # stripe_* columns unconditionally from the moment this migration is
+    # live (so they're never stale relative to real Stripe events that
+    # happen during the Migrate window) while continuing to drive
+    # authorization from is_pro exactly as it does today until the flag
+    # flips. Every ALTER TABLE below follows the exact same idempotent,
+    # re-runnable pattern as every other migration in this function.
+    _entitlement_columns = [
+        ("fallback_entitlement", "TEXT NOT NULL DEFAULT 'basic'", "TEXT NOT NULL DEFAULT 'basic'"),
+        ("trial_started_at", "TIMESTAMP", "TEXT"),
+        ("trial_ends_at", "TIMESTAMP", "TEXT"),
+        ("reconciled_account_limit", "INTEGER", "INTEGER"),
+        ("feedback_extension_granted_at", "TIMESTAMP", "TEXT"),
+        ("feedback_extension_granted_by", "INTEGER", "INTEGER"),
+        ("stripe_subscription_status", "TEXT", "TEXT"),
+        ("stripe_cancel_at_period_end", "INTEGER NOT NULL DEFAULT 0", "INTEGER NOT NULL DEFAULT 0"),
+        ("stripe_current_period_end", "TIMESTAMP", "TEXT"),
+        ("stripe_last_event_created_at", "INTEGER", "INTEGER"),
+    ]
+    for col_name, pg_type, sqlite_type in _entitlement_columns:
+        try:
+            if USE_POSTGRES:
+                cursor.execute("""
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_name='users' AND column_name=%s
+                """, (col_name,))
+                if not cursor.fetchone():
+                    cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {pg_type}")
+                    db.commit()
+            else:
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {col_name} {sqlite_type}")
+                db.commit()
+        except Exception as e:
+            logger.error(f"Column migration error (users.{col_name}): {e}")
+            try:
+                db.rollback()
+            except Exception as rb_error:
+                logger.debug(f"Rollback error: {rb_error}")
+
+    # Webhook idempotency: dedup + atomic apply (see CLAUDE.md). Primary
+    # key on event_id makes a duplicate delivery's re-insert fail fast,
+    # which the webhook handler treats as "already processed".
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS processed_stripe_events (
+                event_id TEXT PRIMARY KEY,
+                event_type TEXT NOT NULL,
+                processed_at TIMESTAMP
+            )
+        """ if USE_POSTGRES else """
+            CREATE TABLE IF NOT EXISTS processed_stripe_events (
+                event_id TEXT PRIMARY KEY,
+                event_type TEXT NOT NULL,
+                processed_at TEXT
+            )
+        """)
+        db.commit()
+    except Exception as e:
+        logger.error(f"Table migration error (processed_stripe_events): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
+    # One-off, non-repeatable migrations (the Legacy Free grandfathering
+    # backfill) are tracked here, NOT run automatically by init_db() -
+    # they're run manually, once, as their own script during the Migrate
+    # phase of the cutover, guarded by this table so a re-run is a safe
+    # no-op rather than needing "does a legacy row already exist"-style
+    # heuristics (unsafe after a partial run - see CLAUDE.md).
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version TEXT PRIMARY KEY,
+                applied_at TIMESTAMP
+            )
+        """ if USE_POSTGRES else """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version TEXT PRIMARY KEY,
+                applied_at TEXT
+            )
+        """)
+        db.commit()
+    except Exception as e:
+        logger.error(f"Table migration error (schema_migrations): {e}")
+        try:
+            db.rollback()
+        except Exception as rb_error:
+            logger.debug(f"Rollback error: {rb_error}")
+
     cursor.close()
     release_db(db)
