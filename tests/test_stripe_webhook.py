@@ -45,8 +45,15 @@ _event_counter = itertools.count(1)
 
 class _FakeSub:
     """Minimal stand-in for what stripe.Subscription.retrieve() returns -
-    only the attributes _apply_subscription_state() actually reads."""
-    def __init__(self, status, cancel_at_period_end=False, current_period_end=None):
+    only the attributes _apply_subscription_state() actually reads. This
+    is a plain object with a real (legacy-shaped) current_period_end
+    attribute, NOT a stand-in for Stripe's actual post-basil object shape
+    - see tests/test_stripe_period_end_extraction.py for tests against a
+    real, production-shaped stripe.StripeObject. Defaults to a non-None
+    placeholder (rather than None) so tests that don't care about the
+    period-end value specifically don't trip the "no silent None for an
+    access-granting status" guard added for the basil incident."""
+    def __init__(self, status, cancel_at_period_end=False, current_period_end=2_000_000_000):
         self.status = status
         self.cancel_at_period_end = cancel_at_period_end
         self.current_period_end = current_period_end

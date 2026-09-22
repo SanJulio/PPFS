@@ -39,6 +39,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import stripe
 from app import app as flask_app, ACCESS_GRANTING_STATUSES, _apply_subscription_state, USE_POSTGRES
 from database import get_db, release_db
+from stripe_helpers import extract_subscription_period_end
 
 
 def _live_subscription_for_customer(customer_id):
@@ -92,8 +93,20 @@ def main():
                     print(f"  user_id={u['id']} email={u['email']}: no subscriptions found for customer {u['stripe_customer_id']} — SKIPPING")
                     failures.append(u["id"])
                     continue
+                period_end = extract_subscription_period_end(
+                    live_sub, cancel_at_period_end=live_sub.cancel_at_period_end,
+                )
+                if period_end is None and live_sub.status in ACCESS_GRANTING_STATUSES:
+                    # Never silently write None for an access-granting
+                    # subscription - count it as a failure so coverage is
+                    # reported as incomplete, same as any other
+                    # unresolvable case below.
+                    print(f"  user_id={u['id']} email={u['email']}: status={live_sub.status} but "
+                          f"current_period_end could not be resolved — FAILURE, not writing")
+                    failures.append(u["id"])
+                    continue
                 print(f"  user_id={u['id']} email={u['email']}: live status={live_sub.status}, "
-                      f"cancel_at_period_end={live_sub.cancel_at_period_end}, current_period_end={live_sub.current_period_end}")
+                      f"cancel_at_period_end={live_sub.cancel_at_period_end}, current_period_end={period_end}")
                 if apply_changes:
                     db2 = get_db()
                     cursor2 = db2.cursor()
@@ -101,7 +114,7 @@ def main():
                         _apply_subscription_state(
                             cursor2, user_id=u["id"], customer_id=u["stripe_customer_id"],
                             status=live_sub.status, cancel_at_period_end=live_sub.cancel_at_period_end,
-                            current_period_end=live_sub.current_period_end, allow_incomplete_write=True,
+                            current_period_end=period_end, allow_incomplete_write=True,
                         )
                         db2.commit()
                         reconciled += 1

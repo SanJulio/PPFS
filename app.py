@@ -7801,6 +7801,7 @@ def import_confirm():
 # =============================================================================
 
 import stripe
+from stripe_helpers import extract_subscription_period_end
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
@@ -7963,11 +7964,24 @@ def stripe_webhook():
             if user_id_raw and subscription_id:
                 user_id = int(user_id_raw)
                 live_sub = stripe.Subscription.retrieve(subscription_id)
+                period_end = extract_subscription_period_end(
+                    live_sub, cancel_at_period_end=live_sub.cancel_at_period_end,
+                )
+                if period_end is None and live_sub.status in ACCESS_GRANTING_STATUSES:
+                    # Never silently commit an access-granting subscription
+                    # with an unresolved period end - raising here rolls
+                    # back the whole transaction (see the except below) and
+                    # returns 5xx, so Stripe retries rather than the event
+                    # being marked processed against incomplete data.
+                    raise RuntimeError(
+                        f"Cannot resolve current_period_end for access-granting "
+                        f"subscription {subscription_id} (status={live_sub.status})"
+                    )
                 _apply_subscription_state(
                     cursor, user_id=user_id, customer_id=customer_id,
                     status=live_sub.status,
                     cancel_at_period_end=live_sub.cancel_at_period_end,
-                    current_period_end=live_sub.current_period_end,
+                    current_period_end=period_end,
                     allow_incomplete_write=True,
                 )
                 logger.info(f"Checkout completed for user_id={user_id}, live status={live_sub.status}")
@@ -7989,7 +8003,14 @@ def stripe_webhook():
                         live_sub = stripe.Subscription.retrieve(subscription_id)
                         status = live_sub.status
                         cancel_at_end = live_sub.cancel_at_period_end
-                        period_end = live_sub.current_period_end
+                        period_end = extract_subscription_period_end(
+                            live_sub, cancel_at_period_end=cancel_at_end,
+                        )
+                        if period_end is None and status in ACCESS_GRANTING_STATUSES:
+                            raise RuntimeError(
+                                f"Cannot resolve current_period_end for access-granting "
+                                f"subscription {subscription_id} (status={status})"
+                            )
                     except stripe.error.InvalidRequestError:
                         # Subscription object genuinely gone (rare) - a
                         # .deleted event with nothing left to retrieve is
@@ -8042,7 +8063,12 @@ def stripe_webhook():
         db.commit()
     except Exception as e:
         db.rollback()
-        logger.error(f"Stripe webhook processing error ({event_type}, event_id={event.get('id')}): {e}")
+        # event['id'], not event.get('id') - StripeObject has no .get(),
+        # only __getitem__/attribute access (same class of bug the
+        # checkout.session.completed handler above was already fixed for;
+        # this line had it too, latent until a real StripeObject-shaped
+        # event actually hit this except block).
+        logger.error(f"Stripe webhook processing error ({event_type}, event_id={event['id']}): {e}")
         cursor.close()
         release_db(db)
         # A non-2xx deliberately triggers Stripe's own retry - the event
