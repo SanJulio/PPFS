@@ -180,7 +180,7 @@ input, select { border-radius: 12px !important; padding: 12px !important; font-s
   {% if message == 'FREE_LIMIT_ACCOUNTS' %}
     <div class="alert rounded-4" style="background:#fff3cd; border:none;">
       <div class="fw-bold">Account limit reached</div>
-      <div class="small mt-1">Free accounts are limited to 3 accounts. <a href="/billing/upgrade" class="fw-bold text-dark">Upgrade to Pro for £4.99/month</a> to add unlimited accounts.</div>
+      <div class="small mt-1">Your plan is limited to {{ entitlement.account_limit }} account{{ 's' if entitlement.account_limit != 1 else '' }}. <a href="/billing/upgrade" class="fw-bold text-dark">Upgrade to Pro for £4.99/month</a> to add unlimited accounts.</div>
     </div>
   {% elif message == 'PRO_REQUIRED' %}
     <div class="alert rounded-4" style="background:#f3f0ff; border:none;">

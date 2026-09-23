@@ -243,3 +243,24 @@ class TestTemplateDisplayPerTier:
         _set_tier(db_conn, test_user["id"], "pro")
         body = auth_client.get("/settings").get_data(as_text=True)
         assert "Open banking" not in body
+
+
+class TestFreeLimitAccountsMessageIsTierAware:
+    """Regression test for a real bug found in a post-Activation stale-copy
+    audit: the FREE_LIMIT_ACCOUNTS flash message (shown on /manage when a
+    user hits their account cap - app.py's settings_add_account()) was
+    hardcoded to 'Free accounts are limited to 3 accounts', so a
+    Basic-tier user (real limit: 1) hitting their actual cap saw a false
+    3-account claim. The underlying rejection logic (get_account_limit())
+    was already correctly tier-aware - only the displayed copy was wrong."""
+
+    def test_basic_tier_shows_its_real_limit_of_1(self, auth_client, test_user, db_conn):
+        _set_tier(db_conn, test_user["id"], "basic")
+        body = auth_client.get("/manage?msg=FREE_LIMIT_ACCOUNTS").get_data(as_text=True)
+        assert "limited to 1 account." in body
+        assert "3 accounts" not in body
+
+    def test_legacy_free_tier_shows_its_real_limit_of_3(self, auth_client, test_user, db_conn):
+        _set_tier(db_conn, test_user["id"], "legacy_free")
+        body = auth_client.get("/manage?msg=FREE_LIMIT_ACCOUNTS").get_data(as_text=True)
+        assert "limited to 3 accounts." in body

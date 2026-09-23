@@ -3,7 +3,7 @@
 ## What the app is
 Spendara is a personal finance web app at https://spendara.co.uk (launched 16 March 2026).
 Users track account balances, log transactions, set recurring bills and income, and get a 90-day forecast of their finances.
-There is a Free tier (3 accounts) and a Pro tier (£1.99/month, unlimited accounts) via Stripe.
+There's a four-tier entitlement model (Legacy Free, 30-day Trialing, Basic, Pro — £4.99/month, unlimited accounts) via Stripe — see "Pricing / entitlement model" below for the full reference.
 GitHub: https://github.com/SanJulio/PPFS.git
 
 ## Tech stack
@@ -31,7 +31,7 @@ Production's `DATABASE_URL` uses Render's **internal** hostname (`dpg-d6m123a4d5
 - PostgreSQL's TLS certificate is a single, static, server-wide config value (`ssl_cert_file`) — there's no per-connection/SNI-based certificate switching at the Postgres protocol level the way an HTTP reverse proxy might do. Whatever certificate the backend presents is the same regardless of which hostname/network path was used to reach it.
 - That shared certificate's SAN list (`*.aws-eu-central-1-1-postgres.render.com`, `*.frankfurt-postgres.render.com`, and their `replica-cyan` equivalents) can never include a bare, private-network-only name like `dpg-d6m123a4d50c73cjavc0-a` — a publicly-trusted CA (Let's Encrypt) fundamentally cannot issue a certificate for a hostname that isn't publicly resolvable.
 
-So `verify-full` against the internal hostname will always fail on hostname mismatch — not a bug, not a misconfiguration, just incompatible by design. The only way to get full verification would be switching `DATABASE_URL` to the external hostname (confirmed working there), which trades away Render's free/low-latency internal network path for one that counts against bandwidth — a real, ongoing cost for a £1.99/month product, in exchange for closing a MITM-protection gap that's already low-risk on a private network (vs. a typical public-internet DB connection).
+So `verify-full` against the internal hostname will always fail on hostname mismatch — not a bug, not a misconfiguration, just incompatible by design. The only way to get full verification would be switching `DATABASE_URL` to the external hostname (confirmed working there), which trades away Render's free/low-latency internal network path for one that counts against bandwidth — a real, ongoing cost for a £4.99/month product, in exchange for closing a MITM-protection gap that's already low-risk on a private network (vs. a typical public-internet DB connection).
 
 **Decision: stay on `PGSSLMODE=require` for now.** This is a deliberately parked decision, not a forgotten one — revisit it specifically if pursuing FCA authorisation, or if formal security due diligence ever requires full certificate verification regardless of the cost/latency tradeoff. If revisited, the fix is switching to the external hostname (already proven to work with `verify-full`) — not attempting it again against the internal hostname.
 

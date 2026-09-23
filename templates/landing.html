@@ -434,6 +434,9 @@ nav {
 .pricing-note-new { font-size: 13px; color: var(--text-faint); font-family: 'Inter', sans-serif; text-align: center; margin-top: 20px; }
 .pricing-note-new a { color: var(--lp-brand); font-weight: 600; text-decoration: none; }
 .pricing-note-new a:hover { text-decoration: underline; }
+.pricing-cards-wrap { display: flex; gap: 24px; justify-content: center; align-items: stretch; flex-wrap: wrap; max-width: 820px; margin: 0 auto; }
+.pricing-cards-wrap .pricing-card-new { max-width: 380px; margin: 0; flex: 1 1 320px; }
+.pricing-card-secondary { border-top-color: var(--border-color); }
 
 /* ── ACT 5: CLOSE ── */
 .close-section {
@@ -525,6 +528,7 @@ footer a:hover { color: var(--text-primary); }
   .hero-features { grid-template-columns: 1fr; gap: 16px; margin-bottom: 32px; }
   .demo-video-wrap { padding: 8px; }
   .pricing-card-body { padding: 28px 20px; }
+  .pricing-cards-wrap { flex-direction: column; align-items: center; }
   .forecast-section { padding-bottom: 60px; }
 
   .story-item { padding: 56px 24px; }
@@ -547,7 +551,7 @@ footer a:hover { color: var(--text-primary); }
   </div>
   <div class="nav-right">
     <a href="/login" class="nav-login">Log in</a>
-    <a href="/welcome" class="nav-cta"><span class="nav-cta-full">Get started free</span><span class="nav-cta-short">Get started</span></a>
+    <a href="/welcome" class="nav-cta"><span class="nav-cta-full">Start your free trial</span><span class="nav-cta-short">Start trial</span></a>
   </div>
 </nav>
 
@@ -629,7 +633,7 @@ footer a:hover { color: var(--text-primary); }
 
   <div class="fo-signup" style="margin-top:28px;">
     <p>Want to track this with your real accounts?</p>
-    <a href="/welcome" id="foSignupBtn" class="fo-signup-btn">Save my forecast — it's free →</a>
+    <a href="/welcome" id="foSignupBtn" class="fo-signup-btn">Start my free trial →</a>
   </div>
 </section>
 
@@ -656,27 +660,44 @@ footer a:hover { color: var(--text-primary); }
 
 <!-- ── ACT 4: PRICING ── -->
 <section class="pricing-section">
-  <h2 class="reveal">Simple pricing.</h2>
-  <p class="pricing-intro reveal reveal-delay-1">Everything you need. Nothing you don't.</p>
-  <div class="pricing-card-new reveal reveal-delay-2">
-    <div class="pricing-card-top"></div>
-    <div class="pricing-card-body">
-      <div class="pricing-price-new">£4.99 <span class="pricing-price-period">/ month</span></div>
-      <div class="pricing-desc-new">Everything you need to take control of your finances.</div>
-      <ul class="feature-list-new">
-        <li><span class="check-icon">✓</span> Savings rules & automation</li>
-        <li><span class="check-icon">✓</span> "Can I Afford This?" checker</li>
-        <li><span class="check-icon">✓</span> Unlimited accounts with Pro</li>
-        <li><span class="check-icon">✓</span> Transaction tracking &amp; categories</li>
-        <li><span class="check-icon">✓</span> Recurring bills &amp; income</li>
-        <li><span class="check-icon">✓</span> Payday-aligned budget cycle</li>
-        <li><span class="check-icon">✓</span> Privacy blur mode</li>
-        <li><span class="check-icon">✓</span> Secure &amp; UK-hosted</li>
-      </ul>
-      <a href="/welcome" class="btn-pricing">Start free — upgrade anytime →</a>
-      <p class="pricing-note-new" style="margin-top:16px;">Free tier available &middot; No card required</p>
+  <h2 class="reveal">Try everything free. Decide after.</h2>
+  <p class="pricing-intro reveal reveal-delay-1">30-day free trial, no card required.</p>
+  <div class="pricing-cards-wrap">
+    <div class="pricing-card-new reveal reveal-delay-2">
+      <div class="pricing-card-top"></div>
+      <div class="pricing-card-body">
+        <span class="pricing-pill">Trial includes this</span>
+        <div class="pricing-price-new">£4.99 <span class="pricing-price-period">/ month</span></div>
+        <div class="pricing-desc-new">Everything you need to take control of your finances — yours from day one of your trial.</div>
+        <ul class="feature-list-new">
+          <li><span class="check-icon">✓</span> Unlimited accounts</li>
+          <li><span class="check-icon">✓</span> Full 90-day forecast</li>
+          <li><span class="check-icon">✓</span> Savings rules & automation</li>
+          <li><span class="check-icon">✓</span> "Can I Afford This?" checker</li>
+          <li><span class="check-icon">✓</span> Transaction tracking &amp; categories</li>
+          <li><span class="check-icon">✓</span> Recurring bills &amp; income</li>
+          <li><span class="check-icon">✓</span> Payday-aligned budget cycle</li>
+          <li><span class="check-icon">✓</span> Privacy blur mode</li>
+        </ul>
+        <a href="/welcome" class="btn-pricing">Start your free trial →</a>
+      </div>
+    </div>
+    <div class="pricing-card-new pricing-card-secondary reveal reveal-delay-3">
+      <div class="pricing-card-top"></div>
+      <div class="pricing-card-body">
+        <div class="pricing-price-new">Basic</div>
+        <div class="pricing-desc-new">£0 / month &middot; what your trial becomes if you don't subscribe.</div>
+        <ul class="feature-list-new">
+          <li><span class="check-icon">✓</span> 1 account</li>
+          <li><span class="check-icon">✓</span> 30-day forecast</li>
+          <li><span class="check-icon">✓</span> Manual transaction tracking</li>
+          <li><span class="check-icon">✓</span> Your data, always retained</li>
+        </ul>
+        <p class="pricing-note-new" style="margin-top:16px;">No action needed — this happens automatically.</p>
+      </div>
     </div>
   </div>
+  <p class="pricing-note-new" style="max-width:520px;margin-left:auto;margin-right:auto;">Your trial gives you full Pro access from day one. After 30 days, it automatically becomes Basic unless you subscribe — no card required to start, and no surprise charge.</p>
 </section>
 
 <!-- ── ACT 5: CLOSE ── -->
@@ -685,7 +706,7 @@ footer a:hover { color: var(--text-primary); }
   <div class="close-inner">
     <h2 class="reveal">Ready to see<br>your future?</h2>
     <p class="reveal reveal-delay-1">No spreadsheets. No guesswork. Just your money, 90 days ahead.</p>
-    <a href="/welcome" class="btn-close reveal reveal-delay-2">Create your free account →</a>
+    <a href="/welcome" class="btn-close reveal reveal-delay-2">Start your free trial →</a>
     <p class="close-beta-note reveal reveal-delay-3">You'll be one of our first beta users</p>
   </div>
 </section>
