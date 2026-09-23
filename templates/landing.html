@@ -437,6 +437,7 @@ nav {
 .pricing-cards-wrap { display: flex; gap: 24px; justify-content: center; align-items: stretch; flex-wrap: wrap; max-width: 820px; margin: 0 auto; }
 .pricing-cards-wrap .pricing-card-new { max-width: 380px; margin: 0; flex: 1 1 320px; }
 .pricing-card-secondary { border-top-color: var(--border-color); }
+.pricing-plan-name { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; color: var(--text-heading); margin-bottom: 6px; }
 
 /* ── ACT 5: CLOSE ── */
 .close-section {
@@ -661,23 +662,21 @@ footer a:hover { color: var(--text-primary); }
 <!-- ── ACT 4: PRICING ── -->
 <section class="pricing-section">
   <h2 class="reveal">Try everything free. Decide after.</h2>
-  <p class="pricing-intro reveal reveal-delay-1">30-day free trial, no card required.</p>
+  <p class="pricing-intro reveal reveal-delay-1">30 days of Pro free. Then choose Pro for £4.99/month or continue with Basic for £0.</p>
   <div class="pricing-cards-wrap">
     <div class="pricing-card-new reveal reveal-delay-2">
       <div class="pricing-card-top"></div>
       <div class="pricing-card-body">
         <span class="pricing-pill">Trial includes this</span>
+        <div class="pricing-plan-name">Pro</div>
         <div class="pricing-price-new">£4.99 <span class="pricing-price-period">/ month</span></div>
-        <div class="pricing-desc-new">Everything you need to take control of your finances — yours from day one of your trial.</div>
+        <div class="pricing-desc-new">Everything in Basic, plus the advanced tools — yours from day one of your trial.</div>
         <ul class="feature-list-new">
           <li><span class="check-icon">✓</span> Unlimited accounts</li>
           <li><span class="check-icon">✓</span> Full 90-day forecast</li>
-          <li><span class="check-icon">✓</span> Savings rules & automation</li>
-          <li><span class="check-icon">✓</span> "Can I Afford This?" checker</li>
-          <li><span class="check-icon">✓</span> Transaction tracking &amp; categories</li>
-          <li><span class="check-icon">✓</span> Recurring bills &amp; income</li>
-          <li><span class="check-icon">✓</span> Payday-aligned budget cycle</li>
-          <li><span class="check-icon">✓</span> Privacy blur mode</li>
+          <li><span class="check-icon">✓</span> Savings rules &amp; automation</li>
+          <li><span class="check-icon">✓</span> Future events &amp; one-off planning</li>
+          <li><span class="check-icon">✓</span> Investment tracking</li>
         </ul>
         <a href="/welcome" class="btn-pricing">Start your free trial →</a>
       </div>
@@ -690,7 +689,11 @@ footer a:hover { color: var(--text-primary); }
         <ul class="feature-list-new">
           <li><span class="check-icon">✓</span> 1 account</li>
           <li><span class="check-icon">✓</span> 30-day forecast</li>
-          <li><span class="check-icon">✓</span> Manual transaction tracking</li>
+          <li><span class="check-icon">✓</span> Transaction tracking &amp; categories</li>
+          <li><span class="check-icon">✓</span> Recurring bills &amp; income</li>
+          <li><span class="check-icon">✓</span> "Can I Afford This?" checker</li>
+          <li><span class="check-icon">✓</span> Payday-aligned budget cycle</li>
+          <li><span class="check-icon">✓</span> Privacy blur mode</li>
           <li><span class="check-icon">✓</span> Your data, always retained</li>
         </ul>
         <p class="pricing-note-new" style="margin-top:16px;">No action needed — this happens automatically.</p>
