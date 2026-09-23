@@ -23,6 +23,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from scripts.configure_billing_portal import (
     CANCEL_AT_PERIOD_END_OVERRIDE,
+    CANCELLATION_REASON_OPTIONS,
+    FALLBACK_BASELINE_FEATURES,
     MANAGED_BY_KEY,
     MANAGED_BY_VALUE,
     _build_target_features,
@@ -140,11 +142,14 @@ class TestBuildTargetFeatures:
         target = _build_target_features(FULL_RESPONSE_FEATURES)
         assert target["subscription_cancel"] == CANCEL_AT_PERIOD_END_OVERRIDE
 
-    def test_does_not_preserve_old_cancellation_reason_on_override(self):
-        """The approved override is the literal 3-key dict - nothing
-        merged in from the source's cancellation_reason."""
+    def test_does_not_merge_the_sources_old_cancellation_reason(self):
+        """The override's own cancellation_reason (all 8 standard
+        options) fully replaces whatever the source config had - it
+        must never merge with the source's own (different, 2-option)
+        cancellation_reason from FULL_RESPONSE_FEATURES."""
         target = _build_target_features(FULL_RESPONSE_FEATURES)
-        assert "cancellation_reason" not in target["subscription_cancel"]
+        assert target["subscription_cancel"]["cancellation_reason"]["options"] == CANCELLATION_REASON_OPTIONS
+        assert target["subscription_cancel"]["cancellation_reason"]["options"] != FULL_RESPONSE_FEATURES["subscription_cancel"]["cancellation_reason"]["options"]
 
     def test_preserves_every_other_feature_unchanged(self):
         target = _build_target_features(FULL_RESPONSE_FEATURES)
@@ -319,6 +324,107 @@ class TestMissingDefaultConfiguration:
         code, create_mock, _ = _run(["--apply", "--live", "--allow-baseline"], list_pages=[page])
         assert code == 0
         create_mock.assert_called_once()
+
+
+class TestBaselineCustomerUpdatePermissions:
+    """The approved baseline: customer_update enabled, scoped to exactly
+    address/email/name - phone, shipping, and tax_id deliberately
+    excluded (no product need for them today)."""
+
+    def test_only_address_email_and_name_are_permitted(self):
+        assert set(FALLBACK_BASELINE_FEATURES["customer_update"]["allowed_updates"]) == {"address", "email", "name"}
+
+    def test_phone_shipping_and_tax_id_remain_excluded(self):
+        allowed = FALLBACK_BASELINE_FEATURES["customer_update"]["allowed_updates"]
+        for excluded in ("phone", "shipping", "tax_id"):
+            assert excluded not in allowed
+
+    def test_customer_update_is_enabled_in_the_baseline(self):
+        assert FALLBACK_BASELINE_FEATURES["customer_update"]["enabled"] is True
+
+    def test_permissions_survive_into_the_actual_create_payload(self):
+        page = _list_response([_config_payload("bpc_random", is_default=False)])
+        _, create_mock, _ = _run(["--apply", "--live", "--allow-baseline"], list_pages=[page])
+        sent_cu = create_mock.call_args.kwargs["features"]["customer_update"]
+        assert set(sent_cu["allowed_updates"]) == {"address", "email", "name"}
+        for excluded in ("phone", "shipping", "tax_id"):
+            assert excluded not in sent_cu["allowed_updates"]
+
+
+class TestCancellationReasonPreservation:
+    """The approved plan: all 8 standard Stripe cancellation-reason
+    options collected, alongside (not instead of) at_period_end/
+    proration_behavior=none - genuine product signal from day one.
+    Database storage of the collected feedback is explicitly out of
+    scope; Stripe Dashboard/API visibility (via Subscription.
+    cancellation_details.feedback) is sufficient for launch."""
+
+    def test_all_eight_reasons_are_defined(self):
+        assert len(CANCELLATION_REASON_OPTIONS) == 8
+        assert set(CANCELLATION_REASON_OPTIONS) == {
+            "too_expensive", "missing_features", "switched_service", "unused",
+            "customer_service", "low_quality", "too_complex", "other",
+        }
+
+    def test_all_eight_reasons_survive_extract_writable_features_normalisation(self):
+        """Round-trips the override itself through the allowlist
+        normaliser (the same function real Stripe response objects are
+        passed through) and confirms nothing is dropped or reordered
+        away. CANCEL_AT_PERIOD_END_OVERRIDE *is* the subscription_cancel
+        contents directly, so it's wrapped under that key here, matching
+        the shape _extract_writable_features actually expects."""
+        normalised = _extract_writable_features({"subscription_cancel": CANCEL_AT_PERIOD_END_OVERRIDE})
+        assert normalised["subscription_cancel"]["cancellation_reason"]["options"] == CANCELLATION_REASON_OPTIONS
+
+    def test_all_eight_reasons_present_in_the_override_constant(self):
+        assert CANCEL_AT_PERIOD_END_OVERRIDE["cancellation_reason"]["options"] == CANCELLATION_REASON_OPTIONS
+
+    def test_cancellation_reason_enabled_alongside_at_period_end_and_no_proration(self):
+        """All three settings must coexist in the same payload - not
+        just each individually true somewhere, but genuinely together
+        on the one subscription_cancel block that gets sent."""
+        sc = CANCEL_AT_PERIOD_END_OVERRIDE
+        assert sc["enabled"] is True
+        assert sc["mode"] == "at_period_end"
+        assert sc["proration_behavior"] == "none"
+        assert sc["cancellation_reason"]["enabled"] is True
+
+    def test_all_eight_reasons_survive_into_the_actual_create_payload(self):
+        page = _list_response([_config_payload("bpc_default", is_default=True)])
+        _, create_mock, _ = _run(["--apply", "--live"], list_pages=[page])
+        sent_sc = create_mock.call_args.kwargs["features"]["subscription_cancel"]
+        assert sent_sc["cancellation_reason"]["options"] == CANCELLATION_REASON_OPTIONS
+        assert sent_sc["cancellation_reason"]["enabled"] is True
+        assert sent_sc["mode"] == "at_period_end"
+        assert sent_sc["proration_behavior"] == "none"
+
+    def test_deepcopy_prevents_cross_call_mutation_of_the_shared_override(self):
+        """_build_target_features must not hand back a dict that shares
+        nested structure with the module-level constant - mutating one
+        call's result must never affect another."""
+        first = _build_target_features(FULL_RESPONSE_FEATURES)
+        first["subscription_cancel"]["cancellation_reason"]["options"].append("tampered")
+        second = _build_target_features(FULL_RESPONSE_FEATURES)
+        assert "tampered" not in second["subscription_cancel"]["cancellation_reason"]["options"]
+        assert "tampered" not in CANCEL_AT_PERIOD_END_OVERRIDE["cancellation_reason"]["options"]
+
+
+class TestDryRunRemainsNonMutatingWithNewBaseline:
+    def test_dry_run_with_new_baseline_never_calls_create(self, capsys):
+        page = _list_response([_config_payload("bpc_random", is_default=False)])
+        code, create_mock, modify_mock = _run(["--allow-baseline"], list_pages=[page])
+        assert code == 0
+        create_mock.assert_not_called()
+        modify_mock.assert_not_called()
+
+    def test_dry_run_output_reports_customer_update_and_cancellation_reason_without_secrets(self, capsys):
+        page = _list_response([_config_payload("bpc_random", is_default=False)])
+        _run(["--allow-baseline"], list_pages=[page], env={"STRIPE_SECRET_KEY": "sk_live_ANOTHERSECRET"})
+        out = capsys.readouterr().out
+        assert "address" in out and "email" in out and "name" in out
+        assert "too_expensive" in out  # confirms the reason list is visible for human review
+        assert "phone" not in out
+        assert "ANOTHERSECRET" not in out
 
 
 class TestLiveKeyEnforcement:

@@ -52,6 +52,7 @@ Safety properties (each covered by a test in tests/test_configure_billing_portal
     feature-enabled summary.
 """
 import argparse
+import copy
 import os
 import sys
 import uuid
@@ -62,19 +63,39 @@ MANAGED_BY_KEY = "managed_by"
 MANAGED_BY_VALUE = "spendara_configure_billing_portal_v1"
 CONFIGURATION_NAME = "Spendara - cancel at period end"
 
+# Every reason option Stripe currently permits for portal-collected
+# cancellation feedback (confirmed against the Configuration API
+# reference - not a curated subset, per the approved plan: genuinely
+# useful product signal on who leaves and why, worth capturing in full
+# from day one).
+CANCELLATION_REASON_OPTIONS = [
+    "too_expensive", "missing_features", "switched_service", "unused",
+    "customer_service", "low_quality", "too_complex", "other",
+]
+
 # The literal override this script exists to apply - not derived from
-# anything, per the approved plan.
+# anything, per the approved plan. cancellation_reason is confirmed
+# independent of `mode` (no documented incompatibility anywhere in
+# Stripe's Configuration reference - the only mode-dependent constraint
+# found for this whole object is proration_behavior, above).
 CANCEL_AT_PERIOD_END_OVERRIDE = {
     "enabled": True,
     "mode": "at_period_end",
     "proration_behavior": "none",
+    "cancellation_reason": {
+        "enabled": True,
+        "options": list(CANCELLATION_REASON_OPTIONS),
+    },
 }
 
 # Only used with --allow-baseline, when no default configuration exists
 # on the account at all. Deliberately explicit and minimal rather than
-# guessed - logged clearly whenever it's actually used.
+# guessed - logged clearly whenever it's actually used. customer_update
+# is deliberately scoped to address/email/name only - phone, shipping,
+# and tax_id are excluded per the approved plan (no product need for
+# them today; easy to add later if that changes).
 FALLBACK_BASELINE_FEATURES = {
-    "customer_update": {"enabled": False, "allowed_updates": []},
+    "customer_update": {"enabled": True, "allowed_updates": ["address", "email", "name"]},
     "invoice_history": {"enabled": True},
     "payment_method_update": {"enabled": True},
     "subscription_update": {"enabled": False, "default_allowed_updates": [], "proration_behavior": "none"},
@@ -159,7 +180,9 @@ def _build_target_features(source_features):
     serializer above), overriding only subscription_cancel with the
     literal, approved cancel-at-period-end settings."""
     features = _extract_writable_features(source_features)
-    features["subscription_cancel"] = dict(CANCEL_AT_PERIOD_END_OVERRIDE)
+    # deepcopy, not dict() - the override now nests cancellation_reason,
+    # and a shallow copy would share that inner dict across every call.
+    features["subscription_cancel"] = copy.deepcopy(CANCEL_AT_PERIOD_END_OVERRIDE)
     return features
 
 
@@ -193,11 +216,14 @@ def _find_default_configuration(all_configs):
 
 
 def _print_feature_summary(features):
-    print("  customer_update.enabled:", features["customer_update"]["enabled"])
+    cu = features["customer_update"]
+    print(f"  customer_update: enabled={cu['enabled']} allowed_updates={cu['allowed_updates']}")
     print("  invoice_history.enabled:", features["invoice_history"]["enabled"])
     print("  payment_method_update.enabled:", features["payment_method_update"]["enabled"])
     sc = features["subscription_cancel"]
     print(f"  subscription_cancel: enabled={sc['enabled']} mode={sc['mode']} proration_behavior={sc['proration_behavior']}")
+    cr = sc.get("cancellation_reason") or {}
+    print(f"  subscription_cancel.cancellation_reason: enabled={cr.get('enabled')} options={cr.get('options')}")
     print("  subscription_update.enabled:", features["subscription_update"]["enabled"])
 
 
